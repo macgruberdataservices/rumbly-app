@@ -2,6 +2,7 @@ import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-nati
 import type { Restaurant } from '../../data/types';
 import type { HoursStatus } from '../../data/hoursStatus';
 import type { CapabilityKind } from './CapabilityDetailSheet';
+import { useActivity } from '../../hooks/useActivity';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -31,6 +32,10 @@ export function ExpandedHeader({
     .join(' · ');
 
   const hasDirections = restaurant.lat !== null && restaurant.lng !== null;
+
+  const { favoritedIds, checkedInIds, toggleFavorite, addCheckIn } = useActivity();
+  const isFavorited = favoritedIds.has(restaurant.restaurant_id);
+  const hasCheckedIn = checkedInIds.has(restaurant.restaurant_id);
 
   return (
     <View style={styles.container}>
@@ -78,13 +83,14 @@ export function ExpandedHeader({
             <Text style={text.buttonLabel}>Directions</Text>
           </Pressable>
         )}
-        {/* Inert until Milestone 4's local activity store wires these up. */}
-        <View style={[styles.action, styles.actionInert]}>
-          <Text style={[text.buttonLabel, styles.inertText]}>Favorite</Text>
-        </View>
-        <View style={[styles.action, styles.actionInert]}>
-          <Text style={[text.buttonLabel, styles.inertText]}>Check In</Text>
-        </View>
+        <Pressable style={styles.action} onPress={() => toggleFavorite(restaurant.restaurant_id)}>
+          <Text style={[text.buttonLabel, isFavorited && styles.actionActiveText]}>
+            {isFavorited ? 'Favorited' : 'Favorite'}
+          </Text>
+        </Pressable>
+        <Pressable style={styles.action} onPress={() => addCheckIn(restaurant.restaurant_id)}>
+          <Text style={[text.buttonLabel, hasCheckedIn && styles.actionActiveText]}>Check In</Text>
+        </Pressable>
       </View>
     </View>
   );
@@ -124,10 +130,7 @@ const styles = StyleSheet.create({
   action: {
     paddingVertical: SPACING.xs,
   },
-  actionInert: {
-    opacity: 0.4,
-  },
-  inertText: {
-    color: COLORS.muted,
+  actionActiveText: {
+    color: COLORS.pine,
   },
 });

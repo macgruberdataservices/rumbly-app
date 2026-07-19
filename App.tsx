@@ -13,6 +13,7 @@ import { Yellowtail_400Regular } from '@expo-google-fonts/yellowtail';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DataProvider } from './src/data/dataProvider';
+import { ActivityProvider } from './src/data/activityProvider';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -49,7 +50,9 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <DataProvider>
-          <RootNavigator />
+          <ActivityProvider>
+            <RootNavigator />
+          </ActivityProvider>
         </DataProvider>
         <StatusBar style="light" />
       </SafeAreaProvider>

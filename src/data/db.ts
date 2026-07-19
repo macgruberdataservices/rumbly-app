@@ -5,15 +5,15 @@
 // hours, the search index) lives in fileStore.ts instead — see that file
 // for why.
 
-import { openDatabaseAsync, type SQLiteDatabase } from 'expo-sqlite';
+import type { SQLiteDatabase } from 'expo-sqlite';
 import type { MenuItem } from './types';
-import { SQLITE_DB_NAME } from './constants';
+import { getDb as getSharedDb } from './sqlite';
 
-let dbPromise: Promise<SQLiteDatabase> | null = null;
+let readyPromise: Promise<SQLiteDatabase> | null = null;
 
 function getDb(): Promise<SQLiteDatabase> {
-  if (!dbPromise) {
-    dbPromise = openDatabaseAsync(SQLITE_DB_NAME).then(async (db) => {
+  if (!readyPromise) {
+    readyPromise = getSharedDb().then(async (db) => {
       await db.execAsync(`
         CREATE TABLE IF NOT EXISTS menu_items (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,7 +51,7 @@ function getDb(): Promise<SQLiteDatabase> {
       return db;
     });
   }
-  return dbPromise;
+  return readyPromise;
 }
 
 const bool = (v: boolean): number => (v ? 1 : 0);

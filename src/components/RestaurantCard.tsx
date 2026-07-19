@@ -1,5 +1,6 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant } from '../data/types';
+import { useActivity } from '../hooks/useActivity';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -18,13 +19,18 @@ export function RestaurantCard({ restaurant, onPress }: { restaurant: Restaurant
   const metaParts = [locationLabel(restaurant), priceDots(restaurant.price_tier), restaurant.experience_type].filter(
     Boolean
   );
+  const { favoritedIds, checkedInIds } = useActivity();
+  const hasActivity = favoritedIds.has(restaurant.restaurant_id) || checkedInIds.has(restaurant.restaurant_id);
 
   return (
     <Pressable
       onPress={onPress}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
-      <Text style={text.restaurantName}>{restaurant.restaurant}</Text>
+      <View style={styles.titleRow}>
+        <Text style={text.restaurantName}>{restaurant.restaurant}</Text>
+        {hasActivity && <View style={styles.activityDot} />}
+      </View>
       {metaParts.length > 0 && (
         <Text style={[text.bodyMuted, styles.meta]}>{metaParts.join(' · ')}</Text>
       )}
@@ -44,6 +50,17 @@ const styles = StyleSheet.create({
   },
   cardPressed: {
     opacity: 0.6,
+  },
+  titleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  activityDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: COLORS.pine,
   },
   meta: {
     marginTop: 2,
