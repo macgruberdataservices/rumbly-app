@@ -1,13 +1,13 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlatList, Pressable, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { RootStackParamList } from '../navigation/RootNavigator';
+import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { groupRestaurants } from '../data/groups';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'ParkList'>;
+type Props = NativeStackScreenProps<FindStackParamList, 'LocationList'>;
 
 export function ParkListScreen({ navigation }: Props) {
   const { restaurants } = useDataProvider();

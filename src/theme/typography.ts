@@ -25,6 +25,14 @@ export const text = StyleSheet.create({
     fontSize: 27,
     color: COLORS.wordmarkCream,
   },
+  // Same wordmark, dark variant for light-background contexts (e.g. the
+  // Find tab's headerless default state) — brandWordmark's cream color
+  // was tuned for the dark-forest native-stack header.
+  brandWordmarkDark: {
+    fontFamily: FONT_FAMILY.yellowtail,
+    fontSize: 27,
+    color: COLORS.forest,
+  },
   restaurantName: {
     fontFamily: FONT_FAMILY.frauncesSemiBold,
     fontSize: 17,

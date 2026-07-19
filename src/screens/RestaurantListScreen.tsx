@@ -1,13 +1,13 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlatList, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { RootStackParamList } from '../navigation/RootNavigator';
+import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { groupRestaurants } from '../data/groups';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { COLORS, SPACING } from '../theme/tokens';
 
-type Props = NativeStackScreenProps<RootStackParamList, 'RestaurantList'>;
+type Props = NativeStackScreenProps<FindStackParamList, 'RestaurantList'>;
 
 export function RestaurantListScreen({ route }: Props) {
   const { restaurants } = useDataProvider();
@@ -20,8 +20,8 @@ export function RestaurantListScreen({ route }: Props) {
         keyExtractor={(r) => r.restaurant_id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
-          // Milestone 2 wires this onPress to a restaurant detail/menu
-          // screen (RootStackParamList doesn't have that route yet).
+          // Milestone 3 wires this onPress to RestaurantDetail (route
+          // already exists on FindStackParamList, screen doesn't yet).
           <RestaurantCard restaurant={item} onPress={() => {}} />
         )}
       />

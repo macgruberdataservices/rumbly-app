@@ -2,7 +2,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
-function formatRelative(timestampMs: number | null): string {
+export function formatRelative(timestampMs: number | null): string {
   if (timestampMs === null) return 'never synced';
   const diffMs = Date.now() - timestampMs;
   const diffMin = Math.round(diffMs / 60000);

@@ -1,39 +1,35 @@
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { HomeScreen } from '../screens/HomeScreen';
-import { ParkListScreen } from '../screens/ParkListScreen';
-import { RestaurantListScreen } from '../screens/RestaurantListScreen';
+import { NavigationContainer, type NavigatorScreenParams } from '@react-navigation/native';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { FindNavigator, type FindStackParamList } from './FindNavigator';
+import { ExploreNavigator } from './ExploreNavigator';
+import { MyRumblyNavigator } from './MyRumblyNavigator';
 import { COLORS } from '../theme/tokens';
-import { FONT_FAMILY } from '../theme/typography';
 
-export type RootStackParamList = {
-  Home: undefined;
-  ParkList: undefined;
-  RestaurantList: { groupKey: string; groupLabel: string };
+export type RootTabParamList = {
+  Find: NavigatorScreenParams<FindStackParamList>;
+  Explore: undefined;
+  MyRumbly: undefined;
 };
 
-const Stack = createNativeStackNavigator<RootStackParamList>();
+const Tab = createBottomTabNavigator<RootTabParamList>();
 
 export function RootNavigator() {
   return (
     <NavigationContainer>
-      <Stack.Navigator
+      <Tab.Navigator
         screenOptions={{
-          headerStyle: { backgroundColor: COLORS.forest },
-          headerTintColor: COLORS.goldLight,
-          headerTitleStyle: { fontFamily: FONT_FAMILY.frauncesSemiBold },
-          headerBackTitle: '',
-          contentStyle: { backgroundColor: COLORS.surface },
+          // Each tab renders its own nested stack with its own header —
+          // no icon library installed yet, text-only labels are fine for now.
+          headerShown: false,
+          tabBarActiveTintColor: COLORS.forest,
+          tabBarInactiveTintColor: COLORS.muted,
+          tabBarStyle: { backgroundColor: COLORS.surface, borderTopColor: COLORS.border },
         }}
       >
-        <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'Rumbly' }} />
-        <Stack.Screen name="ParkList" component={ParkListScreen} options={{ title: 'Browse by Park' }} />
-        <Stack.Screen
-          name="RestaurantList"
-          component={RestaurantListScreen}
-          options={({ route }) => ({ title: route.params.groupLabel })}
-        />
-      </Stack.Navigator>
+        <Tab.Screen name="Find" component={FindNavigator} />
+        <Tab.Screen name="Explore" component={ExploreNavigator} />
+        <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Rumbly' }} />
+      </Tab.Navigator>
     </NavigationContainer>
   );
 }
