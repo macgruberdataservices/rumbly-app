@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { FindHomeScreen } from '../screens/FindHomeScreen';
 import { ParkListScreen } from '../screens/ParkListScreen';
 import { RestaurantListScreen } from '../screens/RestaurantListScreen';
+import { RestaurantDetailScreen } from '../screens/RestaurantDetailScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 
@@ -9,8 +10,8 @@ export type FindStackParamList = {
   FindHome: undefined;
   LocationList: undefined;
   RestaurantList: { groupKey: string; groupLabel: string };
-  // Route added now so Milestone 3 doesn't need another nav restructure —
-  // not navigated to yet (RestaurantCard.onPress is still a no-op stub).
+  // itemId/period/category are for Milestone 5's "entry from search" —
+  // not consumed yet, restaurantId alone drives Milestone 3.
   RestaurantDetail: {
     restaurantId: string;
     itemId?: string;
@@ -42,6 +43,11 @@ export function FindNavigator() {
         name="RestaurantList"
         component={RestaurantListScreen}
         options={({ route }) => ({ title: route.params.groupLabel })}
+      />
+      <Stack.Screen
+        name="RestaurantDetail"
+        component={RestaurantDetailScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

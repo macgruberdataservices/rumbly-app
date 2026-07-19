@@ -9,7 +9,7 @@ import { COLORS, SPACING } from '../theme/tokens';
 
 type Props = NativeStackScreenProps<FindStackParamList, 'RestaurantList'>;
 
-export function RestaurantListScreen({ route }: Props) {
+export function RestaurantListScreen({ route, navigation }: Props) {
   const { restaurants } = useDataProvider();
   const group = groupRestaurants(restaurants).find((g) => g.key === route.params.groupKey);
 
@@ -20,9 +20,10 @@ export function RestaurantListScreen({ route }: Props) {
         keyExtractor={(r) => r.restaurant_id}
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
-          // Milestone 3 wires this onPress to RestaurantDetail (route
-          // already exists on FindStackParamList, screen doesn't yet).
-          <RestaurantCard restaurant={item} onPress={() => {}} />
+          <RestaurantCard
+            restaurant={item}
+            onPress={() => navigation.navigate('RestaurantDetail', { restaurantId: item.restaurant_id })}
+          />
         )}
       />
     </SafeAreaView>
