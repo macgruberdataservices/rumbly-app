@@ -93,3 +93,83 @@ export async function loadCheckedInIds(): Promise<Set<string>> {
   );
   return new Set(rows.map((r) => r.restaurant_id));
 }
+
+// --- Milestone 12: sync support. Row shape mirrors the Supabase `activity`
+// table (minus id/user_id, which are remote-only) so sync.ts can diff the
+// two sides directly by client_id.
+
+export interface ActivityRow {
+  client_id: string;
+  target_type: string;
+  restaurant_id: string;
+  item_id: string | null;
+  activity_type: string;
+  occurred_at: string;
+  created_at: string;
+  updated_at: string;
+  deleted: boolean;
+}
+
+export async function getAllActivityRows(): Promise<ActivityRow[]> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    client_id: string;
+    target_type: string;
+    restaurant_id: string;
+    item_id: string | null;
+    activity_type: string;
+    occurred_at: string;
+    created_at: string;
+    updated_at: string;
+    deleted: number;
+  }>('SELECT client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted FROM activity;');
+  return rows.map((r) => ({ ...r, deleted: r.deleted === 1 }));
+}
+
+// Inserts a row that only exists remotely, or overwrites a local row that
+// lost a last-write-wins comparison in sync.ts -- the caller has already
+// decided the remote copy should win, this just applies it.
+export async function applyRemoteRow(row: ActivityRow): Promise<void> {
+  const db = await getDb();
+  const existing = await db.getFirstAsync<{ id: number }>(
+    'SELECT id FROM activity WHERE client_id = $client_id;',
+    { $client_id: row.client_id }
+  );
+  const deletedValue = row.deleted ? 1 : 0;
+
+  if (existing) {
+    await db.runAsync(
+      `UPDATE activity SET target_type = $target_type, restaurant_id = $restaurant_id, item_id = $item_id,
+       activity_type = $activity_type, occurred_at = $occurred_at, created_at = $created_at,
+       updated_at = $updated_at, deleted = $deleted WHERE id = $id;`,
+      {
+        $target_type: row.target_type,
+        $restaurant_id: row.restaurant_id,
+        $item_id: row.item_id,
+        $activity_type: row.activity_type,
+        $occurred_at: row.occurred_at,
+        $created_at: row.created_at,
+        $updated_at: row.updated_at,
+        $deleted: deletedValue,
+        $id: existing.id,
+      }
+    );
+    return;
+  }
+
+  await db.runAsync(
+    `INSERT INTO activity (client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted)
+     VALUES ($client_id, $target_type, $restaurant_id, $item_id, $activity_type, $occurred_at, $created_at, $updated_at, $deleted);`,
+    {
+      $client_id: row.client_id,
+      $target_type: row.target_type,
+      $restaurant_id: row.restaurant_id,
+      $item_id: row.item_id,
+      $activity_type: row.activity_type,
+      $occurred_at: row.occurred_at,
+      $created_at: row.created_at,
+      $updated_at: row.updated_at,
+      $deleted: deletedValue,
+    }
+  );
+}
