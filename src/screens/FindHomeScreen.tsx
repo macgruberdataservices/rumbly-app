@@ -3,11 +3,14 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AccessibilityInfo,
+  ActivityIndicator,
+  Alert,
   findNodeHandle,
   FlatList,
   Image,
   InteractionManager,
   Keyboard,
+  Linking,
   type NativeScrollEvent,
   type NativeSyntheticEvent,
   Pressable,
@@ -22,6 +25,7 @@ import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useActivity } from '../hooks/useActivity';
 import { useSearch } from '../hooks/useSearch';
+import { useNearMe } from '../hooks/useNearMe';
 import { groupRestaurants } from '../data/groups';
 import { formatRelative } from '../components/SyncStatusBar';
 import { LoadingScreen } from '../components/LoadingScreen';
@@ -56,6 +60,7 @@ import {
 } from '../search/recentSearches';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
+import { distanceToRestaurant } from '../location/proximity';
 
 type Props = NativeStackScreenProps<FindStackParamList, 'FindHome'>;
 
@@ -75,10 +80,10 @@ function FilterIcon({ active }: { active: boolean }) {
   );
 }
 
-function NearMeIcon() {
+function NearMeIcon({ active }: { active: boolean }) {
   return (
-    <View style={styles.nearIconOuter}>
-      <View style={styles.nearIconInner} />
+    <View style={[styles.nearIconOuter, active && styles.nearIconOuterActive]}>
+      <View style={[styles.nearIconInner, active && styles.nearIconInnerActive]} />
     </View>
   );
 }
@@ -96,6 +101,14 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const [focusedResultKey, setFocusedResultKey] = useState<string | null>(initialState.focusedResultKey);
   const [searchInputFocused, setSearchInputFocused] = useState(initialState.searchInputFocused);
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
+  const {
+    origin: nearMeOrigin,
+    status: nearMeStatus,
+    isActive: nearMeActive,
+    getPermissionStatus: getNearMePermissionStatus,
+    enable: enableNearMe,
+    disable: disableNearMe,
+  } = useNearMe(initialState.nearMeOrigin);
   const resultListRef = useRef<FlatList<ResultRow>>(null);
   const browseScrollRef = useRef<ScrollView>(null);
   const focusedResultNodeRef = useRef<View | null>(null);
@@ -156,6 +169,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
       resultListOffset: resultListOffsetRef.current,
       focusedResultKey: focusedResultKeyRef.current,
       searchInputFocused,
+      nearMeOrigin,
       ...overrides,
     }),
     [
@@ -165,6 +179,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
       browseContext,
       filterPanelState,
       filters,
+      nearMeOrigin,
       query,
       searchInputFocused,
     ]
@@ -210,11 +225,14 @@ export function FindHomeScreen({ navigation, route }: Props) {
     }, [focusRestoredResult])
   );
 
-  const groups = groupRestaurants(filteredRestaurants);
+  const groups = useMemo(
+    () => groupRestaurants(filteredRestaurants, nearMeOrigin),
+    [filteredRestaurants, nearMeOrigin]
+  );
   // Restaurants-first, then items, each grouped by park/resort/Disney
   // Springs/water-park/other then by area — owner direction, 2026-07-20.
   // Related-tag results (no location to group by) pass through ungrouped.
-  const rows = groupResultsByLocation(results);
+  const rows = useMemo(() => groupResultsByLocation(results, nearMeOrigin), [nearMeOrigin, results]);
   const showRecentSearches = query.trim().length === 0 && activeCategory === 'all' && activeRelated === null;
 
   const resetListPosition = useCallback(() => {
@@ -288,6 +306,83 @@ export function FindHomeScreen({ navigation, route }: Props) {
       .catch(() => {});
   }, []);
 
+  const openLocationSettings = useCallback(() => {
+    Linking.openSettings().catch(() => {});
+  }, []);
+
+  const showLocationFilters = useCallback(() => {
+    setActiveFilterGroup('location');
+    setFilterPanelState('expanded');
+  }, []);
+
+  const runNearMeEnable = useCallback(async () => {
+    const outcome = await enableNearMe();
+    if (outcome === 'active') {
+      resetListPosition();
+      clearFocusedResult();
+      return;
+    }
+    if (outcome === 'denied') {
+      Alert.alert(
+        'Location access is off',
+        'Enable foreground location in Settings to use Near Me. Rumbly never requests background location.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Choose Location', onPress: showLocationFilters },
+          { text: 'Open Settings', onPress: openLocationSettings },
+        ]
+      );
+      return;
+    }
+    if (outcome === 'unavailable') {
+      Alert.alert(
+        'Location services are off',
+        'Turn on Location Services, then try Near Me again.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Choose Location', onPress: showLocationFilters },
+          { text: 'Open Settings', onPress: openLocationSettings },
+        ]
+      );
+      return;
+    }
+    Alert.alert('Location unavailable', 'Rumbly could not determine your location. Please try again.');
+  }, [clearFocusedResult, enableNearMe, openLocationSettings, resetListPosition, showLocationFilters]);
+
+  const handleNearMePress = useCallback(async () => {
+    if (nearMeActive) {
+      disableNearMe();
+      resetListPosition();
+      clearFocusedResult();
+      return;
+    }
+
+    try {
+      const permissionStatus = await getNearMePermissionStatus();
+      if (permissionStatus === 'undetermined') {
+        Alert.alert(
+          'Show nearby dining?',
+          'Rumbly uses your location only while the app is open and compares it with Disney guest entrances on your device. No paid routing service receives your location.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Continue', onPress: () => void runNearMeEnable() },
+          ]
+        );
+        return;
+      }
+      await runNearMeEnable();
+    } catch {
+      Alert.alert('Location unavailable', 'Rumbly could not check location permission. Please try again.');
+    }
+  }, [
+    clearFocusedResult,
+    disableNearMe,
+    getNearMePermissionStatus,
+    nearMeActive,
+    resetListPosition,
+    runNearMeEnable,
+  ]);
+
   const prepareResultNavigation = useCallback(
     (resultKey: string) => {
       Keyboard.dismiss();
@@ -338,6 +433,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
           ref={(node) => attachFocusedResultRef(row.key, node)}
           restaurant={r.restaurant}
           highlightQuery={query}
+          distanceMiles={distanceToRestaurant(nearMeOrigin, r.restaurant)}
           onPress={() => {
             prepareResultNavigation(row.key);
             navigation.navigate('RestaurantDetail', { restaurantId: r.restaurant.restaurant_id });
@@ -352,6 +448,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
           item={r.item}
           restaurant={r.restaurant}
           highlightQuery={query}
+          distanceMiles={distanceToRestaurant(nearMeOrigin, r.restaurant)}
           onPress={() => {
             prepareResultNavigation(row.key);
             navigation.navigate('RestaurantDetail', {
@@ -445,13 +542,27 @@ export function FindHomeScreen({ navigation, route }: Props) {
         </View>
 
         <Pressable
-          disabled
-          accessibilityLabel="Near Me unavailable until location sorting is added"
+          disabled={nearMeStatus === 'requesting'}
+          onPress={() => void handleNearMePress()}
+          accessibilityLabel={nearMeActive ? 'Turn off Near Me' : 'Show dining near me'}
+          accessibilityHint="Uses foreground location and Disney guest entrance coordinates"
           accessibilityRole="button"
-          accessibilityState={{ disabled: true }}
-          style={[styles.iconButton, styles.iconButtonDisabled]}
+          accessibilityState={{
+            selected: nearMeActive,
+            busy: nearMeStatus === 'requesting',
+            disabled: nearMeStatus === 'requesting',
+          }}
+          style={[
+            styles.iconButton,
+            nearMeActive && styles.iconButtonActive,
+            nearMeStatus === 'requesting' && styles.iconButtonBusy,
+          ]}
         >
-          <NearMeIcon />
+          {nearMeStatus === 'requesting' ? (
+            <ActivityIndicator color={COLORS.forest} />
+          ) : (
+            <NearMeIcon active={nearMeActive} />
+          )}
         </Pressable>
       </View>
 
@@ -533,7 +644,10 @@ export function FindHomeScreen({ navigation, route }: Props) {
                     const nextBrowseContext = { groupKey: group.key, groupLabel: group.label };
                     setBrowseContext(nextBrowseContext);
                     persistRestoreState({ browseContext: nextBrowseContext });
-                    navigation.navigate('RestaurantList', nextBrowseContext);
+                    navigation.navigate('RestaurantList', {
+                      ...nextBrowseContext,
+                      nearMeOrigin: nearMeOrigin ?? undefined,
+                    });
                   }}
                 >
                   <Text style={text.chip}>{group.label}</Text>
@@ -599,8 +713,8 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.forest,
     borderColor: COLORS.forest,
   },
-  iconButtonDisabled: {
-    opacity: 0.45,
+  iconButtonBusy: {
+    opacity: 0.7,
   },
   filterIcon: {
     width: 22,
@@ -650,6 +764,12 @@ const styles = StyleSheet.create({
     height: 7,
     borderRadius: 3.5,
     backgroundColor: COLORS.ink,
+  },
+  nearIconOuterActive: {
+    borderColor: COLORS.goldLight,
+  },
+  nearIconInnerActive: {
+    backgroundColor: COLORS.goldLight,
   },
   filterBadge: {
     position: 'absolute',

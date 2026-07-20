@@ -6,11 +6,12 @@ import { RestaurantDetailScreen } from '../screens/RestaurantDetailScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 import type { FindRestoreState } from '../search/findState';
+import type { Coordinates } from '../location/proximity';
 
 export type FindStackParamList = {
   FindHome: { state?: FindRestoreState } | undefined;
   LocationList: undefined;
-  RestaurantList: { groupKey: string; groupLabel: string };
+  RestaurantList: { groupKey: string; groupLabel: string; nearMeOrigin?: Coordinates };
   // itemId/period/category are Milestone 5's "entry from search" —
   // consumed by RestaurantDetailScreen to scroll to and briefly highlight
   // the exact item; restaurantId alone still drives the plain

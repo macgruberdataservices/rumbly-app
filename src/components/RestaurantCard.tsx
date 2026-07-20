@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant } from '../data/types';
+import { formatProximityDistance } from '../location/proximity';
 import { useActivity } from '../hooks/useActivity';
 import { HighlightedText } from './HighlightedText';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
@@ -23,16 +24,20 @@ function locationLabel(r: Restaurant): string {
 interface RestaurantCardProps {
   restaurant: Restaurant;
   highlightQuery?: string;
+  distanceMiles?: number | null;
   onPress: () => void;
 }
 
 export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function RestaurantCard(
-  { restaurant, highlightQuery, onPress },
+  { restaurant, highlightQuery, distanceMiles, onPress },
   ref
 ) {
-  const metaParts = [locationLabel(restaurant), priceDots(restaurant.price_tier), restaurant.experience_type].filter(
-    Boolean
-  );
+  const metaParts = [
+    locationLabel(restaurant),
+    distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
+    priceDots(restaurant.price_tier),
+    restaurant.experience_type,
+  ].filter(Boolean);
   const { favoritedIds, checkedInIds } = useActivity();
   const hasActivity = favoritedIds.has(restaurant.restaurant_id) || checkedInIds.has(restaurant.restaurant_id);
 

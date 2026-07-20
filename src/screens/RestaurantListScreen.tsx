@@ -5,13 +5,15 @@ import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { groupRestaurants } from '../data/groups';
 import { RestaurantCard } from '../components/RestaurantCard';
+import { distanceToRestaurant } from '../location/proximity';
 import { COLORS, SPACING } from '../theme/tokens';
 
 type Props = NativeStackScreenProps<FindStackParamList, 'RestaurantList'>;
 
 export function RestaurantListScreen({ route, navigation }: Props) {
   const { restaurants } = useDataProvider();
-  const group = groupRestaurants(restaurants).find((g) => g.key === route.params.groupKey);
+  const origin = route.params.nearMeOrigin ?? null;
+  const group = groupRestaurants(restaurants, origin).find((g) => g.key === route.params.groupKey);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>
@@ -22,6 +24,7 @@ export function RestaurantListScreen({ route, navigation }: Props) {
         renderItem={({ item }) => (
           <RestaurantCard
             restaurant={item}
+            distanceMiles={distanceToRestaurant(origin, item)}
             onPress={() => navigation.navigate('RestaurantDetail', { restaurantId: item.restaurant_id })}
           />
         )}

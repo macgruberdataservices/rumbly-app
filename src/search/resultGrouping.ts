@@ -1,11 +1,10 @@
 // Groups search results by location for the Find results list, per
 // owner direction (2026-07-20): restaurants shown before items, each
 // grouped by park, with match quality taking priority before park/resort
-// area inside each park bucket. Proximity-based ordering (with this
-// same bucket order as the fallback when location is unavailable) is a
-// real future want, deferred to Phase 2 — no location permission exists
-// yet to sort by. Related-taxonomy results aren't location-bound, so
-// they pass through ungrouped at the end.
+// area inside each park bucket. When Near Me has foreground coordinates,
+// the same rows use local straight-line distance to Disney guest entrances
+// to order location buckets and comparable results. Related-taxonomy
+// results aren't location-bound, so they pass through ungrouped at the end.
 //
 // Bucket taxonomy confirmed against real published data (436 restaurants,
 // 2026-07-20): the 4 PARK_ORDER theme parks and both water parks are
@@ -17,6 +16,7 @@
 // mis-bucketed as Disney Springs.
 
 import type { Restaurant } from '../data/types';
+import { distanceToRestaurant, type Coordinates } from '../location/proximity';
 import { resultKey, resultLabel, type SearchResult } from './rank';
 
 const PARK_ORDER = [
@@ -68,27 +68,68 @@ function restaurantOf(r: SearchResult): Restaurant | null {
 // same park don't collide on React key — a real bug caught on-device
 // (LogBox's "two children with the same key" for e.g. "group:EPCOT"
 // appearing once under restaurants and once under items).
-function buildLocationRows(results: SearchResult[], pass: 'restaurant' | 'item'): ResultRow[] {
+function buildLocationRows(
+  results: SearchResult[],
+  pass: 'restaurant' | 'item',
+  origin: Coordinates | null
+): ResultRow[] {
   if (results.length === 0) return [];
 
   const withLocation = results.map((r) => {
     const restaurant = restaurantOf(r);
     const bucket = restaurant ? bucketFor(restaurant) : { priority: OTHER_PRIORITY, label: 'Other' };
-    return { r, bucket, area: restaurant?.area ?? null };
+    return {
+      r,
+      bucket,
+      area: restaurant?.area ?? null,
+      distance: restaurant ? distanceToRestaurant(origin, restaurant) : null,
+    };
   });
 
+  const bucketDistances = new Map<string, number>();
+  const areaDistances = new Map<string, number>();
+  if (origin) {
+    for (const entry of withLocation) {
+      if (entry.distance === null) continue;
+      const bucketKey = entry.bucket.label;
+      bucketDistances.set(
+        bucketKey,
+        Math.min(bucketDistances.get(bucketKey) ?? Number.POSITIVE_INFINITY, entry.distance)
+      );
+      const areaKey = `${entry.bucket.label}:${entry.r.tier}:${entry.area ?? ''}`;
+      areaDistances.set(areaKey, Math.min(areaDistances.get(areaKey) ?? Number.POSITIVE_INFINITY, entry.distance));
+    }
+  }
+
   withLocation.sort((a, b) => {
+    if (origin) {
+      const bucketDistanceA = bucketDistances.get(a.bucket.label) ?? Number.POSITIVE_INFINITY;
+      const bucketDistanceB = bucketDistances.get(b.bucket.label) ?? Number.POSITIVE_INFINITY;
+      if (bucketDistanceA !== bucketDistanceB) return bucketDistanceA - bucketDistanceB;
+    }
     if (a.bucket.priority !== b.bucket.priority) return a.bucket.priority - b.bucket.priority;
     if (a.bucket.label !== b.bucket.label) return a.bucket.label.localeCompare(b.bucket.label);
     // Relevance beats sub-area ordering inside a park. A user typing the
     // beginning of a name expects "Cosmic..." to appear before "Pecos..."
     // for `Cos`, even though Frontierland sorts before Tomorrowland.
     if (a.r.tier !== b.r.tier) return a.r.tier - b.r.tier;
+    if (origin) {
+      const areaKeyA = `${a.bucket.label}:${a.r.tier}:${a.area ?? ''}`;
+      const areaKeyB = `${b.bucket.label}:${b.r.tier}:${b.area ?? ''}`;
+      const areaDistanceA = areaDistances.get(areaKeyA) ?? Number.POSITIVE_INFINITY;
+      const areaDistanceB = areaDistances.get(areaKeyB) ?? Number.POSITIVE_INFINITY;
+      if (areaDistanceA !== areaDistanceB) return areaDistanceA - areaDistanceB;
+    }
     // No-area entries sort after named areas within the same bucket —
     // general/park-wide matches trail the specific-land clusters.
     const areaA = a.area ?? '￿';
     const areaB = b.area ?? '￿';
     if (areaA !== areaB) return areaA.localeCompare(areaB);
+    if (origin) {
+      const distanceA = a.distance ?? Number.POSITIVE_INFINITY;
+      const distanceB = b.distance ?? Number.POSITIVE_INFINITY;
+      if (distanceA !== distanceB) return distanceA - distanceB;
+    }
     return resultLabel(a.r).localeCompare(resultLabel(b.r));
   });
 
@@ -110,14 +151,14 @@ function buildLocationRows(results: SearchResult[], pass: 'restaurant' | 'item')
   return rows;
 }
 
-export function groupResultsByLocation(results: SearchResult[]): ResultRow[] {
+export function groupResultsByLocation(results: SearchResult[], origin: Coordinates | null = null): ResultRow[] {
   const restaurantResults = results.filter((r) => r.kind === 'restaurant');
   const itemResults = results.filter((r) => r.kind === 'item');
   const relatedResults = results.filter((r) => r.kind === 'related');
 
   return [
-    ...buildLocationRows(restaurantResults, 'restaurant'),
-    ...buildLocationRows(itemResults, 'item'),
+    ...buildLocationRows(restaurantResults, 'restaurant', origin),
+    ...buildLocationRows(itemResults, 'item', origin),
     ...relatedResults.map((r) => ({ type: 'result' as const, key: resultKey(r), result: r })),
   ];
 }

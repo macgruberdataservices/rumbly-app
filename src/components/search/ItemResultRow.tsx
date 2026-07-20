@@ -1,6 +1,7 @@
 import { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant, SearchIndexEntry } from '../../data/types';
+import { formatProximityDistance } from '../../location/proximity';
 import { useActivity } from '../../hooks/useActivity';
 import { HighlightedText } from '../HighlightedText';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
@@ -28,11 +29,12 @@ interface ItemResultRowProps {
   item: SearchIndexEntry;
   restaurant: Restaurant;
   highlightQuery?: string;
+  distanceMiles?: number | null;
   onPress: () => void;
 }
 
 export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemResultRow(
-  { item, restaurant, highlightQuery, onPress },
+  { item, restaurant, highlightQuery, distanceMiles, onPress },
   ref
 ) {
   const { favoritedIds, checkedInIds } = useActivity();
@@ -43,7 +45,13 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
       ref={ref}
       onPress={onPress}
       accessibilityRole="button"
-      accessibilityLabel={[item.item, restaurant.restaurant, locationLabel(restaurant), item.price_display]
+      accessibilityLabel={[
+        item.item,
+        restaurant.restaurant,
+        locationLabel(restaurant),
+        distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
+        item.price_display,
+      ]
         .filter(Boolean)
         .join(', ')}
       style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
@@ -62,7 +70,12 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
       </Text>
       <View style={styles.metaRow}>
         <Text style={[text.bodyMuted, styles.location]} numberOfLines={1}>
-          {locationLabel(restaurant)}
+          {[
+            locationLabel(restaurant),
+            distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
+          ]
+            .filter(Boolean)
+            .join(' · ')}
         </Text>
         <Text style={[text.body, styles.price]}>{item.price_display}</Text>
       </View>

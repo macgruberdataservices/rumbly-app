@@ -1,5 +1,6 @@
 import type { RelatedTag } from './relatedTaxonomy';
 import { emptyFilters, type SearchFilters } from './filters';
+import type { Coordinates } from '../location/proximity';
 
 export type SearchCategory = 'all' | 'items' | 'restaurants' | 'related';
 export type FilterPanelState = 'hidden' | 'peek' | 'expanded';
@@ -35,6 +36,7 @@ export interface FindRestoreState {
   resultListOffset: number;
   focusedResultKey: string | null;
   searchInputFocused: boolean;
+  nearMeOrigin: Coordinates | null;
 }
 
 export function serializeFilters(filters: SearchFilters): SerializedSearchFilters {
@@ -78,9 +80,12 @@ export function defaultFindRestoreState(): FindRestoreState {
     resultListOffset: 0,
     focusedResultKey: null,
     searchInputFocused: false,
+    nearMeOrigin: null,
   };
 }
 
 export function resolveFindRestoreState(state?: FindRestoreState): FindRestoreState {
-  return state?.version === 1 ? state : defaultFindRestoreState();
+  return state?.version === 1
+    ? { ...defaultFindRestoreState(), ...state, nearMeOrigin: state.nearMeOrigin ?? null }
+    : defaultFindRestoreState();
 }
