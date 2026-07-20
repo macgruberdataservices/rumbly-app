@@ -13,6 +13,8 @@ import { Yellowtail_400Regular } from '@expo-google-fonts/yellowtail';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DataProvider } from './src/data/dataProvider';
+import { AuthProvider } from './src/data/authProvider';
+import { EntitlementsProvider } from './src/data/entitlementsProvider';
 import { ActivityProvider } from './src/data/activityProvider';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
@@ -50,9 +52,13 @@ export default function App() {
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <DataProvider>
-          <ActivityProvider>
-            <RootNavigator />
-          </ActivityProvider>
+          <AuthProvider>
+            <EntitlementsProvider>
+              <ActivityProvider>
+                <RootNavigator />
+              </ActivityProvider>
+            </EntitlementsProvider>
+          </AuthProvider>
         </DataProvider>
         <StatusBar style="light" />
       </SafeAreaProvider>
