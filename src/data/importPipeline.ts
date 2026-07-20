@@ -29,8 +29,10 @@ async function fetchJSON<T>(fileName: string): Promise<T> {
 function toSearchIndexEntry(item: MenuItem): SearchIndexEntry {
   return {
     restaurant_id: item.restaurant_id,
+    item_id: item.item_id,
     item: item.item,
     _norm: normalizeForSearch(item.item),
+    category: item.category,
     price_display: item.price_display,
     price_changed: item.price_changed,
     previous_price: item.previous_price,

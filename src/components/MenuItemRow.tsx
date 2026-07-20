@@ -3,9 +3,13 @@ import type { MenuItem } from '../data/types';
 import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
-// General-purpose (not nested under restaurant-detail/) since Milestone
-// 5's search results will likely reuse this same row presentation.
-export function MenuItemRow({ item }: { item: MenuItem }) {
+// General-purpose (not nested under restaurant-detail/) — Milestone 5
+// ended up building a dedicated ItemResultRow for search results instead
+// (different fields need to be visible there: restaurant/location, not
+// description/badges), but this row gained the `highlighted` prop for
+// Milestone 5's search-to-menu "brief, accessible visual emphasis" on the
+// exact item the user tapped through to.
+export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; highlighted?: boolean }) {
   const badges = [
     item.is_kids && 'Kids',
     item.is_allergy_friendly && 'Allergy-friendly',
@@ -14,7 +18,7 @@ export function MenuItemRow({ item }: { item: MenuItem }) {
   ].filter(Boolean) as string[];
 
   return (
-    <View style={styles.row}>
+    <View style={[styles.row, highlighted && styles.rowHighlighted]}>
       <View style={styles.titleRow}>
         <Text style={[text.restaurantName, styles.name]} numberOfLines={2}>
           {item.item}
@@ -43,6 +47,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+  },
+  // Static, not animated — reduced-motion-safe by construction, no fade
+  // logic needed. Cleared on a timeout by the caller (RestaurantDetailScreen).
+  rowHighlighted: {
+    backgroundColor: COLORS.goldLight,
   },
   titleRow: {
     flexDirection: 'row',

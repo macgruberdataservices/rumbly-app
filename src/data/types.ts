@@ -94,8 +94,16 @@ export interface MenuItem {
 // SEARCH_INDEX / toSearchIndexEntry().
 export interface SearchIndexEntry {
   restaurant_id: string;
+  // item_id/category are Rumbly-local additions (not in the source PWA's
+  // SEARCH_INDEX) — needed so Milestone 5's tap-through can scroll to the
+  // exact item/section on the restaurant detail screen rather than just
+  // its restaurant. Safe to extend: this index is built locally by
+  // importPipeline.ts, not part of the published restaurant_data/menu_data
+  // schema.
+  item_id: string;
   item: string;
   _norm: string;
+  category: string;
   price_display: string;
   price_changed: string | null;
   previous_price: number | null;

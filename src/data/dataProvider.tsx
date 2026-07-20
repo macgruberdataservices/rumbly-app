@@ -10,6 +10,7 @@ import { LOCAL_FILES } from './constants';
 import { readJSON } from './fileStore';
 import { checkForUpdate, forceCheckForUpdate, markImported, getLastCheckedAt } from './manifest';
 import { runImport, type ImportStats } from './importPipeline';
+import { invalidateSearchIndexCache } from '../search/searchIndexLoader';
 
 interface DataContextValue {
   restaurants: Restaurant[];
@@ -50,6 +51,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
         setHoursData(cached.hoursData);
       } else {
         const stats = await runImport(result.manifest);
+        invalidateSearchIndexCache();
         await markImported(result.manifest);
         setLastImportStats(stats);
         const cached = await loadFromCache();
@@ -71,6 +73,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       const result = await forceCheckForUpdate();
       if (result.action === 'import') {
         const stats = await runImport(result.manifest);
+        invalidateSearchIndexCache();
         await markImported(result.manifest);
         setLastImportStats(stats);
         const cached = await loadFromCache();

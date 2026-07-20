@@ -10,8 +10,10 @@ export type FindStackParamList = {
   FindHome: undefined;
   LocationList: undefined;
   RestaurantList: { groupKey: string; groupLabel: string };
-  // itemId/period/category are for Milestone 5's "entry from search" —
-  // not consumed yet, restaurantId alone drives Milestone 3.
+  // itemId/period/category are Milestone 5's "entry from search" —
+  // consumed by RestaurantDetailScreen to scroll to and briefly highlight
+  // the exact item; restaurantId alone still drives the plain
+  // browse-through-Find-tab / Milestone 3 default-period path.
   RestaurantDetail: {
     restaurantId: string;
     itemId?: string;

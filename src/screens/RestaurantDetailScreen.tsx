@@ -28,7 +28,7 @@ interface Section {
 }
 
 export function RestaurantDetailScreen({ route, navigation }: Props) {
-  const { restaurantId } = route.params;
+  const { restaurantId, itemId: targetItemId, period: targetPeriod, category: targetCategory } = route.params;
   const { restaurants, hoursData } = useDataProvider();
   const insets = useSafeAreaInsets();
   const restaurant = useMemo(
@@ -43,6 +43,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   const [expandedHeaderHeight, setExpandedHeaderHeight] = useState(DEFAULT_EXPANDED_HEIGHT);
   const [reducedMotion, setReducedMotion] = useState(false);
   const [capabilitySheet, setCapabilitySheet] = useState<CapabilityKind | null>(null);
+  const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const sectionListRef = useRef<SectionList<MenuItem, Section>>(null);
@@ -52,6 +53,16 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   const clearProgrammaticGuardTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const activeIndexRef = useRef(0);
   const reducedMotionRef = useRef(false);
+  // Search-driven targeting (itemId/period/category route params) should
+  // only ever fire the scroll-and-highlight once per screen instance —
+  // not re-fire if the user manually switches periods afterward.
+  const searchTargetConsumedRef = useRef(false);
+  // Remembers the last scrollToLocation() target so onScrollToIndexFailed
+  // (below) can retry it — RN's own documented fix for exactly this error,
+  // needed because search tap-through can request a mid-list item before
+  // SectionList has completed any layout pass at all (a fresh navigation,
+  // not a user tap on an already-settled list like onCategoryPress below).
+  const lastScrollTargetRef = useRef<{ sectionIndex: number; itemIndex: number } | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,9 +97,13 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
 
   useEffect(() => {
     if (!selectedPeriod && periods.length > 0) {
-      setSelectedPeriod(defaultPeriod(periods) ?? periods[0]);
+      // Search tap-through requests a specific period (the item's own
+      // dining_period) — honor it over the time-of-day default when it's
+      // actually one of this restaurant's real periods.
+      const preferred = targetPeriod && periods.includes(targetPeriod) ? targetPeriod : undefined;
+      setSelectedPeriod(preferred ?? defaultPeriod(periods) ?? periods[0]);
     }
-  }, [periods, selectedPeriod]);
+  }, [periods, selectedPeriod, targetPeriod]);
 
   const sections: Section[] = useMemo(() => {
     if (!selectedPeriod) return [];
@@ -173,18 +188,26 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
 
   const viewabilityConfig = useRef({ itemVisiblePercentThreshold: 1, minimumViewTime: 50 }).current;
 
+  // Shared by onCategoryPress and the search-tap-through effect below —
+  // one call site for scrollToLocation so both share the same
+  // onScrollToIndexFailed retry path via lastScrollTargetRef.
+  const scrollToSectionItem = useCallback((sectionIndex: number, itemIndex: number, animated: boolean) => {
+    lastScrollTargetRef.current = { sectionIndex, itemIndex };
+    sectionListRef.current?.scrollToLocation({
+      sectionIndex,
+      itemIndex,
+      viewOffset: COLLAPSED_HEADER_HEIGHT,
+      animated,
+    });
+  }, []);
+
   const onCategoryPress = useCallback(
     (index: number) => {
       isProgrammaticScrollRef.current = true;
       activeIndexRef.current = index;
       setActiveCategoryIndex(index);
       scrollChipIntoView(index);
-      sectionListRef.current?.scrollToLocation({
-        sectionIndex: index,
-        itemIndex: 0,
-        viewOffset: COLLAPSED_HEADER_HEIGHT,
-        animated: !reducedMotionRef.current,
-      });
+      scrollToSectionItem(index, 0, !reducedMotionRef.current);
       // scrollToLocation's animated scroll doesn't reliably fire
       // onMomentumScrollEnd at the right moment — confirmed: jumping to
       // an earlier section (scrolling back "up") can visibly overshoot
@@ -205,8 +228,68 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
         reducedMotionRef.current ? 0 : 600
       );
     },
-    [scrollChipIntoView]
+    [scrollChipIntoView, scrollToSectionItem]
   );
+
+  // Milestone 5 search tap-through: once this restaurant's sections are
+  // built for the (possibly search-requested) period, find the exact
+  // section/item the search result pointed at and scroll+highlight it —
+  // same guard pattern as onCategoryPress above (isProgrammaticScrollRef +
+  // a fixed-delay clear, not onMomentumScrollEnd, for the same reason
+  // documented there). Runs at most once per screen instance; if the
+  // target period/category/item isn't found (stale data, edge case), it
+  // just never fires rather than throwing.
+  useEffect(() => {
+    if (searchTargetConsumedRef.current) return;
+    if (!targetItemId || !targetCategory) return;
+    if (sections.length === 0) return;
+
+    const sectionIndex = sections.findIndex((s) => s.title === targetCategory);
+    if (sectionIndex === -1) return;
+    const itemIndex = sections[sectionIndex].data.findIndex((i) => i.item_id === targetItemId);
+    if (itemIndex === -1) return;
+
+    searchTargetConsumedRef.current = true;
+    isProgrammaticScrollRef.current = true;
+    activeIndexRef.current = sectionIndex;
+    setActiveCategoryIndex(sectionIndex);
+    // Chip layouts land asynchronously via onLayout as CategoryNavigator
+    // mounts — deferred a tick so this doesn't race them the same way
+    // onCategoryPress's own comment above describes.
+    requestAnimationFrame(() => scrollChipIntoView(sectionIndex));
+    // Unlike onCategoryPress (a user tap on an already-settled list), this
+    // effect can fire on a completely fresh navigation, before SectionList
+    // has completed its first native layout pass at all. Calling
+    // scrollToLocation synchronously here threw a real "scrollToIndex
+    // should be used in conjunction with getItemLayout" render error in
+    // testing — confirmed via a real on-device repro (search "buffalo
+    // mac" → tap result → crash). A 50ms deferral still hit it often
+    // enough to log a console error before onScrollToIndexFailed's retry
+    // recovered — 150ms in further on-device testing avoids the failure
+    // path in the common case; onScrollToIndexFailed stays as the safety
+    // net for whatever's still not ready by then (slower devices, longer
+    // menus).
+    const scrollTimeout = setTimeout(() => {
+      scrollToSectionItem(sectionIndex, itemIndex, !reducedMotionRef.current);
+    }, 150);
+    setHighlightedItemId(targetItemId);
+    const highlightTimeout = setTimeout(() => setHighlightedItemId(null), 2000);
+
+    if (clearProgrammaticGuardTimeoutRef.current) {
+      clearTimeout(clearProgrammaticGuardTimeoutRef.current);
+    }
+    clearProgrammaticGuardTimeoutRef.current = setTimeout(
+      () => {
+        isProgrammaticScrollRef.current = false;
+      },
+      reducedMotionRef.current ? 0 : 600
+    );
+
+    return () => {
+      clearTimeout(scrollTimeout);
+      clearTimeout(highlightTimeout);
+    };
+  }, [sections, targetItemId, targetCategory, scrollChipIntoView, scrollToSectionItem]);
 
   // headerClip only holds ExpandedHeader now — the collapsed name/status
   // content lives in the always-rendered CollapsedHeader bar above it, so
@@ -307,13 +390,30 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
           scrollEventThrottle={16}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}
+          // RN's own documented fix for "scrollToIndex should be used in
+          // conjunction with getItemLayout or onScrollToIndexFailed" —
+          // retry the last-requested target once layout has caught up.
+          // Belt-and-suspenders alongside scrollToSectionItem's deferred
+          // call above, not a replacement for it.
+          onScrollToIndexFailed={() => {
+            const target = lastScrollTargetRef.current;
+            if (!target) return;
+            setTimeout(() => {
+              sectionListRef.current?.scrollToLocation({
+                sectionIndex: target.sectionIndex,
+                itemIndex: target.itemIndex,
+                viewOffset: COLLAPSED_HEADER_HEIGHT,
+                animated: false,
+              });
+            }, 100);
+          }}
           contentContainerStyle={{ paddingBottom: insets.bottom }}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
               <Text style={text.categoryHeader}>{section.title.toUpperCase()}</Text>
             </View>
           )}
-          renderItem={({ item }) => <MenuItemRow item={item} />}
+          renderItem={({ item }) => <MenuItemRow item={item} highlighted={item.item_id === highlightedItemId} />}
         />
       )}
 
