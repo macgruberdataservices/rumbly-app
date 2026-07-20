@@ -36,13 +36,22 @@ function generateClientId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-export async function toggleFavorite(restaurantId: string): Promise<boolean> {
+// itemId null = a restaurant-level activity (e.g. the header's Favorite
+// button); itemId set = an item-level activity (e.g. a menu row's swipe
+// action). COALESCE-to-empty-string sidesteps SQLite's NULL != NULL so one
+// query handles both cases instead of two branches.
+async function toggleActivity(
+  restaurantId: string,
+  activityType: string,
+  itemId: string | null
+): Promise<boolean> {
   const db = await getDb();
   const existing = await db.getFirstAsync<{ id: number; deleted: number }>(
     `SELECT id, deleted FROM activity
-     WHERE restaurant_id = $restaurant_id AND activity_type = 'favorited'
+     WHERE restaurant_id = $restaurant_id AND activity_type = $activity_type
+       AND COALESCE(item_id, '') = COALESCE($item_id, '')
      ORDER BY id DESC LIMIT 1;`,
-    { $restaurant_id: restaurantId }
+    { $restaurant_id: restaurantId, $activity_type: activityType, $item_id: itemId }
   );
   const now = new Date().toISOString();
 
@@ -62,10 +71,29 @@ export async function toggleFavorite(restaurantId: string): Promise<boolean> {
   }
   await db.runAsync(
     `INSERT INTO activity (client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted)
-     VALUES ($client_id, 'restaurant', $restaurant_id, NULL, 'favorited', $now, $now, $now, 0);`,
-    { $client_id: generateClientId(), $restaurant_id: restaurantId, $now: now }
+     VALUES ($client_id, $target_type, $restaurant_id, $item_id, $activity_type, $now, $now, $now, 0);`,
+    {
+      $client_id: generateClientId(),
+      $target_type: itemId ? 'item' : 'restaurant',
+      $restaurant_id: restaurantId,
+      $item_id: itemId,
+      $activity_type: activityType,
+      $now: now,
+    }
   );
   return true;
+}
+
+export function toggleFavorite(restaurantId: string): Promise<boolean> {
+  return toggleActivity(restaurantId, 'favorited', null);
+}
+
+export function toggleItemFavorite(restaurantId: string, itemId: string): Promise<boolean> {
+  return toggleActivity(restaurantId, 'favorited', itemId);
+}
+
+export function toggleItemWantToTry(restaurantId: string, itemId: string): Promise<boolean> {
+  return toggleActivity(restaurantId, 'want_to_try', itemId);
 }
 
 export async function addCheckIn(restaurantId: string): Promise<void> {
@@ -78,12 +106,35 @@ export async function addCheckIn(restaurantId: string): Promise<void> {
   );
 }
 
+// Restaurant-level only (item_id IS NULL) -- an item-level favorite must
+// not make its parent restaurant look favorited too, those are
+// independent activities.
 export async function loadFavoritedIds(): Promise<Set<string>> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ restaurant_id: string }>(
-    "SELECT DISTINCT restaurant_id FROM activity WHERE activity_type = 'favorited' AND deleted = 0;"
+    "SELECT DISTINCT restaurant_id FROM activity WHERE activity_type = 'favorited' AND item_id IS NULL AND deleted = 0;"
   );
   return new Set(rows.map((r) => r.restaurant_id));
+}
+
+// Keyed by `${restaurant_id}:${item_id}`, not item_id alone -- item_id
+// isn't guaranteed unique across different restaurants.
+async function loadItemActivityKeys(activityType: string): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ restaurant_id: string; item_id: string }>(
+    `SELECT DISTINCT restaurant_id, item_id FROM activity
+     WHERE activity_type = $activity_type AND item_id IS NOT NULL AND deleted = 0;`,
+    { $activity_type: activityType }
+  );
+  return new Set(rows.map((r) => `${r.restaurant_id}:${r.item_id}`));
+}
+
+export function loadFavoritedItemKeys(): Promise<Set<string>> {
+  return loadItemActivityKeys('favorited');
+}
+
+export function loadWantToTriedItemKeys(): Promise<Set<string>> {
+  return loadItemActivityKeys('want_to_try');
 }
 
 export async function loadCheckedInIds(): Promise<Set<string>> {
