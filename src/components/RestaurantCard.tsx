@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant } from '../data/types';
 import { useActivity } from '../hooks/useActivity';
+import { HighlightedText } from './HighlightedText';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -15,7 +16,18 @@ function locationLabel(r: Restaurant): string {
   return r.park ?? '';
 }
 
-export function RestaurantCard({ restaurant, onPress }: { restaurant: Restaurant; onPress: () => void }) {
+// highlightQuery is optional and defaults to undefined — existing
+// non-search call sites (ParkListScreen, RestaurantListScreen) pass
+// nothing and render exactly as before Milestone 6.
+export function RestaurantCard({
+  restaurant,
+  highlightQuery,
+  onPress,
+}: {
+  restaurant: Restaurant;
+  highlightQuery?: string;
+  onPress: () => void;
+}) {
   const metaParts = [locationLabel(restaurant), priceDots(restaurant.price_tier), restaurant.experience_type].filter(
     Boolean
   );
@@ -28,7 +40,7 @@ export function RestaurantCard({ restaurant, onPress }: { restaurant: Restaurant
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
       <View style={styles.titleRow}>
-        <Text style={text.restaurantName}>{restaurant.restaurant}</Text>
+        <HighlightedText text={restaurant.restaurant} query={highlightQuery} style={text.restaurantName} />
         {hasActivity && <View style={styles.activityDot} />}
       </View>
       {metaParts.length > 0 && (

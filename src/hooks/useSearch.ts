@@ -14,9 +14,29 @@ import { restaurantHasRelatedTag, tagsEqual, type RelatedTag } from '../search/r
 // doesn't re-run a full restaurant + 45k-item scan on every keystroke.
 const DEBOUNCE_MS = 150;
 
+export type SearchCategory = 'all' | 'items' | 'restaurants' | 'related';
+
+export interface CategoryCounts {
+  all: number;
+  items: number;
+  restaurants: number;
+  related: number;
+}
+
+function countByCategory(results: SearchResult[]): CategoryCounts {
+  const counts: CategoryCounts = { all: results.length, items: 0, restaurants: 0, related: 0 };
+  for (const r of results) {
+    if (r.kind === 'item') counts.items++;
+    else if (r.kind === 'restaurant') counts.restaurants++;
+    else counts.related++;
+  }
+  return counts;
+}
+
 export function useSearch(restaurants: Restaurant[]) {
   const [query, setQuery] = useState('');
   const [activeRelated, setActiveRelated] = useState<RelatedTag | null>(null);
+  const [activeCategory, setActiveCategory] = useState<SearchCategory>('all');
   const [rawResults, setRawResults] = useState<SearchResult[]>([]);
   const [isIndexReady, setIsIndexReady] = useState(false);
   const searchIndexRef = useRef<SearchIndexEntry[]>([]);
@@ -55,14 +75,25 @@ export function useSearch(restaurants: Restaurant[]) {
     // empty for that first search.
   }, [query, restaurants, isIndexReady]);
 
-  const results = useMemo(() => {
+  // Related-tag narrowing happens before category counts/filtering — a
+  // count of "8 items" under an active Related tag should reflect the
+  // narrowed set, not the full unfiltered one.
+  const relatedFiltered = useMemo(() => {
     if (!activeRelated) return rawResults;
     return rawResults.filter((r) => {
       if (r.kind === 'restaurant') return restaurantHasRelatedTag(r.restaurant, activeRelated);
-      if (r.kind === 'item') return !!r.restaurant && restaurantHasRelatedTag(r.restaurant, activeRelated);
+      if (r.kind === 'item') return restaurantHasRelatedTag(r.restaurant, activeRelated);
       return true; // keep related rows visible so the active one can be toggled off
     });
   }, [rawResults, activeRelated]);
+
+  const counts = useMemo(() => countByCategory(relatedFiltered), [relatedFiltered]);
+
+  const results = useMemo(() => {
+    if (activeCategory === 'all') return relatedFiltered;
+    const kind = activeCategory === 'items' ? 'item' : activeCategory === 'restaurants' ? 'restaurant' : 'related';
+    return relatedFiltered.filter((r) => r.kind === kind);
+  }, [relatedFiltered, activeCategory]);
 
   const toggleRelated = useCallback((tag: RelatedTag) => {
     setActiveRelated((current) => (tagsEqual(current, tag) ? null : tag));
@@ -71,15 +102,19 @@ export function useSearch(restaurants: Restaurant[]) {
   const clear = useCallback(() => {
     setQuery('');
     setActiveRelated(null);
+    setActiveCategory('all');
   }, []);
 
   return {
     query,
     setQuery,
     results,
+    counts,
     isSearchActive: query.trim().length > 0,
     activeRelated,
     toggleRelated,
+    activeCategory,
+    setActiveCategory,
     clear,
   };
 }

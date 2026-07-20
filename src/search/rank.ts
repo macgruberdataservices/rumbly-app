@@ -21,7 +21,7 @@ import { collectRelatedTags, type RelatedTag } from './relatedTaxonomy';
 
 export type SearchResult =
   | { kind: 'restaurant'; tier: number; restaurant: Restaurant }
-  | { kind: 'item'; tier: number; item: SearchIndexEntry; restaurant: Restaurant | null }
+  | { kind: 'item'; tier: number; item: SearchIndexEntry; restaurant: Restaurant }
   | { kind: 'related'; tier: number; tag: RelatedTag };
 
 // Lower number = higher priority. Restaurant/item name matches always
@@ -107,12 +107,21 @@ export function search(
   const seenItemKeys = new Set<string>();
   for (const item of searchIndex) {
     if (!item.show_in_menu) continue;
+    // A menu item whose restaurant isn't in the passed-in restaurants
+    // array is skipped outright, not shown with a null restaurant — this
+    // is both a correctness fix (search_index.json can reference a
+    // restaurant that's since been hidden/excluded from a rebuild) and
+    // what makes Milestone 6's filter sheet work for free: callers filter
+    // by passing a narrowed `restaurants` array, and items automatically
+    // narrow along with it since there's nothing else gating them.
+    const restaurant = restaurantById.get(item.restaurant_id);
+    if (!restaurant) continue;
     const itemKey = `${item.restaurant_id}:${item.item_id}`;
     if (seenItemKeys.has(itemKey)) continue;
     const tier = itemNameTier(item._norm, q);
     if (tier !== null) {
       seenItemKeys.add(itemKey);
-      results.push({ kind: 'item', tier, item, restaurant: restaurantById.get(item.restaurant_id) ?? null });
+      results.push({ kind: 'item', tier, item, restaurant });
     }
   }
 
