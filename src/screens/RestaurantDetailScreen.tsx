@@ -248,6 +248,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     if (sectionIndex === -1) return;
     const itemIndex = sections[sectionIndex].data.findIndex((i) => i.item_id === targetItemId);
     if (itemIndex === -1) return;
+    const targetItem = sections[sectionIndex].data[itemIndex];
 
     searchTargetConsumedRef.current = true;
     isProgrammaticScrollRef.current = true;
@@ -273,6 +274,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
       scrollToSectionItem(sectionIndex, itemIndex, !reducedMotionRef.current);
     }, 150);
     setHighlightedItemId(targetItemId);
+    AccessibilityInfo.announceForAccessibility(`${targetItem.item}, selected search result`);
     const highlightTimeout = setTimeout(() => setHighlightedItemId(null), 2000);
 
     if (clearProgrammaticGuardTimeoutRef.current) {

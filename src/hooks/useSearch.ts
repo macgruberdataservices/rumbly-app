@@ -8,14 +8,13 @@ import type { Restaurant, SearchIndexEntry } from '../data/types';
 import { loadSearchIndex } from '../search/searchIndexLoader';
 import { search as runSearch, type SearchResult } from '../search/rank';
 import { restaurantHasRelatedTag, tagsEqual, type RelatedTag } from '../search/relatedTaxonomy';
+import type { SearchCategory } from '../search/findState';
 
 // Matches the search spec's "150ms after input settles" performance
 // target — short enough to feel live, long enough that fast typing
 // doesn't re-run a full restaurant + 45k-item scan on every keystroke.
 const DEBOUNCE_MS = 150;
 const MIN_QUERY_LENGTH = 2;
-
-export type SearchCategory = 'all' | 'items' | 'restaurants' | 'related';
 
 export interface CategoryCounts {
   all: number;
@@ -34,10 +33,13 @@ function countByCategory(results: SearchResult[]): CategoryCounts {
   return counts;
 }
 
-export function useSearch(restaurants: Restaurant[]) {
-  const [query, setQuery] = useState('');
-  const [activeRelated, setActiveRelated] = useState<RelatedTag | null>(null);
-  const [activeCategory, setActiveCategory] = useState<SearchCategory>('all');
+export function useSearch(
+  restaurants: Restaurant[],
+  initialState?: { query: string; activeRelated: RelatedTag | null; activeCategory: SearchCategory }
+) {
+  const [query, setQuery] = useState(initialState?.query ?? '');
+  const [activeRelated, setActiveRelated] = useState<RelatedTag | null>(initialState?.activeRelated ?? null);
+  const [activeCategory, setActiveCategory] = useState<SearchCategory>(initialState?.activeCategory ?? 'all');
   const [rawResults, setRawResults] = useState<SearchResult[]>([]);
   const [isIndexReady, setIsIndexReady] = useState(false);
   const searchIndexRef = useRef<SearchIndexEntry[]>([]);

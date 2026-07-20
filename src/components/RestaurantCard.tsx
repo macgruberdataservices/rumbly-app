@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant } from '../data/types';
 import { useActivity } from '../hooks/useActivity';
@@ -19,15 +20,16 @@ function locationLabel(r: Restaurant): string {
 // highlightQuery is optional and defaults to undefined — existing
 // non-search call sites (ParkListScreen, RestaurantListScreen) pass
 // nothing and render exactly as before Milestone 6.
-export function RestaurantCard({
-  restaurant,
-  highlightQuery,
-  onPress,
-}: {
+interface RestaurantCardProps {
   restaurant: Restaurant;
   highlightQuery?: string;
   onPress: () => void;
-}) {
+}
+
+export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function RestaurantCard(
+  { restaurant, highlightQuery, onPress },
+  ref
+) {
   const metaParts = [locationLabel(restaurant), priceDots(restaurant.price_tier), restaurant.experience_type].filter(
     Boolean
   );
@@ -36,7 +38,10 @@ export function RestaurantCard({
 
   return (
     <Pressable
+      ref={ref}
       onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={[restaurant.restaurant, ...metaParts].join(', ')}
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
       <View style={styles.titleRow}>
@@ -52,7 +57,7 @@ export function RestaurantCard({
       )}
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   card: {

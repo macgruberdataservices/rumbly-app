@@ -1,3 +1,4 @@
+import { forwardRef } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant, SearchIndexEntry } from '../../data/types';
 import { useActivity } from '../../hooks/useActivity';
@@ -23,22 +24,30 @@ function locationLabel(r: Restaurant): string {
 // guaranteed non-null as of Milestone 6 — rank.ts now skips any item
 // whose restaurant isn't in the current (possibly filtered) restaurants
 // set rather than emitting it with a null restaurant.
-export function ItemResultRow({
-  item,
-  restaurant,
-  highlightQuery,
-  onPress,
-}: {
+interface ItemResultRowProps {
   item: SearchIndexEntry;
   restaurant: Restaurant;
   highlightQuery?: string;
   onPress: () => void;
-}) {
+}
+
+export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemResultRow(
+  { item, restaurant, highlightQuery, onPress },
+  ref
+) {
   const { favoritedIds, checkedInIds } = useActivity();
   const hasActivity = favoritedIds.has(restaurant.restaurant_id) || checkedInIds.has(restaurant.restaurant_id);
 
   return (
-    <Pressable onPress={onPress} style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}>
+    <Pressable
+      ref={ref}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={[item.item, restaurant.restaurant, locationLabel(restaurant), item.price_display]
+        .filter(Boolean)
+        .join(', ')}
+      style={({ pressed }) => [styles.row, pressed && styles.rowPressed]}
+    >
       <View style={styles.titleRow}>
         <HighlightedText
           text={item.item}
@@ -59,7 +68,7 @@ export function ItemResultRow({
       </View>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   row: {

@@ -5,9 +5,10 @@ import { RestaurantListScreen } from '../screens/RestaurantListScreen';
 import { RestaurantDetailScreen } from '../screens/RestaurantDetailScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
+import type { FindRestoreState } from '../search/findState';
 
 export type FindStackParamList = {
-  FindHome: undefined;
+  FindHome: { state?: FindRestoreState } | undefined;
   LocationList: undefined;
   RestaurantList: { groupKey: string; groupLabel: string };
   // itemId/period/category are Milestone 5's "entry from search" —

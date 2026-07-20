@@ -1,5 +1,6 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import type { CategoryCounts, SearchCategory } from '../../hooks/useSearch';
+import type { CategoryCounts } from '../../hooks/useSearch';
+import type { SearchCategory } from '../../search/findState';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, type ReactNode } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import {
   countActiveFilters,
@@ -9,11 +9,11 @@ import {
 } from '../../search/filters';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
+import type { FilterGroupKey } from '../../search/findState';
 
 const PRICE_LABELS: Record<number, string> = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };
 const PANEL_COLLAPSED_HEIGHT = 58;
 const PANEL_TAB_HEIGHT = 40;
-type FilterGroupKey = 'location' | 'food' | 'dining' | 'price';
 
 function toggleInSet<T>(set: Set<T>, value: T): Set<T> {
   const next = new Set(set);
@@ -76,7 +76,9 @@ export function FilterPanel({
   resultCount,
   visible,
   expanded,
+  activeGroup,
   onExpandedChange,
+  onActiveGroupChange,
   onChange,
 }: {
   filters: SearchFilters;
@@ -84,11 +86,12 @@ export function FilterPanel({
   resultCount: number;
   visible: boolean;
   expanded: boolean;
+  activeGroup: FilterGroupKey;
   onExpandedChange: (expanded: boolean) => void;
+  onActiveGroupChange: (group: FilterGroupKey) => void;
   onChange: (filters: SearchFilters) => void;
 }) {
   const { height: windowHeight } = useWindowDimensions();
-  const [activeGroup, setActiveGroup] = useState<FilterGroupKey>('location');
   const expandedHeight = Math.min(220, windowHeight * 0.25);
   const height = useRef(new Animated.Value(visible ? PANEL_COLLAPSED_HEIGHT : 0)).current;
   const contentOpacity = useRef(new Animated.Value(expanded ? 1 : 0)).current;
@@ -261,7 +264,7 @@ export function FilterPanel({
               <Pressable
                 key={group}
                 onPress={() => {
-                  setActiveGroup(group);
+                  onActiveGroupChange(group);
                   onExpandedChange(true);
                 }}
                 style={[styles.groupTab, selected && styles.groupTabActive]}

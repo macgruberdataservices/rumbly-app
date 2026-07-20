@@ -1,6 +1,22 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { FlatList, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  findNodeHandle,
+  FlatList,
+  Image,
+  InteractionManager,
+  Keyboard,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
@@ -19,14 +35,29 @@ import {
   applyFilters,
   collectFilterOptions,
   countActiveFilters,
-  emptyFilters,
   type SearchFilters,
 } from '../search/filters';
+import {
+  defaultFindRestoreState,
+  deserializeFilters,
+  resolveFindRestoreState,
+  serializeFilters,
+  type FilterGroupKey,
+  type FilterPanelState,
+  type FindBrowseContext,
+  type FindRestoreState,
+  type SearchCategory,
+} from '../search/findState';
+import {
+  clearRecentSearches,
+  loadRecentSearches,
+  recordRecentSearch,
+  type RecentSearch,
+} from '../search/recentSearches';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<FindStackParamList, 'FindHome'>;
-type FilterPanelState = 'hidden' | 'peek' | 'expanded';
 
 function FilterIcon({ active }: { active: boolean }) {
   return (
@@ -52,16 +83,27 @@ function NearMeIcon() {
   );
 }
 
-// Milestone 2 shipped this screen with search visually present but inert.
-// Milestone 5 wired live search + tap-through. Milestone 6 wired category
-// counts, matched-term emphasis, and additive filtering. The filter UI is
-// now a bottom dock instead of a modal bottom sheet so changing filters
-// updates visible results immediately without covering the tab bar.
-export function FindHomeScreen({ navigation }: Props) {
+export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
   const { favoritedIds } = useActivity();
-  const [filters, setFilters] = useState<SearchFilters>(emptyFilters());
-  const [filterPanelState, setFilterPanelState] = useState<FilterPanelState>('hidden');
+  const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
+  const initialState = initialStateRef.current;
+  const initialContentOffsetRef = useRef({ x: 0, y: initialState.resultListOffset });
+  const [filters, setFilters] = useState<SearchFilters>(() => deserializeFilters(initialState.filters));
+  const [filterPanelState, setFilterPanelState] = useState<FilterPanelState>(initialState.filterPanelState);
+  const [activeFilterGroup, setActiveFilterGroup] = useState<FilterGroupKey>(initialState.activeFilterGroup);
+  const [browseContext, setBrowseContext] = useState<FindBrowseContext | null>(initialState.browseContext);
+  const [focusedResultKey, setFocusedResultKey] = useState<string | null>(initialState.focusedResultKey);
+  const [searchInputFocused, setSearchInputFocused] = useState(initialState.searchInputFocused);
+  const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
+  const resultListRef = useRef<FlatList<ResultRow>>(null);
+  const browseScrollRef = useRef<ScrollView>(null);
+  const focusedResultNodeRef = useRef<View | null>(null);
+  const resultListOffsetRef = useRef(initialState.resultListOffset);
+  const focusedResultKeyRef = useRef(initialState.focusedResultKey);
+  const shouldRestoreFocusRef = useRef(initialState.focusedResultKey !== null);
+  const pendingAccessibilityFocusRef = useRef(false);
+  const isSearchActiveRef = useRef(initialState.query.trim().length >= 2);
 
   const filteredRestaurants = useMemo(
     () => applyFilters(restaurants, filters, favoritedIds, false, null),
@@ -81,28 +123,201 @@ export function FindHomeScreen({ navigation }: Props) {
     activeCategory,
     setActiveCategory,
     clear,
-  } = useSearch(filteredRestaurants);
+  } = useSearch(filteredRestaurants, {
+    query: initialState.query,
+    activeRelated: initialState.activeRelated,
+    activeCategory: initialState.activeCategory,
+  });
 
-  if (isLoading && restaurants.length === 0) {
-    return <LoadingScreen label="Fetching the latest dining data…" />;
-  }
+  isSearchActiveRef.current = isSearchActive;
 
-  if (error && restaurants.length === 0) {
-    return (
-      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-        <Text style={[text.body, styles.errorText]}>Couldn't load dining data: {error}</Text>
-        <Pressable onPress={forceRefresh} style={styles.retryButton}>
-          <Text style={text.buttonLabel}>Try again</Text>
-        </Pressable>
-      </SafeAreaView>
-    );
-  }
+  useEffect(() => {
+    let cancelled = false;
+    loadRecentSearches()
+      .then((searches) => {
+        if (!cancelled) setRecentSearches(searches);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const buildRestoreState = useCallback(
+    (overrides: Partial<FindRestoreState> = {}): FindRestoreState => ({
+      ...defaultFindRestoreState(),
+      query,
+      filters: serializeFilters(filters),
+      activeCategory,
+      activeRelated,
+      filterPanelState,
+      activeFilterGroup,
+      browseContext,
+      resultListOffset: resultListOffsetRef.current,
+      focusedResultKey: focusedResultKeyRef.current,
+      searchInputFocused,
+      ...overrides,
+    }),
+    [
+      activeCategory,
+      activeFilterGroup,
+      activeRelated,
+      browseContext,
+      filterPanelState,
+      filters,
+      query,
+      searchInputFocused,
+    ]
+  );
+
+  const persistRestoreState = useCallback(
+    (overrides?: Partial<FindRestoreState>) => {
+      navigation.setParams({ state: buildRestoreState(overrides) });
+    },
+    [buildRestoreState, navigation]
+  );
+
+  useEffect(() => {
+    persistRestoreState();
+  }, [persistRestoreState]);
+
+  const focusRestoredResult = useCallback(() => {
+    const handle = focusedResultNodeRef.current ? findNodeHandle(focusedResultNodeRef.current) : null;
+    if (!handle) return false;
+    AccessibilityInfo.setAccessibilityFocus(handle);
+    pendingAccessibilityFocusRef.current = false;
+    return true;
+  }, []);
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!shouldRestoreFocusRef.current) return undefined;
+      shouldRestoreFocusRef.current = false;
+      pendingAccessibilityFocusRef.current = true;
+      const offset = resultListOffsetRef.current;
+      const task = InteractionManager.runAfterInteractions(() => {
+        if (isSearchActiveRef.current) {
+          resultListRef.current?.scrollToOffset({ offset, animated: false });
+        } else {
+          browseScrollRef.current?.scrollTo({ y: offset, animated: false });
+        }
+      });
+      const focusTimer = setTimeout(focusRestoredResult, 200);
+      return () => {
+        task.cancel();
+        clearTimeout(focusTimer);
+      };
+    }, [focusRestoredResult])
+  );
 
   const groups = groupRestaurants(filteredRestaurants);
   // Restaurants-first, then items, each grouped by park/resort/Disney
   // Springs/water-park/other then by area — owner direction, 2026-07-20.
   // Related-tag results (no location to group by) pass through ungrouped.
   const rows = groupResultsByLocation(results);
+  const showRecentSearches = query.trim().length === 0 && activeCategory === 'all' && activeRelated === null;
+
+  const resetListPosition = useCallback(() => {
+    resultListOffsetRef.current = 0;
+    resultListRef.current?.scrollToOffset({ offset: 0, animated: false });
+    browseScrollRef.current?.scrollTo({ y: 0, animated: false });
+  }, []);
+
+  const clearFocusedResult = useCallback(() => {
+    focusedResultKeyRef.current = null;
+    focusedResultNodeRef.current = null;
+    setFocusedResultKey(null);
+  }, []);
+
+  const handleSearchChange = useCallback(
+    (nextQuery: string) => {
+      resetListPosition();
+      clearFocusedResult();
+      if (nextQuery.trim().length > 0) setBrowseContext(null);
+      setQuery(nextQuery);
+    },
+    [clearFocusedResult, resetListPosition, setQuery]
+  );
+
+  const handleClearSearch = useCallback(() => {
+    resetListPosition();
+    clearFocusedResult();
+    clear();
+  }, [clear, clearFocusedResult, resetListPosition]);
+
+  const handleCategoryChange = useCallback(
+    (category: SearchCategory) => {
+      resetListPosition();
+      clearFocusedResult();
+      setActiveCategory(category);
+    },
+    [clearFocusedResult, resetListPosition, setActiveCategory]
+  );
+
+  const handleFiltersChange = useCallback(
+    (nextFilters: SearchFilters) => {
+      resetListPosition();
+      clearFocusedResult();
+      setFilters(nextFilters);
+    },
+    [clearFocusedResult, resetListPosition]
+  );
+
+  const rememberQuery = useCallback(
+    (value = query) => {
+      if (value.trim().length < 2) return;
+      recordRecentSearch(value).then(setRecentSearches).catch(() => {});
+    },
+    [query]
+  );
+
+  const handleRecentSearchPress = useCallback(
+    (recent: RecentSearch) => {
+      resetListPosition();
+      clearFocusedResult();
+      setBrowseContext(null);
+      setQuery(recent.query);
+      recordRecentSearch(recent.query).then(setRecentSearches).catch(() => {});
+    },
+    [clearFocusedResult, resetListPosition, setQuery]
+  );
+
+  const handleClearRecentSearches = useCallback(() => {
+    clearRecentSearches()
+      .then(() => setRecentSearches([]))
+      .catch(() => {});
+  }, []);
+
+  const prepareResultNavigation = useCallback(
+    (resultKey: string) => {
+      Keyboard.dismiss();
+      resultListOffsetRef.current = Math.max(0, resultListOffsetRef.current);
+      focusedResultKeyRef.current = resultKey;
+      shouldRestoreFocusRef.current = true;
+      setFocusedResultKey(resultKey);
+      setSearchInputFocused(false);
+      navigation.setParams({
+        state: buildRestoreState({ focusedResultKey: resultKey, searchInputFocused: false }),
+      });
+      rememberQuery();
+    },
+    [buildRestoreState, navigation, rememberQuery]
+  );
+
+  const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    resultListOffsetRef.current = event.nativeEvent.contentOffset.y;
+  }, []);
+
+  const attachFocusedResultRef = useCallback(
+    (resultKey: string, node: View | null) => {
+      if (resultKey !== focusedResultKeyRef.current) return;
+      focusedResultNodeRef.current = node;
+      if (node && pendingAccessibilityFocusRef.current) {
+        requestAnimationFrame(() => focusRestoredResult());
+      }
+    },
+    [focusRestoredResult]
+  );
 
   const renderRow = ({ item: row, index }: { item: ResultRow; index: number }) => {
     if (row.type === 'group-header') {
@@ -120,26 +335,32 @@ export function FindHomeScreen({ navigation }: Props) {
     if (r.kind === 'restaurant') {
       return (
         <RestaurantCard
+          ref={(node) => attachFocusedResultRef(row.key, node)}
           restaurant={r.restaurant}
           highlightQuery={query}
-          onPress={() => navigation.navigate('RestaurantDetail', { restaurantId: r.restaurant.restaurant_id })}
+          onPress={() => {
+            prepareResultNavigation(row.key);
+            navigation.navigate('RestaurantDetail', { restaurantId: r.restaurant.restaurant_id });
+          }}
         />
       );
     }
     if (r.kind === 'item') {
       return (
         <ItemResultRow
+          ref={(node) => attachFocusedResultRef(row.key, node)}
           item={r.item}
           restaurant={r.restaurant}
           highlightQuery={query}
-          onPress={() =>
+          onPress={() => {
+            prepareResultNavigation(row.key);
             navigation.navigate('RestaurantDetail', {
               restaurantId: r.item.restaurant_id,
               itemId: r.item.item_id,
               period: r.item.dining_period,
               category: r.item.category,
-            })
-          }
+            });
+          }}
         />
       );
     }
@@ -147,10 +368,29 @@ export function FindHomeScreen({ navigation }: Props) {
       <RelatedResultRow
         tag={r.tag}
         active={!!activeRelated && activeRelated.kind === r.tag.kind && activeRelated.value === r.tag.value}
-        onPress={() => toggleRelated(r.tag)}
+        onPress={() => {
+          resetListPosition();
+          clearFocusedResult();
+          toggleRelated(r.tag);
+        }}
       />
     );
   };
+
+  if (isLoading && restaurants.length === 0) {
+    return <LoadingScreen label="Fetching the latest dining data…" />;
+  }
+
+  if (error && restaurants.length === 0) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <Text style={[text.body, styles.errorText]}>Couldn't load dining data: {error}</Text>
+        <Pressable onPress={forceRefresh} style={styles.retryButton}>
+          <Text style={text.buttonLabel}>Try again</Text>
+        </Pressable>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -188,13 +428,17 @@ export function FindHomeScreen({ navigation }: Props) {
             placeholder="Search"
             placeholderTextColor={COLORS.muted}
             value={query}
-            onChangeText={setQuery}
+            onChangeText={handleSearchChange}
+            onSubmitEditing={() => rememberQuery()}
+            onFocus={() => setSearchInputFocused(true)}
+            onBlur={() => setSearchInputFocused(false)}
+            autoFocus={initialState.searchInputFocused}
             autoCorrect={false}
             accessibilityLabel="Search food, drinks, or restaurants"
             returnKeyType="search"
           />
           {query.trim().length > 0 && (
-            <Pressable onPress={clear} accessibilityLabel="Clear search" style={styles.clearButton}>
+            <Pressable onPress={handleClearSearch} accessibilityLabel="Clear search" style={styles.clearButton}>
               <Text style={styles.clearButtonText}>×</Text>
             </Pressable>
           )}
@@ -211,7 +455,7 @@ export function FindHomeScreen({ navigation }: Props) {
         </Pressable>
       </View>
 
-      {isSearchActive && <CategoryStrip active={activeCategory} counts={counts} onSelect={setActiveCategory} />}
+      {isSearchActive && <CategoryStrip active={activeCategory} counts={counts} onSelect={handleCategoryChange} />}
 
       {isSearchActive ? (
         results.length === 0 ? (
@@ -221,6 +465,7 @@ export function FindHomeScreen({ navigation }: Props) {
           </View>
         ) : (
           <FlatList
+            ref={resultListRef}
             data={rows}
             keyExtractor={(row) => row.key}
             renderItem={renderRow}
@@ -228,11 +473,53 @@ export function FindHomeScreen({ navigation }: Props) {
             contentContainerStyle={styles.searchContent}
             contentInsetAdjustmentBehavior="never"
             automaticallyAdjustContentInsets={false}
+            contentOffset={initialContentOffsetRef.current}
+            onScroll={handleScroll}
+            onScrollEndDrag={() => persistRestoreState()}
+            onMomentumScrollEnd={() => persistRestoreState()}
+            scrollEventThrottle={16}
             keyboardShouldPersistTaps="handled"
           />
         )
       ) : (
-        <ScrollView style={styles.resultList} contentContainerStyle={styles.content}>
+        <ScrollView
+          ref={browseScrollRef}
+          style={styles.resultList}
+          contentContainerStyle={styles.content}
+          contentOffset={initialContentOffsetRef.current}
+          onScroll={handleScroll}
+          onScrollEndDrag={() => persistRestoreState()}
+          onMomentumScrollEnd={() => persistRestoreState()}
+          scrollEventThrottle={16}
+        >
+          {showRecentSearches && recentSearches.length > 0 && (
+            <View style={styles.recentSection}>
+              <View style={styles.recentHeader}>
+                <Text style={text.sectionToggle}>RECENT SEARCHES</Text>
+                <Pressable
+                  onPress={handleClearRecentSearches}
+                  accessibilityRole="button"
+                  accessibilityLabel="Clear recent searches"
+                  hitSlop={8}
+                >
+                  <Text style={text.buttonLabel}>Clear</Text>
+                </Pressable>
+              </View>
+              <View style={styles.recentWrap}>
+                {recentSearches.map((recent) => (
+                  <Pressable
+                    key={`${recent.query}:${recent.usedAt}`}
+                    onPress={() => handleRecentSearchPress(recent)}
+                    accessibilityRole="button"
+                    accessibilityLabel={`Search for ${recent.query}`}
+                    style={({ pressed }) => [styles.recentChip, pressed && styles.pillPressed]}
+                  >
+                    <Text style={text.chip}>{recent.query}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            </View>
+          )}
           <Text style={[text.sectionTitle, styles.sectionTitle]}>Browse by location</Text>
           {groups.length === 0 ? (
             <Text style={text.bodyMuted}>No restaurants match the current filters.</Text>
@@ -242,9 +529,12 @@ export function FindHomeScreen({ navigation }: Props) {
                 <Pressable
                   key={group.key}
                   style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
-                  onPress={() =>
-                    navigation.navigate('RestaurantList', { groupKey: group.key, groupLabel: group.label })
-                  }
+                  onPress={() => {
+                    const nextBrowseContext = { groupKey: group.key, groupLabel: group.label };
+                    setBrowseContext(nextBrowseContext);
+                    persistRestoreState({ browseContext: nextBrowseContext });
+                    navigation.navigate('RestaurantList', nextBrowseContext);
+                  }}
                 >
                   <Text style={text.chip}>{group.label}</Text>
                   <Text style={text.bodyMuted}>{group.restaurants.length}</Text>
@@ -261,8 +551,10 @@ export function FindHomeScreen({ navigation }: Props) {
         resultCount={filteredRestaurants.length}
         visible={filterPanelState !== 'hidden'}
         expanded={filterPanelState === 'expanded'}
+        activeGroup={activeFilterGroup}
         onExpandedChange={(expanded) => setFilterPanelState(expanded ? 'expanded' : 'peek')}
-        onChange={setFilters}
+        onActiveGroupChange={setActiveFilterGroup}
+        onChange={handleFiltersChange}
       />
     </SafeAreaView>
   );
@@ -431,6 +723,28 @@ const styles = StyleSheet.create({
     marginTop: 0,
     paddingTop: SPACING.xs,
     borderTopWidth: 0,
+  },
+  recentSection: {
+    marginBottom: SPACING.lg,
+  },
+  recentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  recentWrap: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+  },
+  recentChip: {
+    borderWidth: 1,
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.xl,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.cream,
   },
   areaHeader: {
     marginBottom: SPACING.xs,

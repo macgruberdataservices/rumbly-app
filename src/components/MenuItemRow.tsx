@@ -18,7 +18,12 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
   ].filter(Boolean) as string[];
 
   return (
-    <View style={[styles.row, highlighted && styles.rowHighlighted]}>
+    <View
+      accessible
+      accessibilityLabel={[item.item, item.price_display, item.description, ...badges].filter(Boolean).join(', ')}
+      accessibilityState={{ selected: highlighted }}
+      style={[styles.row, highlighted && styles.rowHighlighted]}
+    >
       <View style={styles.titleRow}>
         <Text style={[text.restaurantName, styles.name]} numberOfLines={2}>
           {item.item}
