@@ -1,5 +1,5 @@
-// Milestone 6 additive filter sheet — state, application, and the option
-// lists the sheet's chips are built from.
+// Milestone 6 additive filters — state, application, and the option
+// lists the bottom filter dock's chips are built from.
 //
 // Scoped to fields that are clean and restaurant-level, matching the
 // search spec's four groups (Location/Food/Dining/Price and personal

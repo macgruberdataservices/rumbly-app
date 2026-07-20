@@ -18,12 +18,19 @@ export function RootNavigator() {
     <NavigationContainer>
       <Tab.Navigator
         screenOptions={{
-          // Each tab renders its own nested stack with its own header —
-          // no icon library installed yet, text-only labels are fine for now.
           headerShown: false,
+          tabBarIcon: () => null,
+          tabBarIconStyle: { display: 'none' },
           tabBarActiveTintColor: COLORS.forest,
           tabBarInactiveTintColor: COLORS.muted,
-          tabBarStyle: { backgroundColor: COLORS.surface, borderTopColor: COLORS.border },
+          tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+          tabBarStyle: {
+            height: 54,
+            paddingTop: 6,
+            paddingBottom: 8,
+            backgroundColor: COLORS.surface,
+            borderTopColor: COLORS.border,
+          },
         }}
       >
         <Tab.Screen name="Find" component={FindNavigator} />

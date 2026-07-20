@@ -13,13 +13,12 @@ import { RestaurantCard } from '../components/RestaurantCard';
 import { ItemResultRow } from '../components/search/ItemResultRow';
 import { RelatedResultRow } from '../components/search/RelatedResultRow';
 import { CategoryStrip } from '../components/search/CategoryStrip';
-import { FilterSheet } from '../components/search/FilterSheet';
+import { FilterPanel } from '../components/search/FilterPanel';
 import { groupResultsByLocation, type ResultRow } from '../search/resultGrouping';
 import {
   applyFilters,
   collectFilterOptions,
   countActiveFilters,
-  cuisineLabel,
   emptyFilters,
   type SearchFilters,
 } from '../search/filters';
@@ -27,62 +26,46 @@ import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<FindStackParamList, 'FindHome'>;
+type FilterPanelState = 'hidden' | 'peek' | 'expanded';
 
-// One removable chip per active filter selection, each able to clear
-// itself independently — the search spec's "chips explain why the result
-// set looks the way it does" requirement.
-function activeFilterChips(filters: SearchFilters): { key: string; label: string; clear: (f: SearchFilters) => SearchFilters }[] {
-  const chips: { key: string; label: string; clear: (f: SearchFilters) => SearchFilters }[] = [];
-  for (const park of filters.parks) {
-    chips.push({ key: `park:${park}`, label: park, clear: (f) => ({ ...f, parks: new Set([...f.parks].filter((p) => p !== park)) }) });
-  }
-  for (const resort of filters.resorts) {
-    chips.push({ key: `resort:${resort}`, label: resort, clear: (f) => ({ ...f, resorts: new Set([...f.resorts].filter((r) => r !== resort)) }) });
-  }
-  if (filters.accessibleWithoutAdmission) {
-    chips.push({ key: 'admission', label: 'No admission required', clear: (f) => ({ ...f, accessibleWithoutAdmission: false }) });
-  }
-  for (const cuisine of filters.cuisines) {
-    chips.push({
-      key: `cuisine:${cuisine}`,
-      label: cuisineLabel(cuisine),
-      clear: (f) => ({ ...f, cuisines: new Set([...f.cuisines].filter((c) => c !== cuisine)) }),
-    });
-  }
-  for (const period of filters.mealPeriods) {
-    chips.push({ key: `period:${period}`, label: period, clear: (f) => ({ ...f, mealPeriods: new Set([...f.mealPeriods].filter((p) => p !== period)) }) });
-  }
-  for (const type of filters.serviceTypes) {
-    chips.push({ key: `service:${type}`, label: type, clear: (f) => ({ ...f, serviceTypes: new Set([...f.serviceTypes].filter((t) => t !== type)) }) });
-  }
-  for (const tier of filters.priceTiers) {
-    const label = '$'.repeat(tier);
-    chips.push({ key: `price:${tier}`, label, clear: (f) => ({ ...f, priceTiers: new Set([...f.priceTiers].filter((t) => t !== tier)) }) });
-  }
-  if (filters.favoritesOnly) {
-    chips.push({ key: 'favorites', label: 'Favorites', clear: (f) => ({ ...f, favoritesOnly: false }) });
-  }
-  return chips;
+function FilterIcon({ active }: { active: boolean }) {
+  return (
+    <View style={styles.filterIcon}>
+      <View style={[styles.filterIconLine, active && styles.filterIconLineActive]}>
+        <View style={[styles.filterIconKnob, styles.filterIconKnobLeft, active && styles.filterIconKnobActive]} />
+      </View>
+      <View style={[styles.filterIconLine, active && styles.filterIconLineActive]}>
+        <View style={[styles.filterIconKnob, styles.filterIconKnobRight, active && styles.filterIconKnobActive]} />
+      </View>
+      <View style={[styles.filterIconLine, active && styles.filterIconLineActive]}>
+        <View style={[styles.filterIconKnob, styles.filterIconKnobMiddle, active && styles.filterIconKnobActive]} />
+      </View>
+    </View>
+  );
+}
+
+function NearMeIcon() {
+  return (
+    <View style={styles.nearIconOuter}>
+      <View style={styles.nearIconInner} />
+    </View>
+  );
 }
 
 // Milestone 2 shipped this screen with search visually present but inert.
-// Milestone 5 wired live search + tap-through. This is Milestone 6:
-// category strip with counts, matched-term emphasis, the additive filter
-// sheet, and a real Open Now quick filter. Filters/Open Now narrow both
-// the search results AND the default browse-by-location groups — a
-// deliberate extension beyond what the search spec spells out (it only
-// discusses the active-search state), reasoned the same "quick filters
-// stay visible in both Find states" way the spec already frames them.
+// Milestone 5 wired live search + tap-through. Milestone 6 wired category
+// counts, matched-term emphasis, and additive filtering. The filter UI is
+// now a bottom dock instead of a modal bottom sheet so changing filters
+// updates visible results immediately without covering the tab bar.
 export function FindHomeScreen({ navigation }: Props) {
-  const { restaurants, hoursData, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
+  const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
   const { favoritedIds } = useActivity();
   const [filters, setFilters] = useState<SearchFilters>(emptyFilters());
-  const [openNow, setOpenNow] = useState(false);
-  const [isFilterSheetOpen, setIsFilterSheetOpen] = useState(false);
+  const [filterPanelState, setFilterPanelState] = useState<FilterPanelState>('hidden');
 
   const filteredRestaurants = useMemo(
-    () => applyFilters(restaurants, filters, favoritedIds, openNow, hoursData),
-    [restaurants, filters, favoritedIds, openNow, hoursData]
+    () => applyFilters(restaurants, filters, favoritedIds, false, null),
+    [restaurants, filters, favoritedIds]
   );
   const filterOptions = useMemo(() => collectFilterOptions(restaurants), [restaurants]);
   const activeFilterCount = countActiveFilters(filters);
@@ -116,16 +99,15 @@ export function FindHomeScreen({ navigation }: Props) {
   }
 
   const groups = groupRestaurants(filteredRestaurants);
-  const chips = activeFilterChips(filters);
   // Restaurants-first, then items, each grouped by park/resort/Disney
   // Springs/water-park/other then by area — owner direction, 2026-07-20.
   // Related-tag results (no location to group by) pass through ungrouped.
   const rows = groupResultsByLocation(results);
 
-  const renderRow = ({ item: row }: { item: ResultRow }) => {
+  const renderRow = ({ item: row, index }: { item: ResultRow; index: number }) => {
     if (row.type === 'group-header') {
       return (
-        <View style={styles.groupHeader}>
+        <View style={[styles.groupHeader, index === 0 && styles.firstGroupHeader]}>
           <Text style={text.sectionTitle}>{row.label}</Text>
         </View>
       );
@@ -185,79 +167,49 @@ export function FindHomeScreen({ navigation }: Props) {
       )}
 
       <View style={styles.searchRow}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="Search food, drinks, or restaurants"
-          placeholderTextColor={COLORS.muted}
-          value={query}
-          onChangeText={setQuery}
-          autoCorrect={false}
-          accessibilityLabel="Search food, drinks, or restaurants"
-          returnKeyType="search"
-        />
-        {isSearchActive && (
-          <Pressable onPress={clear} accessibilityLabel="Clear search" style={styles.clearButton}>
-            <Text style={text.chip}>×</Text>
-          </Pressable>
-        )}
-      </View>
-
-      <View style={styles.quickFilterRow}>
-        {/* Near Me stays visually present but inert — real proximity is
-            deferred to Phase 2 per the roadmap, not something this
-            milestone wires up. */}
-        <View style={[styles.quickFilterChip, styles.quickFilterInert]}>
-          <Text style={text.chip}>Near Me</Text>
-        </View>
         <Pressable
-          onPress={() => setOpenNow((v) => !v)}
-          style={[styles.quickFilterChip, openNow && styles.quickFilterChipActive]}
+          onPress={() => setFilterPanelState((state) => (state === 'hidden' ? 'peek' : 'hidden'))}
+          accessibilityLabel={filterPanelState === 'hidden' ? 'Show filters' : 'Hide filters'}
           accessibilityRole="button"
-          accessibilityState={{ selected: openNow }}
+          accessibilityState={{ expanded: filterPanelState !== 'hidden' }}
+          style={[styles.iconButton, filterPanelState !== 'hidden' && styles.iconButtonActive]}
         >
-          <Text style={[text.chip, openNow && styles.quickFilterTextActive]}>
-            Open Now{openNow ? ' ✓' : ''}
-          </Text>
+          <FilterIcon active={filterPanelState !== 'hidden'} />
+          {activeFilterCount > 0 && (
+            <View style={styles.filterBadge}>
+              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+            </View>
+          )}
         </Pressable>
+
+        <View style={styles.searchInputShell}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search"
+            placeholderTextColor={COLORS.muted}
+            value={query}
+            onChangeText={setQuery}
+            autoCorrect={false}
+            accessibilityLabel="Search food, drinks, or restaurants"
+            returnKeyType="search"
+          />
+          {query.trim().length > 0 && (
+            <Pressable onPress={clear} accessibilityLabel="Clear search" style={styles.clearButton}>
+              <Text style={styles.clearButtonText}>×</Text>
+            </Pressable>
+          )}
+        </View>
+
         <Pressable
-          onPress={() => setIsFilterSheetOpen(true)}
-          style={[styles.quickFilterChip, activeFilterCount > 0 && styles.quickFilterChipActive]}
+          disabled
+          accessibilityLabel="Near Me unavailable until location sorting is added"
           accessibilityRole="button"
+          accessibilityState={{ disabled: true }}
+          style={[styles.iconButton, styles.iconButtonDisabled]}
         >
-          <Text style={[text.chip, activeFilterCount > 0 && styles.quickFilterTextActive]}>
-            Filters{activeFilterCount > 0 ? ` ${activeFilterCount}` : ''}
-          </Text>
+          <NearMeIcon />
         </Pressable>
       </View>
-
-      {chips.length > 0 && (
-        // See CategoryStrip.tsx's comment for the full history — a
-        // maxHeight set directly on the ScrollView's own `style` looked
-        // fixed but broke again the instant its content's width changed
-        // (a real, confirmed RN quirk, not a tuning problem). The fix
-        // that holds: a plain View with a fixed height wraps the
-        // ScrollView instead of styling the ScrollView's height directly.
-        <View style={styles.activeChipWrapper}>
-          <ScrollView
-            horizontal
-            showsHorizontalScrollIndicator={false}
-            style={styles.activeChipScroll}
-            contentContainerStyle={styles.activeChipRow}
-          >
-            {chips.map((chip) => (
-              <Pressable
-                key={chip.key}
-                style={styles.activeChip}
-                onPress={() => setFilters((f) => chip.clear(f))}
-                accessibilityLabel={`Remove ${chip.label} filter`}
-              >
-                <Text style={text.chip}>{chip.label}</Text>
-                <Text style={text.chip}> ×</Text>
-              </Pressable>
-            ))}
-          </ScrollView>
-        </View>
-      )}
 
       {isSearchActive && <CategoryStrip active={activeCategory} counts={counts} onSelect={setActiveCategory} />}
 
@@ -272,12 +224,15 @@ export function FindHomeScreen({ navigation }: Props) {
             data={rows}
             keyExtractor={(row) => row.key}
             renderItem={renderRow}
-            contentContainerStyle={styles.content}
+            style={styles.resultList}
+            contentContainerStyle={styles.searchContent}
+            contentInsetAdjustmentBehavior="never"
+            automaticallyAdjustContentInsets={false}
             keyboardShouldPersistTaps="handled"
           />
         )
       ) : (
-        <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView style={styles.resultList} contentContainerStyle={styles.content}>
           <Text style={[text.sectionTitle, styles.sectionTitle]}>Browse by location</Text>
           {groups.length === 0 ? (
             <Text style={text.bodyMuted}>No restaurants match the current filters.</Text>
@@ -300,16 +255,14 @@ export function FindHomeScreen({ navigation }: Props) {
         </ScrollView>
       )}
 
-      <FilterSheet
-        visible={isFilterSheetOpen}
-        initialFilters={filters}
+      <FilterPanel
+        filters={filters}
         options={filterOptions}
-        restaurants={restaurants}
-        favoritedIds={favoritedIds}
-        openNow={openNow}
-        hoursData={hoursData}
-        onApply={setFilters}
-        onClose={() => setIsFilterSheetOpen(false)}
+        resultCount={filteredRestaurants.length}
+        visible={filterPanelState !== 'hidden'}
+        expanded={filterPanelState === 'expanded'}
+        onExpandedChange={(expanded) => setFilterPanelState(expanded ? 'expanded' : 'peek')}
+        onChange={setFilters}
       />
     </SafeAreaView>
   );
@@ -337,70 +290,131 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
+    marginTop: SPACING.sm,
     gap: SPACING.sm,
   },
-  searchInput: {
-    flex: 1,
-    backgroundColor: COLORS.cream,
-    borderRadius: RADII.xl,
+  iconButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: COLORS.border,
-    paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.md,
-    fontFamily: text.body.fontFamily,
-    fontSize: 15,
-    color: COLORS.ink,
+    backgroundColor: COLORS.surface,
   },
-  clearButton: {
-    paddingHorizontal: SPACING.xs,
-  },
-  quickFilterRow: {
-    flexDirection: 'row',
-    gap: SPACING.sm,
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.md,
-  },
-  quickFilterChip: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.xl,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
-  },
-  quickFilterInert: {
-    opacity: 0.5,
-  },
-  quickFilterChipActive: {
+  iconButtonActive: {
     backgroundColor: COLORS.forest,
     borderColor: COLORS.forest,
   },
-  quickFilterTextActive: {
-    color: COLORS.goldLight,
+  iconButtonDisabled: {
+    opacity: 0.45,
   },
-  activeChipWrapper: {
-    height: 52,
+  filterIcon: {
+    width: 22,
+    gap: 4,
   },
-  activeChipScroll: {
-    flex: 1,
+  filterIconLine: {
+    height: 2,
+    borderRadius: 1,
+    backgroundColor: COLORS.ink,
   },
-  activeChipRow: {
-    flexDirection: 'row',
+  filterIconLineActive: {
+    backgroundColor: COLORS.goldLight,
+  },
+  filterIconKnob: {
+    position: 'absolute',
+    top: -3,
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: COLORS.surface,
+    backgroundColor: COLORS.ink,
+  },
+  filterIconKnobActive: {
+    backgroundColor: COLORS.goldLight,
+  },
+  filterIconKnobLeft: {
+    left: 2,
+  },
+  filterIconKnobMiddle: {
+    left: 7,
+  },
+  filterIconKnobRight: {
+    right: 2,
+  },
+  nearIconOuter: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    borderWidth: 2,
+    borderColor: COLORS.ink,
     alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.lg,
-    marginTop: SPACING.sm,
+    justifyContent: 'center',
   },
-  activeChip: {
+  nearIconInner: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+    backgroundColor: COLORS.ink,
+  },
+  filterBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 4,
+  },
+  filterBadgeText: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 10,
+    color: COLORS.surface,
+  },
+  searchInputShell: {
+    flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: COLORS.cream,
     borderRadius: RADII.xl,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    paddingLeft: SPACING.lg,
+    paddingRight: SPACING.sm,
+    minHeight: 44,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: text.body.fontFamily,
+    fontSize: 15,
+    color: COLORS.ink,
+    paddingVertical: SPACING.sm,
+  },
+  clearButton: {
+    minWidth: 28,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 18,
+    color: COLORS.ink,
+  },
+  resultList: {
+    flex: 1,
   },
   content: {
     padding: SPACING.lg,
+  },
+  searchContent: {
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
   },
   // "Restaurants first, then items, each grouped by park then area" —
   // owner direction 2026-07-20. groupHeader is the primary divider (park/
@@ -412,6 +426,11 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  },
+  firstGroupHeader: {
+    marginTop: 0,
+    paddingTop: SPACING.xs,
+    borderTopWidth: 0,
   },
   areaHeader: {
     marginBottom: SPACING.xs,
@@ -442,8 +461,10 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   noResults: {
+    flex: 1,
     padding: SPACING.xl,
     alignItems: 'center',
+    justifyContent: 'center',
   },
   noResultsHint: {
     marginTop: SPACING.xs,
