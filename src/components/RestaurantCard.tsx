@@ -40,7 +40,11 @@ export function RestaurantCard({
       style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
     >
       <View style={styles.titleRow}>
-        <HighlightedText text={restaurant.restaurant} query={highlightQuery} style={text.restaurantName} />
+        <HighlightedText
+          text={restaurant.restaurant}
+          query={highlightQuery}
+          style={[text.restaurantName, highlightQuery && styles.searchTitle]}
+        />
         {hasActivity && <View style={styles.activityDot} />}
       </View>
       {metaParts.length > 0 && (
@@ -67,6 +71,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
+  },
+  searchTitle: {
+    fontSize: 15,
   },
   activityDot: {
     width: 6,

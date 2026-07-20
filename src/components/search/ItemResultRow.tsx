@@ -81,7 +81,7 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
-    fontSize: 15,
+    fontSize: 14,
   },
   activityDot: {
     width: 6,

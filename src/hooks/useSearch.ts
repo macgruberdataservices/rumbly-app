@@ -13,6 +13,7 @@ import { restaurantHasRelatedTag, tagsEqual, type RelatedTag } from '../search/r
 // target — short enough to feel live, long enough that fast typing
 // doesn't re-run a full restaurant + 45k-item scan on every keystroke.
 const DEBOUNCE_MS = 150;
+const MIN_QUERY_LENGTH = 2;
 
 export type SearchCategory = 'all' | 'items' | 'restaurants' | 'related';
 
@@ -41,6 +42,8 @@ export function useSearch(restaurants: Restaurant[]) {
   const [isIndexReady, setIsIndexReady] = useState(false);
   const searchIndexRef = useRef<SearchIndexEntry[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const trimmedQuery = query.trim();
+  const isSearchActive = trimmedQuery.length >= MIN_QUERY_LENGTH;
 
   // Kicked off on first mount of whatever screen calls this hook — after
   // first paint, deliberately not joined to DataProvider's eager
@@ -59,7 +62,7 @@ export function useSearch(restaurants: Restaurant[]) {
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (!query.trim()) {
+    if (!isSearchActive) {
       setRawResults([]);
       return;
     }
@@ -73,7 +76,7 @@ export function useSearch(restaurants: Restaurant[]) {
     // a query typed before the index finishes loading needs to re-run
     // once it becomes available, or item results would silently stay
     // empty for that first search.
-  }, [query, restaurants, isIndexReady]);
+  }, [query, restaurants, isIndexReady, isSearchActive]);
 
   // Related-tag narrowing happens before category counts/filtering — a
   // count of "8 items" under an active Related tag should reflect the
@@ -110,7 +113,7 @@ export function useSearch(restaurants: Restaurant[]) {
     setQuery,
     results,
     counts,
-    isSearchActive: query.trim().length > 0,
+    isSearchActive,
     activeRelated,
     toggleRelated,
     activeCategory,

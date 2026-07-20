@@ -14,7 +14,7 @@ import { ItemResultRow } from '../components/search/ItemResultRow';
 import { RelatedResultRow } from '../components/search/RelatedResultRow';
 import { CategoryStrip } from '../components/search/CategoryStrip';
 import { FilterSheet } from '../components/search/FilterSheet';
-import type { SearchResult } from '../search/rank';
+import { groupResultsByLocation, type ResultRow } from '../search/resultGrouping';
 import {
   applyFilters,
   collectFilterOptions,
@@ -27,12 +27,6 @@ import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<FindStackParamList, 'FindHome'>;
-
-function resultKey(r: SearchResult): string {
-  if (r.kind === 'restaurant') return `restaurant:${r.restaurant.restaurant_id}`;
-  if (r.kind === 'item') return `item:${r.item.restaurant_id}:${r.item.item_id}`;
-  return `related:${r.tag.kind}:${r.tag.value}`;
-}
 
 // One removable chip per active filter selection, each able to clear
 // itself independently — the search spec's "chips explain why the result
@@ -123,8 +117,24 @@ export function FindHomeScreen({ navigation }: Props) {
 
   const groups = groupRestaurants(filteredRestaurants);
   const chips = activeFilterChips(filters);
+  // Restaurants-first, then items, each grouped by park/resort/Disney
+  // Springs/water-park/other then by area — owner direction, 2026-07-20.
+  // Related-tag results (no location to group by) pass through ungrouped.
+  const rows = groupResultsByLocation(results);
 
-  const renderResult = ({ item: r }: { item: SearchResult }) => {
+  const renderRow = ({ item: row }: { item: ResultRow }) => {
+    if (row.type === 'group-header') {
+      return (
+        <View style={styles.groupHeader}>
+          <Text style={text.sectionTitle}>{row.label}</Text>
+        </View>
+      );
+    }
+    if (row.type === 'area-header') {
+      return <Text style={[text.bodyMuted, styles.areaHeader]}>{row.label}</Text>;
+    }
+
+    const r = row.result;
     if (r.kind === 'restaurant') {
       return (
         <RestaurantCard
@@ -221,24 +231,32 @@ export function FindHomeScreen({ navigation }: Props) {
       </View>
 
       {chips.length > 0 && (
-        <ScrollView
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          style={styles.activeChipScroll}
-          contentContainerStyle={styles.activeChipRow}
-        >
-          {chips.map((chip) => (
-            <Pressable
-              key={chip.key}
-              style={styles.activeChip}
-              onPress={() => setFilters((f) => chip.clear(f))}
-              accessibilityLabel={`Remove ${chip.label} filter`}
-            >
-              <Text style={text.chip}>{chip.label}</Text>
-              <Text style={text.chip}> ×</Text>
-            </Pressable>
-          ))}
-        </ScrollView>
+        // See CategoryStrip.tsx's comment for the full history — a
+        // maxHeight set directly on the ScrollView's own `style` looked
+        // fixed but broke again the instant its content's width changed
+        // (a real, confirmed RN quirk, not a tuning problem). The fix
+        // that holds: a plain View with a fixed height wraps the
+        // ScrollView instead of styling the ScrollView's height directly.
+        <View style={styles.activeChipWrapper}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            style={styles.activeChipScroll}
+            contentContainerStyle={styles.activeChipRow}
+          >
+            {chips.map((chip) => (
+              <Pressable
+                key={chip.key}
+                style={styles.activeChip}
+                onPress={() => setFilters((f) => chip.clear(f))}
+                accessibilityLabel={`Remove ${chip.label} filter`}
+              >
+                <Text style={text.chip}>{chip.label}</Text>
+                <Text style={text.chip}> ×</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+        </View>
       )}
 
       {isSearchActive && <CategoryStrip active={activeCategory} counts={counts} onSelect={setActiveCategory} />}
@@ -251,9 +269,9 @@ export function FindHomeScreen({ navigation }: Props) {
           </View>
         ) : (
           <FlatList
-            data={results}
-            keyExtractor={resultKey}
-            renderItem={renderResult}
+            data={rows}
+            keyExtractor={(row) => row.key}
+            renderItem={renderRow}
             contentContainerStyle={styles.content}
             keyboardShouldPersistTaps="handled"
           />
@@ -360,18 +378,15 @@ const styles = StyleSheet.create({
   quickFilterTextActive: {
     color: COLORS.goldLight,
   },
-  // A horizontal ScrollView with only contentContainerStyle set (no
-  // bounded `style`) can stretch to fill remaining vertical space in a
-  // flex-column parent instead of sizing to its one-line content —
-  // confirmed on-device (a single chip rendered ~230pt tall instead of
-  // ~36pt). Same root cause, different shape, as FilterSheet's footer
-  // bug. maxHeight on the ScrollView itself (not just its content) is
-  // what actually bounds it.
+  activeChipWrapper: {
+    height: 52,
+  },
   activeChipScroll: {
-    maxHeight: 44,
+    flex: 1,
   },
   activeChipRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.xs,
     paddingHorizontal: SPACING.lg,
     marginTop: SPACING.sm,
@@ -386,6 +401,23 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.lg,
+  },
+  // "Restaurants first, then items, each grouped by park then area" —
+  // owner direction 2026-07-20. groupHeader is the primary divider (park/
+  // resort/Disney Springs/water-park/other); areaHeader is the lighter
+  // secondary heading nested under it (Fantasyland, West Side, etc.).
+  groupHeader: {
+    marginTop: SPACING.lg,
+    marginBottom: SPACING.sm,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  areaHeader: {
+    marginBottom: SPACING.xs,
+    textTransform: 'uppercase',
+    fontSize: 12,
+    letterSpacing: 0.5,
   },
   sectionTitle: {
     marginBottom: SPACING.md,
