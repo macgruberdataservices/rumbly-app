@@ -8,6 +8,7 @@ import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { HighlightedText } from '../HighlightedText';
 import { ItemResultPreviewCard } from './ItemResultPreviewCard';
+import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import { COLORS, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -29,11 +30,11 @@ function locationLabel(r: Restaurant): string {
 // Full interaction parity with MenuItemRow (owner decision 2026-07-20,
 // after RestaurantCard/MenuItemRow's shared-Animated.Value peek pattern
 // read as "feels native" -- see ROADMAP's "Reusable UI patterns" section):
-// swipe-left reveals Favorite + (if entitled) Want-to-Try, long-press
+// swipe-left reveals labeled Need It / Got It / Love It actions, long-press
 // shows a grow-from-origin preview, both layered on top of the row's own
 // existing tap-to-navigate (unlike MenuItemRow, which has no navigation
 // target of its own). Activity now reflects this exact item
-// (favoritedItemKeys/wantToTriedItemKeys, keyed by
+// (lovedItemKeys/needItItemKeys/gotItItemCounts, keyed by
 // `${restaurant_id}:${item_id}`) rather than the parent restaurant's
 // activity, which was only ever a stand-in from before item-level
 // tracking existed (Milestone 13). `restaurant` is guaranteed non-null
@@ -57,15 +58,28 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
     item.has_allergy_option && 'Allergy option available',
   ].filter(Boolean) as string[];
 
-  const { favoritedItemKeys, wantToTriedItemKeys, toggleItemFavorite, toggleItemWantToTry } = useActivity();
-  const wantToTryEnabled = useEntitlement('want_to_try');
+  const {
+    lovedItemKeys,
+    needItItemKeys,
+    gotItItemCounts,
+    toggleItemLove,
+    toggleItemNeedIt,
+    addItemGotIt,
+    confirmGotIt,
+    undoGotIt,
+  } = useActivity();
+  const needItEnabled = useEntitlement('need_it');
+  const gotItEnabled = useEntitlement('got_it');
+  const ratingsEnabled = useEntitlement('ratings');
   const key = `${item.restaurant_id}:${item.item_id}`;
-  const isFavorited = favoritedItemKeys.has(key);
-  const isWantToTried = wantToTriedItemKeys.has(key);
-  const hasActivity = isFavorited || isWantToTried;
+  const isLoved = lovedItemKeys.has(key);
+  const isNeeded = needItItemKeys.has(key);
+  const gotItCount = gotItItemCounts.get(key) ?? 0;
+  const hasActivity = isLoved || (needItEnabled && isNeeded) || (gotItEnabled && gotItCount > 0);
 
   const swipeableRef = useRef<Swipeable>(null);
   const rowRef = useRef<View>(null);
+  const gotItButtonRef = useRef<View>(null);
   // Merges this component's own measurement ref with the ref the parent
   // forwarded in (FindHomeScreen's attachFocusedResultRef, for Milestone
   // 7 accessibility-focus restoration) -- can't just read from the
@@ -81,6 +95,7 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
   };
 
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [gotItEvent, setGotItEvent] = useState<GotItCardEvent | null>(null);
   const [previewOrigin, setPreviewOrigin] = useState<{ x: number; y: number; width: number; height: number } | null>(
     null
   );
@@ -101,26 +116,72 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
     setTimeout(() => swipeableRef.current?.close(), 350);
   };
 
+  const measureGotItOrigin = (): Promise<GotItCardOrigin | null> =>
+    new Promise((resolve) => {
+      if (!gotItButtonRef.current) {
+        resolve(null);
+        return;
+      }
+      gotItButtonRef.current.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }));
+    });
+
+  const openGotItCard = async () => {
+    const origin = await measureGotItOrigin();
+    const clientId = await addItemGotIt(item.restaurant_id, item.item_id);
+    setGotItEvent({ clientId, targetName: item.item, count: gotItCount + 1, origin });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch((err) =>
+      console.warn('haptics failed (native module may need a fresh build):', err)
+    );
+    swipeableRef.current?.close();
+  };
+
   const renderRightActions = () => (
     <View style={styles.actionsRow}>
-      <Pressable
-        style={[styles.actionCircle, isFavorited && styles.actionCircleFavorite]}
-        onPress={() => confirmThenClose(() => toggleItemFavorite(item.restaurant_id, item.item_id))}
-        accessibilityRole="button"
-        accessibilityLabel={isFavorited ? 'Remove favorite' : 'Add favorite'}
-      >
-        <Text style={styles.actionGlyph}>♥</Text>
-      </Pressable>
-      {wantToTryEnabled && (
+      {needItEnabled && (
         <Pressable
-          style={[styles.actionCircle, isWantToTried && styles.actionCircleWantToTry]}
-          onPress={() => confirmThenClose(() => toggleItemWantToTry(item.restaurant_id, item.item_id))}
+          style={styles.actionButton}
+          onPress={() => confirmThenClose(() => toggleItemNeedIt(item.restaurant_id, item.item_id))}
           accessibilityRole="button"
-          accessibilityLabel={isWantToTried ? 'Remove want to try' : 'Add want to try'}
+          accessibilityLabel={isNeeded ? 'Remove from Need It' : 'Add to Need It'}
+          accessibilityState={{ selected: isNeeded }}
         >
-          <Text style={styles.actionGlyph}>★</Text>
+          <View style={[styles.actionCircle, isNeeded && styles.actionCircleNeed]}>
+            <Text style={[styles.actionGlyph, isNeeded && styles.actionGlyphActive]}>★</Text>
+          </View>
+          <Text style={styles.actionLabel}>Need It</Text>
         </Pressable>
       )}
+      {gotItEnabled && (
+        <Pressable
+          ref={gotItButtonRef}
+          style={styles.actionButton}
+          onPress={openGotItCard}
+          accessibilityRole="button"
+          accessibilityLabel={gotItCount > 0 ? `Log Got It again, logged ${gotItCount} times` : 'Log Got It'}
+        >
+          <View style={[styles.actionCircle, gotItCount > 0 && styles.actionCircleGot]}>
+            <Text style={[styles.actionGlyph, gotItCount > 0 && styles.actionGlyphActive]}>✓</Text>
+            {gotItCount > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeLabel}>{gotItCount > 99 ? '99+' : gotItCount}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.actionLabel}>Got It</Text>
+        </Pressable>
+      )}
+      <Pressable
+        style={styles.actionButton}
+        onPress={() => confirmThenClose(() => toggleItemLove(item.restaurant_id, item.item_id))}
+        accessibilityRole="button"
+        accessibilityLabel={isLoved ? 'Remove from Love It' : 'Add to Love It'}
+        accessibilityState={{ selected: isLoved }}
+      >
+        <View style={[styles.actionCircle, isLoved && styles.actionCircleLove]}>
+          <Text style={[styles.actionGlyph, isLoved && styles.actionGlyphActive]}>♥</Text>
+        </View>
+        <Text style={styles.actionLabel}>Love It</Text>
+      </Pressable>
     </View>
   );
 
@@ -202,8 +263,9 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
         item={previewVisible ? item : null}
         restaurant={restaurant}
         badges={badges}
-        isFavorited={isFavorited}
-        isWantToTried={isWantToTried}
+        isLoved={isLoved}
+        isNeeded={needItEnabled && isNeeded}
+        gotItCount={gotItEnabled ? gotItCount : 0}
         origin={previewOrigin}
         onOpen={() => {
           setPreviewVisible(false);
@@ -213,6 +275,20 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
         onClose={() => {
           setPreviewVisible(false);
           animateShadow(0);
+        }}
+      />
+      <GotItRatingCard
+        event={gotItEvent}
+        ratingsEnabled={ratingsEnabled}
+        onConfirm={async (rating) => {
+          if (!gotItEvent) return;
+          await confirmGotIt(gotItEvent.clientId, rating);
+          setGotItEvent(null);
+        }}
+        onUndo={async () => {
+          if (!gotItEvent) return;
+          await undoGotIt(gotItEvent.clientId, item.restaurant_id, item.item_id);
+          setGotItEvent(null);
         }}
       />
     </>
@@ -264,24 +340,63 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.sm,
-    gap: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  actionButton: {
+    width: 50,
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.border,
   },
-  actionCircleFavorite: {
+  actionCircleLove: {
     backgroundColor: COLORS.pine,
   },
-  actionCircleWantToTry: {
+  actionCircleNeed: {
     backgroundColor: COLORS.gold,
   },
+  actionCircleGot: {
+    backgroundColor: COLORS.barkBrown,
+  },
   actionGlyph: {
-    fontSize: 18,
+    fontSize: 16,
+    color: COLORS.ink,
+  },
+  actionGlyphActive: {
+    color: COLORS.surface,
+  },
+  actionLabel: {
+    marginTop: 2,
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 10,
+    lineHeight: 12,
+    color: COLORS.muted,
+  },
+  countBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -7,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.pine,
+    borderWidth: 1,
+    borderColor: COLORS.surface,
+  },
+  countBadgeLabel: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 9,
+    lineHeight: 11,
     color: COLORS.surface,
   },
 });

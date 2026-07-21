@@ -1,6 +1,6 @@
-// Local-only activity store (favorites, check-ins). Event log, not
+// Local-first activity store. Event log, not
 // boolean columns — a row per action, soft-deletable, so history (e.g.
-// repeat check-ins) survives and any future sync phase can merge by
+// repeat Got It events) survives and sync can merge by
 // client_id rather than overwriting a whole record.
 
 import type { SQLiteDatabase } from 'expo-sqlite';
@@ -22,10 +22,22 @@ function getDb(): Promise<SQLiteDatabase> {
           occurred_at TEXT NOT NULL,
           created_at TEXT NOT NULL,
           updated_at TEXT NOT NULL,
+          value REAL,
           deleted INTEGER NOT NULL DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_activity_restaurant ON activity(restaurant_id);
+
+        UPDATE activity SET activity_type = 'love_it'
+          WHERE activity_type = 'favorited';
+        UPDATE activity SET activity_type = 'need_it'
+          WHERE activity_type = 'want_to_try';
+        UPDATE activity SET activity_type = 'got_it'
+          WHERE activity_type = 'checked_in';
       `);
+      const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(activity);');
+      if (!columns.some((column) => column.name === 'value')) {
+        await db.execAsync('ALTER TABLE activity ADD COLUMN value REAL;');
+      }
       return db;
     });
   }
@@ -36,7 +48,7 @@ function generateClientId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-// itemId null = a restaurant-level activity (e.g. the header's Favorite
+// itemId null = a restaurant-level activity (e.g. the header's Love
 // button); itemId set = an item-level activity (e.g. a menu row's swipe
 // action). COALESCE-to-empty-string sidesteps SQLite's NULL != NULL so one
 // query handles both cases instead of two branches.
@@ -84,35 +96,71 @@ async function toggleActivity(
   return true;
 }
 
-export function toggleFavorite(restaurantId: string): Promise<boolean> {
-  return toggleActivity(restaurantId, 'favorited', null);
+export function toggleLove(restaurantId: string): Promise<boolean> {
+  return toggleActivity(restaurantId, 'love_it', null);
 }
 
-export function toggleItemFavorite(restaurantId: string, itemId: string): Promise<boolean> {
-  return toggleActivity(restaurantId, 'favorited', itemId);
+export function toggleItemLove(restaurantId: string, itemId: string): Promise<boolean> {
+  return toggleActivity(restaurantId, 'love_it', itemId);
 }
 
-export function toggleItemWantToTry(restaurantId: string, itemId: string): Promise<boolean> {
-  return toggleActivity(restaurantId, 'want_to_try', itemId);
+export function toggleItemNeedIt(restaurantId: string, itemId: string): Promise<boolean> {
+  return toggleActivity(restaurantId, 'need_it', itemId);
 }
 
-export async function addCheckIn(restaurantId: string): Promise<void> {
+async function addGotIt(restaurantId: string, itemId: string | null): Promise<string> {
+  const db = await getDb();
+  const now = new Date().toISOString();
+  const clientId = generateClientId();
+  await db.runAsync(
+    `INSERT INTO activity (client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted)
+     VALUES ($client_id, $target_type, $restaurant_id, $item_id, 'got_it', $now, $now, $now, 0);`,
+    {
+      $client_id: clientId,
+      $target_type: itemId ? 'item' : 'restaurant',
+      $restaurant_id: restaurantId,
+      $item_id: itemId,
+      $now: now,
+    }
+  );
+  return clientId;
+}
+
+export function addRestaurantGotIt(restaurantId: string): Promise<string> {
+  return addGotIt(restaurantId, null);
+}
+
+export function addItemGotIt(restaurantId: string, itemId: string): Promise<string> {
+  return addGotIt(restaurantId, itemId);
+}
+
+export async function setGotItRating(clientId: string, rating: number): Promise<void> {
   const db = await getDb();
   const now = new Date().toISOString();
   await db.runAsync(
-    `INSERT INTO activity (client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted)
-     VALUES ($client_id, 'restaurant', $restaurant_id, NULL, 'checked_in', $now, $now, $now, 0);`,
-    { $client_id: generateClientId(), $restaurant_id: restaurantId, $now: now }
+    `UPDATE activity SET value = $rating, updated_at = $now
+     WHERE client_id = $client_id AND activity_type = 'got_it' AND deleted = 0;`,
+    { $rating: rating, $now: now, $client_id: clientId }
   );
 }
 
-// Restaurant-level only (item_id IS NULL) -- an item-level favorite must
-// not make its parent restaurant look favorited too, those are
+export async function undoGotIt(clientId: string): Promise<void> {
+  const db = await getDb();
+  const now = new Date().toISOString();
+  await db.runAsync(
+    `UPDATE activity SET deleted = 1, updated_at = $now
+     WHERE client_id = $client_id AND activity_type = 'got_it' AND deleted = 0;`,
+    { $now: now, $client_id: clientId }
+  );
+}
+
+// Restaurant-level only (item_id IS NULL) -- an item-level Love must
+// not make its parent restaurant look Loved too, those are
 // independent activities.
-export async function loadFavoritedIds(): Promise<Set<string>> {
+export async function loadLovedIds(): Promise<Set<string>> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ restaurant_id: string }>(
-    "SELECT DISTINCT restaurant_id FROM activity WHERE activity_type = 'favorited' AND item_id IS NULL AND deleted = 0;"
+    "SELECT DISTINCT restaurant_id FROM activity WHERE activity_type = 'love_it' AND item_id IS NULL AND deleted = 0;"
   );
   return new Set(rows.map((r) => r.restaurant_id));
 }
@@ -129,20 +177,32 @@ async function loadItemActivityKeys(activityType: string): Promise<Set<string>> 
   return new Set(rows.map((r) => `${r.restaurant_id}:${r.item_id}`));
 }
 
-export function loadFavoritedItemKeys(): Promise<Set<string>> {
-  return loadItemActivityKeys('favorited');
+export function loadLovedItemKeys(): Promise<Set<string>> {
+  return loadItemActivityKeys('love_it');
 }
 
-export function loadWantToTriedItemKeys(): Promise<Set<string>> {
-  return loadItemActivityKeys('want_to_try');
+export function loadNeedItItemKeys(): Promise<Set<string>> {
+  return loadItemActivityKeys('need_it');
 }
 
-export async function loadCheckedInIds(): Promise<Set<string>> {
+export async function loadGotItItemCounts(): Promise<Map<string, number>> {
   const db = await getDb();
-  const rows = await db.getAllAsync<{ restaurant_id: string }>(
-    "SELECT DISTINCT restaurant_id FROM activity WHERE activity_type = 'checked_in' AND deleted = 0;"
+  const rows = await db.getAllAsync<{ restaurant_id: string; item_id: string; count: number }>(
+    `SELECT restaurant_id, item_id, COUNT(*) AS count FROM activity
+     WHERE activity_type = 'got_it' AND item_id IS NOT NULL AND deleted = 0
+     GROUP BY restaurant_id, item_id;`
   );
-  return new Set(rows.map((r) => r.restaurant_id));
+  return new Map(rows.map((r) => [`${r.restaurant_id}:${r.item_id}`, r.count]));
+}
+
+export async function loadGotItRestaurantCounts(): Promise<Map<string, number>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ restaurant_id: string; count: number }>(
+    `SELECT restaurant_id, COUNT(*) AS count FROM activity
+     WHERE activity_type = 'got_it' AND item_id IS NULL AND deleted = 0
+     GROUP BY restaurant_id;`
+  );
+  return new Map(rows.map((r) => [r.restaurant_id, r.count]));
 }
 
 // --- Milestone 12: sync support. Row shape mirrors the Supabase `activity`
@@ -155,10 +215,18 @@ export interface ActivityRow {
   restaurant_id: string;
   item_id: string | null;
   activity_type: string;
+  value: number | null;
   occurred_at: string;
   created_at: string;
   updated_at: string;
   deleted: boolean;
+}
+
+function normalizeActivityType(activityType: string): string {
+  if (activityType === 'favorited') return 'love_it';
+  if (activityType === 'want_to_try') return 'need_it';
+  if (activityType === 'checked_in') return 'got_it';
+  return activityType;
 }
 
 export async function getAllActivityRows(): Promise<ActivityRow[]> {
@@ -169,11 +237,12 @@ export async function getAllActivityRows(): Promise<ActivityRow[]> {
     restaurant_id: string;
     item_id: string | null;
     activity_type: string;
+    value: number | null;
     occurred_at: string;
     created_at: string;
     updated_at: string;
     deleted: number;
-  }>('SELECT client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted FROM activity;');
+  }>('SELECT client_id, target_type, restaurant_id, item_id, activity_type, value, occurred_at, created_at, updated_at, deleted FROM activity;');
   return rows.map((r) => ({ ...r, deleted: r.deleted === 1 }));
 }
 
@@ -182,6 +251,7 @@ export async function getAllActivityRows(): Promise<ActivityRow[]> {
 // decided the remote copy should win, this just applies it.
 export async function applyRemoteRow(row: ActivityRow): Promise<void> {
   const db = await getDb();
+  const activityType = normalizeActivityType(row.activity_type);
   const existing = await db.getFirstAsync<{ id: number }>(
     'SELECT id FROM activity WHERE client_id = $client_id;',
     { $client_id: row.client_id }
@@ -191,13 +261,14 @@ export async function applyRemoteRow(row: ActivityRow): Promise<void> {
   if (existing) {
     await db.runAsync(
       `UPDATE activity SET target_type = $target_type, restaurant_id = $restaurant_id, item_id = $item_id,
-       activity_type = $activity_type, occurred_at = $occurred_at, created_at = $created_at,
+       activity_type = $activity_type, value = $value, occurred_at = $occurred_at, created_at = $created_at,
        updated_at = $updated_at, deleted = $deleted WHERE id = $id;`,
       {
         $target_type: row.target_type,
         $restaurant_id: row.restaurant_id,
         $item_id: row.item_id,
-        $activity_type: row.activity_type,
+        $activity_type: activityType,
+        $value: row.value,
         $occurred_at: row.occurred_at,
         $created_at: row.created_at,
         $updated_at: row.updated_at,
@@ -209,14 +280,15 @@ export async function applyRemoteRow(row: ActivityRow): Promise<void> {
   }
 
   await db.runAsync(
-    `INSERT INTO activity (client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted)
-     VALUES ($client_id, $target_type, $restaurant_id, $item_id, $activity_type, $occurred_at, $created_at, $updated_at, $deleted);`,
+    `INSERT INTO activity (client_id, target_type, restaurant_id, item_id, activity_type, value, occurred_at, created_at, updated_at, deleted)
+     VALUES ($client_id, $target_type, $restaurant_id, $item_id, $activity_type, $value, $occurred_at, $created_at, $updated_at, $deleted);`,
     {
       $client_id: row.client_id,
       $target_type: row.target_type,
       $restaurant_id: row.restaurant_id,
       $item_id: row.item_id,
-      $activity_type: row.activity_type,
+      $activity_type: activityType,
+      $value: row.value,
       $occurred_at: row.occurred_at,
       $created_at: row.created_at,
       $updated_at: row.updated_at,

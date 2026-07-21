@@ -5,25 +5,32 @@
 // columns), so there's no field-level merge to do, just "which copy of
 // this row is newer."
 //
-// `value` (Milestone 14's ratings column) is carried through so it
-// round-trips once a local column exists for it, but nothing sets it yet.
+// `value` carries the optional personal rating attached to a Got It event.
 
 import { getAllActivityRows, applyRemoteRow, type ActivityRow } from './activity';
 import { supabase } from './supabaseClient';
 
-interface RemoteActivityRow extends ActivityRow {
-  value: number | null;
-}
+type RemoteActivityRow = ActivityRow;
 
 let inFlight: Promise<void> | null = null;
+let queuedUserId: string | null = null;
 
 export function syncActivity(userId: string): Promise<void> {
+  queuedUserId = userId;
   if (!inFlight) {
-    inFlight = runSync(userId).finally(() => {
+    inFlight = drainSyncQueue().finally(() => {
       inFlight = null;
     });
   }
   return inFlight;
+}
+
+async function drainSyncQueue(): Promise<void> {
+  while (queuedUserId) {
+    const userId = queuedUserId;
+    queuedUserId = null;
+    await runSync(userId);
+  }
 }
 
 async function runSync(userId: string): Promise<void> {

@@ -32,8 +32,9 @@ export function ItemResultPreviewCard({
   item,
   restaurant,
   badges,
-  isFavorited,
-  isWantToTried,
+  isLoved,
+  isNeeded,
+  gotItCount,
   origin,
   onOpen,
   onClose,
@@ -41,8 +42,9 @@ export function ItemResultPreviewCard({
   item: SearchIndexEntry | null;
   restaurant: Restaurant;
   badges: string[];
-  isFavorited: boolean;
-  isWantToTried: boolean;
+  isLoved: boolean;
+  isNeeded: boolean;
+  gotItCount: number;
   origin: Origin | null;
   onOpen: () => void;
   onClose: () => void;
@@ -62,9 +64,11 @@ export function ItemResultPreviewCard({
   const translateX0 = originCenterX - screenWidth / 2;
   const translateY0 = originCenterY - screenHeight / 2;
 
-  const statusLabels = [isFavorited && '♥ Favorited', isWantToTried && '★ Want to Try'].filter(
-    Boolean
-  ) as string[];
+  const statusLabels = [
+    isNeeded && '★ Need It',
+    gotItCount > 0 && `✓ Got It ×${gotItCount}`,
+    isLoved && '♥ Love It',
+  ].filter(Boolean) as string[];
 
   return (
     <Modal visible={item !== null} transparent animationType="none" onRequestClose={onClose}>

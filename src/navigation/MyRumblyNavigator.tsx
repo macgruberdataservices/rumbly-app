@@ -3,8 +3,8 @@ import { MyRumblyHomeScreen } from '../screens/MyRumblyHomeScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 
-// One-screen stack for now (see roadmap: real content — favorites,
-// ratings, check-ins, settings — lands in Phase 3/4). Nested now so those
+// One-screen stack for now (see roadmap: real Need It, Got It, Love It,
+// ratings, history, and settings content lands later). Nested now so those
 // phases don't need another navigation restructure.
 export type MyRumblyStackParamList = {
   MyRumblyHome: undefined;

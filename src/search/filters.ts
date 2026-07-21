@@ -13,9 +13,8 @@
 //   which the roadmap's 2026-07-19 data-spike deliberately excluded from
 //   the Related taxonomy for being duplicative Disney marketing metadata
 //   — same reasoning applies here.
-// - Price and personal state's "Want to Try"/"Rated"/"Not Tried" have no
-//   UI or data yet (Milestone 4 only wired Favorite/Check-In) — only
-//   Favorites is real.
+// - Price and personal state's item-level Need It/Got It/ratings do not
+//   have restaurant-level filters yet — only Love is currently filterable.
 //
 // Filters combine additively: OR within a group, AND across groups
 // (resolved 2026-07-19, see Docs/ROADMAP.md open question #1).
@@ -31,7 +30,7 @@ export interface SearchFilters {
   mealPeriods: Set<string>;
   serviceTypes: Set<string>;
   priceTiers: Set<number>;
-  favoritesOnly: boolean;
+  lovedOnly: boolean;
 }
 
 export function emptyFilters(): SearchFilters {
@@ -43,7 +42,7 @@ export function emptyFilters(): SearchFilters {
     mealPeriods: new Set(),
     serviceTypes: new Set(),
     priceTiers: new Set(),
-    favoritesOnly: false,
+    lovedOnly: false,
   };
 }
 
@@ -56,7 +55,7 @@ export function countActiveFilters(f: SearchFilters): number {
     f.mealPeriods.size +
     f.serviceTypes.size +
     f.priceTiers.size +
-    (f.favoritesOnly ? 1 : 0)
+    (f.lovedOnly ? 1 : 0)
   );
 }
 
@@ -101,7 +100,7 @@ export function cuisineLabel(tag: string): string {
 export function applyFilters(
   restaurants: Restaurant[],
   filters: SearchFilters,
-  favoritedIds: Set<string>,
+  lovedIds: Set<string>,
   openNow: boolean,
   hoursData: HoursData | null
 ): Restaurant[] {
@@ -117,7 +116,7 @@ export function applyFilters(
       return false;
     }
     if (filters.priceTiers.size && !(r.price_tier !== null && filters.priceTiers.has(r.price_tier))) return false;
-    if (filters.favoritesOnly && !favoritedIds.has(r.restaurant_id)) return false;
+    if (filters.lovedOnly && !lovedIds.has(r.restaurant_id)) return false;
     if (openNow && getTodayStatus(hoursData, r.restaurant_id).kind !== 'open') return false;
     return true;
   });

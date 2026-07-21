@@ -8,6 +8,7 @@ import type { MenuItem } from '../data/types';
 import { useActivity } from '../hooks/useActivity';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { MenuItemPreviewCard } from './MenuItemPreviewCard';
+import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from './GotItRatingCard';
 import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -26,7 +27,7 @@ const ROW_HEIGHT = 68;
 // exact item the user tapped through to.
 //
 // Interaction model (owner decision 2026-07-20, modeled on Apple Mail):
-// swipe-left reveals Favorite + (if entitled) Want-to-Try circular action
+// swipe-left reveals labeled Need It / Got It / Love It circular actions
 // buttons; long-press shows a purely visual preview with the full
 // description and badges the fixed row can't fit; there's no navigation
 // target for a plain tap (items don't have their own screen), so the row
@@ -52,15 +53,29 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
     item.is_alcoholic && '21+',
   ].filter(Boolean) as string[];
 
-  const { favoritedItemKeys, wantToTriedItemKeys, toggleItemFavorite, toggleItemWantToTry } = useActivity();
-  const wantToTryEnabled = useEntitlement('want_to_try');
+  const {
+    lovedItemKeys,
+    needItItemKeys,
+    gotItItemCounts,
+    toggleItemLove,
+    toggleItemNeedIt,
+    addItemGotIt,
+    confirmGotIt,
+    undoGotIt,
+  } = useActivity();
+  const needItEnabled = useEntitlement('need_it');
+  const gotItEnabled = useEntitlement('got_it');
+  const ratingsEnabled = useEntitlement('ratings');
   const key = `${item.restaurant_id}:${item.item_id}`;
-  const isFavorited = favoritedItemKeys.has(key);
-  const isWantToTried = wantToTriedItemKeys.has(key);
+  const isLoved = lovedItemKeys.has(key);
+  const isNeeded = needItItemKeys.has(key);
+  const gotItCount = gotItItemCounts.get(key) ?? 0;
 
   const swipeableRef = useRef<Swipeable>(null);
   const rowRef = useRef<View>(null);
+  const gotItButtonRef = useRef<View>(null);
   const [previewVisible, setPreviewVisible] = useState(false);
+  const [gotItEvent, setGotItEvent] = useState<GotItCardEvent | null>(null);
   const [previewOrigin, setPreviewOrigin] = useState<{ x: number; y: number; width: number; height: number } | null>(
     null
   );
@@ -91,26 +106,72 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
     setTimeout(() => swipeableRef.current?.close(), 350);
   };
 
+  const measureGotItOrigin = (): Promise<GotItCardOrigin | null> =>
+    new Promise((resolve) => {
+      if (!gotItButtonRef.current) {
+        resolve(null);
+        return;
+      }
+      gotItButtonRef.current.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }));
+    });
+
+  const openGotItCard = async () => {
+    const origin = await measureGotItOrigin();
+    const clientId = await addItemGotIt(item.restaurant_id, item.item_id);
+    setGotItEvent({ clientId, targetName: item.item, count: gotItCount + 1, origin });
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch((err) =>
+      console.warn('haptics failed (native module may need a fresh build):', err)
+    );
+    swipeableRef.current?.close();
+  };
+
   const renderRightActions = () => (
     <View style={styles.actionsRow}>
-      <Pressable
-        style={[styles.actionCircle, isFavorited && styles.actionCircleFavorite]}
-        onPress={() => confirmThenClose(() => toggleItemFavorite(item.restaurant_id, item.item_id))}
-        accessibilityRole="button"
-        accessibilityLabel={isFavorited ? 'Remove favorite' : 'Add favorite'}
-      >
-        <Text style={styles.actionGlyph}>♥</Text>
-      </Pressable>
-      {wantToTryEnabled && (
+      {needItEnabled && (
         <Pressable
-          style={[styles.actionCircle, isWantToTried && styles.actionCircleWantToTry]}
-          onPress={() => confirmThenClose(() => toggleItemWantToTry(item.restaurant_id, item.item_id))}
+          style={styles.actionButton}
+          onPress={() => confirmThenClose(() => toggleItemNeedIt(item.restaurant_id, item.item_id))}
           accessibilityRole="button"
-          accessibilityLabel={isWantToTried ? 'Remove want to try' : 'Add want to try'}
+          accessibilityLabel={isNeeded ? 'Remove from Need It' : 'Add to Need It'}
+          accessibilityState={{ selected: isNeeded }}
         >
-          <Text style={styles.actionGlyph}>★</Text>
+          <View style={[styles.actionCircle, isNeeded && styles.actionCircleNeed]}>
+            <Text style={[styles.actionGlyph, isNeeded && styles.actionGlyphActive]}>★</Text>
+          </View>
+          <Text style={styles.actionLabel}>Need It</Text>
         </Pressable>
       )}
+      {gotItEnabled && (
+        <Pressable
+          ref={gotItButtonRef}
+          style={styles.actionButton}
+          onPress={openGotItCard}
+          accessibilityRole="button"
+          accessibilityLabel={gotItCount > 0 ? `Log Got It again, logged ${gotItCount} times` : 'Log Got It'}
+        >
+          <View style={[styles.actionCircle, gotItCount > 0 && styles.actionCircleGot]}>
+            <Text style={[styles.actionGlyph, gotItCount > 0 && styles.actionGlyphActive]}>✓</Text>
+            {gotItCount > 0 && (
+              <View style={styles.countBadge}>
+                <Text style={styles.countBadgeLabel}>{gotItCount > 99 ? '99+' : gotItCount}</Text>
+              </View>
+            )}
+          </View>
+          <Text style={styles.actionLabel}>Got It</Text>
+        </Pressable>
+      )}
+      <Pressable
+        style={styles.actionButton}
+        onPress={() => confirmThenClose(() => toggleItemLove(item.restaurant_id, item.item_id))}
+        accessibilityRole="button"
+        accessibilityLabel={isLoved ? 'Remove from Love It' : 'Add to Love It'}
+        accessibilityState={{ selected: isLoved }}
+      >
+        <View style={[styles.actionCircle, isLoved && styles.actionCircleLove]}>
+          <Text style={[styles.actionGlyph, isLoved && styles.actionGlyphActive]}>♥</Text>
+        </View>
+        <Text style={styles.actionLabel}>Love It</Text>
+      </Pressable>
     </View>
   );
 
@@ -190,6 +251,20 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
           animateShadow(0);
         }}
       />
+      <GotItRatingCard
+        event={gotItEvent}
+        ratingsEnabled={ratingsEnabled}
+        onConfirm={async (rating) => {
+          if (!gotItEvent) return;
+          await confirmGotIt(gotItEvent.clientId, rating);
+          setGotItEvent(null);
+        }}
+        onUndo={async () => {
+          if (!gotItEvent) return;
+          await undoGotIt(gotItEvent.clientId, item.restaurant_id, item.item_id);
+          setGotItEvent(null);
+        }}
+      />
     </>
   );
 }
@@ -246,24 +321,63 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.sm,
-    gap: SPACING.sm,
+    gap: SPACING.xs,
+  },
+  actionButton: {
+    width: 50,
+    minHeight: 56,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   actionCircle: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: COLORS.border,
   },
-  actionCircleFavorite: {
+  actionCircleLove: {
     backgroundColor: COLORS.pine,
   },
-  actionCircleWantToTry: {
+  actionCircleNeed: {
     backgroundColor: COLORS.gold,
   },
+  actionCircleGot: {
+    backgroundColor: COLORS.barkBrown,
+  },
   actionGlyph: {
-    fontSize: 18,
+    fontSize: 16,
+    color: COLORS.ink,
+  },
+  actionGlyphActive: {
+    color: COLORS.surface,
+  },
+  actionLabel: {
+    marginTop: 2,
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 10,
+    lineHeight: 12,
+    color: COLORS.muted,
+  },
+  countBadge: {
+    position: 'absolute',
+    top: -5,
+    right: -7,
+    minWidth: 18,
+    height: 18,
+    borderRadius: 9,
+    paddingHorizontal: 4,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.pine,
+    borderWidth: 1,
+    borderColor: COLORS.surface,
+  },
+  countBadgeLabel: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 9,
+    lineHeight: 11,
     color: COLORS.surface,
   },
 });

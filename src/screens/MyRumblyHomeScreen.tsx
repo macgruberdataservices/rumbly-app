@@ -6,7 +6,7 @@ import { text } from '../theme/typography';
 import { useAuth } from '../hooks/useAuth';
 import { useEntitlement } from '../hooks/useEntitlement';
 
-// Favorites/check-ins already work fully offline without an account
+// Love/Got It already work fully offline without an account
 // (activityProvider.tsx). Signing in only adds cross-device sync
 // (Milestone 12) and unlocks entitlement-gated features (Milestone 11+) --
 // it is never required to use the app.
@@ -48,17 +48,19 @@ function SignedInPanel({
   // milestones give these flags a real consumer. userId is shown so it can
   // be compared directly against user_entitlements.user_id in the
   // dashboard when a flag doesn't flip as expected.
-  const wantToTryEnabled = useEntitlement('want_to_try');
+  const needItEnabled = useEntitlement('need_it');
+  const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
 
   return (
     <View style={styles.section}>
       <Text style={text.body}>Signed in as {email}</Text>
       <Text style={[text.bodyMuted, styles.subtitle]}>
-        Favorites, ratings, check-ins, and your stats are coming in a later phase.
+        Need It, Got It, Love It, ratings, and your stats are coming in a later phase.
       </Text>
       <Text style={text.bodyMuted}>
-        Want to Try: {wantToTryEnabled ? 'On' : 'Off'} · Ratings: {ratingsEnabled ? 'On' : 'Off'}
+        Need It: {needItEnabled ? 'On' : 'Off'} · Got It: {gotItEnabled ? 'On' : 'Off'} · Ratings:{' '}
+        {ratingsEnabled ? 'On' : 'Off'}
       </Text>
       <Text style={[text.bodyMuted, styles.userId]} selectable>
         user_id: {userId}
@@ -97,7 +99,7 @@ function AuthPanel() {
       style={styles.section}
     >
       <Text style={[text.bodyMuted, styles.subtitle]}>
-        Favorites work without an account. Sign in to sync across devices.
+        Love It and Got It work without an account. Sign in to sync across devices.
       </Text>
 
       <TextInput

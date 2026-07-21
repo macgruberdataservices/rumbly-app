@@ -1,5 +1,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { Animated, Easing, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   countActiveFilters,
   cuisineLabel,
@@ -28,7 +29,7 @@ function groupCount(filters: SearchFilters, group: FilterGroupKey): number {
   }
   if (group === 'food') return filters.cuisines.size;
   if (group === 'dining') return filters.mealPeriods.size + filters.serviceTypes.size;
-  return filters.priceTiers.size + (filters.favoritesOnly ? 1 : 0);
+  return filters.priceTiers.size + (filters.lovedOnly ? 1 : 0);
 }
 
 function clearGroup(filters: SearchFilters, group: FilterGroupKey): SearchFilters {
@@ -37,7 +38,7 @@ function clearGroup(filters: SearchFilters, group: FilterGroupKey): SearchFilter
   }
   if (group === 'food') return { ...filters, cuisines: new Set() };
   if (group === 'dining') return { ...filters, mealPeriods: new Set(), serviceTypes: new Set() };
-  return { ...filters, priceTiers: new Set(), favoritesOnly: false };
+  return { ...filters, priceTiers: new Set(), lovedOnly: false };
 }
 
 function FilterChip({
@@ -92,6 +93,7 @@ export function FilterPanel({
   onChange: (filters: SearchFilters) => void;
 }) {
   const { height: windowHeight } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
   const expandedHeight = Math.min(220, windowHeight * 0.25);
   const height = useRef(new Animated.Value(visible ? PANEL_COLLAPSED_HEIGHT : 0)).current;
   const contentOpacity = useRef(new Animated.Value(expanded ? 1 : 0)).current;
@@ -108,6 +110,11 @@ export function FilterPanel({
   const pillBarTranslateY = useRef(new Animated.Value(visible ? 0 : PANEL_COLLAPSED_HEIGHT)).current;
   const activeCount = countActiveFilters(filters);
   const activeGroupCount = groupCount(filters, activeGroup);
+  const dockMarginBottom = height.interpolate({
+    inputRange: [0, PANEL_COLLAPSED_HEIGHT],
+    outputRange: [0, -insets.bottom],
+    extrapolate: 'clamp',
+  });
 
   useEffect(() => {
     const targetHeight = !visible ? 0 : expanded ? expandedHeight : PANEL_COLLAPSED_HEIGHT;
@@ -228,16 +235,19 @@ export function FilterPanel({
           />
         ))}
         <FilterChip
-          label="Favorites"
-          active={filters.favoritesOnly}
-          onPress={() => onChange({ ...filters, favoritesOnly: !filters.favoritesOnly })}
+          label="Love It"
+          active={filters.lovedOnly}
+          onPress={() => onChange({ ...filters, lovedOnly: !filters.lovedOnly })}
         />
       </OptionBlock>
     );
   };
 
   return (
-    <Animated.View style={[styles.dock, { height }]} pointerEvents={visible ? 'auto' : 'none'}>
+    <Animated.View
+      style={[styles.dock, { height, marginBottom: dockMarginBottom }]}
+      pointerEvents={visible ? 'auto' : 'none'}
+    >
       <Animated.View
         style={[
           styles.expandedPane,
@@ -286,6 +296,10 @@ export function FilterPanel({
             <Pressable
               key={group}
               onPress={() => {
+                if (selected) {
+                  onExpandedChange(false);
+                  return;
+                }
                 onActiveGroupChange(group);
                 onExpandedChange(true);
               }}

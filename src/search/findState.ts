@@ -15,7 +15,7 @@ export interface SerializedSearchFilters {
   mealPeriods: string[];
   serviceTypes: string[];
   priceTiers: number[];
-  favoritesOnly: boolean;
+  lovedOnly: boolean;
 }
 
 export interface FindBrowseContext {
@@ -24,7 +24,7 @@ export interface FindBrowseContext {
 }
 
 export interface FindRestoreState {
-  version: 1;
+  version: 2;
   query: string;
   filters: SerializedSearchFilters;
   activeCategory: SearchCategory;
@@ -48,7 +48,7 @@ export function serializeFilters(filters: SearchFilters): SerializedSearchFilter
     mealPeriods: [...filters.mealPeriods],
     serviceTypes: [...filters.serviceTypes],
     priceTiers: [...filters.priceTiers],
-    favoritesOnly: filters.favoritesOnly,
+    lovedOnly: filters.lovedOnly,
   };
 }
 
@@ -62,13 +62,13 @@ export function deserializeFilters(filters?: SerializedSearchFilters): SearchFil
     mealPeriods: new Set(filters.mealPeriods),
     serviceTypes: new Set(filters.serviceTypes),
     priceTiers: new Set(filters.priceTiers),
-    favoritesOnly: filters.favoritesOnly,
+    lovedOnly: filters.lovedOnly,
   };
 }
 
 export function defaultFindRestoreState(): FindRestoreState {
   return {
-    version: 1,
+    version: 2,
     query: '',
     filters: serializeFilters(emptyFilters()),
     activeCategory: 'all',
@@ -85,7 +85,7 @@ export function defaultFindRestoreState(): FindRestoreState {
 }
 
 export function resolveFindRestoreState(state?: FindRestoreState): FindRestoreState {
-  return state?.version === 1
+  return state?.version === 2
     ? { ...defaultFindRestoreState(), ...state, nearMeOrigin: state.nearMeOrigin ?? null }
     : defaultFindRestoreState();
 }

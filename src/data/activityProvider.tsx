@@ -5,27 +5,28 @@
 //
 // Milestone 12: when signed in, also runs a background sync pass (pull
 // cross-device changes on sign-in/launch, push local writes as they
-// happen) via sync.ts. Entirely inert while signed out -- Favorites/
-// check-ins stay local-only in that case, per the Phase 3 decision that
+// happen) via sync.ts. Entirely inert while signed out -- Love/Got It
+// stay local-only in that case, per the decision that
 // account sign-in is never required to use them.
 //
-// Favorite/Want-to-Try split by level (owner decision 2026-07-20, after
-// a first pass wrongly put both at restaurant-level only): Favorite stays
-// restaurant-level via ExpandedHeader (favoritedIds) *and* gets an
-// independent item-level version (favoritedItemKeys, keyed by
-// `${restaurantId}:${itemId}`); Want-to-Try is item-level only
-// (wantToTriedItemKeys) -- no restaurant-level consumer for it exists.
+// Love exists at restaurant and item level; Need It is item-only. Got It
+// is a repeatable event at both levels, with count Maps derived from those
+// rows for compact UI state.
 
 import React, { createContext, useCallback, useEffect, useState } from 'react';
 import {
-  toggleFavorite as toggleFavoriteDb,
-  toggleItemFavorite as toggleItemFavoriteDb,
-  toggleItemWantToTry as toggleItemWantToTryDb,
-  addCheckIn as addCheckInDb,
-  loadFavoritedIds,
-  loadFavoritedItemKeys,
-  loadWantToTriedItemKeys,
-  loadCheckedInIds,
+  toggleLove as toggleLoveDb,
+  toggleItemLove as toggleItemLoveDb,
+  toggleItemNeedIt as toggleItemNeedItDb,
+  addRestaurantGotIt as addRestaurantGotItDb,
+  addItemGotIt as addItemGotItDb,
+  setGotItRating as setGotItRatingDb,
+  undoGotIt as undoGotItDb,
+  loadLovedIds,
+  loadLovedItemKeys,
+  loadNeedItItemKeys,
+  loadGotItItemCounts,
+  loadGotItRestaurantCounts,
 } from './activity';
 import { syncActivity } from './sync';
 import { useAuth } from '../hooks/useAuth';
@@ -35,36 +36,43 @@ function itemKey(restaurantId: string, itemId: string): string {
 }
 
 interface ActivityContextValue {
-  favoritedIds: Set<string>;
-  favoritedItemKeys: Set<string>;
-  wantToTriedItemKeys: Set<string>;
-  checkedInIds: Set<string>;
-  toggleFavorite: (restaurantId: string) => Promise<void>;
-  toggleItemFavorite: (restaurantId: string, itemId: string) => Promise<void>;
-  toggleItemWantToTry: (restaurantId: string, itemId: string) => Promise<void>;
-  addCheckIn: (restaurantId: string) => Promise<void>;
+  lovedIds: Set<string>;
+  lovedItemKeys: Set<string>;
+  needItItemKeys: Set<string>;
+  gotItItemCounts: Map<string, number>;
+  gotItRestaurantCounts: Map<string, number>;
+  toggleLove: (restaurantId: string) => Promise<void>;
+  toggleItemLove: (restaurantId: string, itemId: string) => Promise<void>;
+  toggleItemNeedIt: (restaurantId: string, itemId: string) => Promise<void>;
+  addRestaurantGotIt: (restaurantId: string) => Promise<string>;
+  addItemGotIt: (restaurantId: string, itemId: string) => Promise<string>;
+  confirmGotIt: (clientId: string, rating: number | null) => Promise<void>;
+  undoGotIt: (clientId: string, restaurantId: string, itemId: string | null) => Promise<void>;
 }
 
 const ActivityContext = createContext<ActivityContextValue | null>(null);
 
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
-  const [favoritedIds, setFavoritedIds] = useState<Set<string>>(new Set());
-  const [favoritedItemKeys, setFavoritedItemKeys] = useState<Set<string>>(new Set());
-  const [wantToTriedItemKeys, setWantToTriedItemKeys] = useState<Set<string>>(new Set());
-  const [checkedInIds, setCheckedInIds] = useState<Set<string>>(new Set());
+  const [lovedIds, setLovedIds] = useState<Set<string>>(new Set());
+  const [lovedItemKeys, setLovedItemKeys] = useState<Set<string>>(new Set());
+  const [needItItemKeys, setNeedItItemKeys] = useState<Set<string>>(new Set());
+  const [gotItItemCounts, setGotItItemCounts] = useState<Map<string, number>>(new Map());
+  const [gotItRestaurantCounts, setGotItRestaurantCounts] = useState<Map<string, number>>(new Map());
 
   const reloadFromDb = useCallback(async () => {
-    const [favorited, favoritedItems, wantToTriedItems, checkedIn] = await Promise.all([
-      loadFavoritedIds(),
-      loadFavoritedItemKeys(),
-      loadWantToTriedItemKeys(),
-      loadCheckedInIds(),
+    const [loved, lovedItems, needItItems, gotItItems, gotItRestaurants] = await Promise.all([
+      loadLovedIds(),
+      loadLovedItemKeys(),
+      loadNeedItItemKeys(),
+      loadGotItItemCounts(),
+      loadGotItRestaurantCounts(),
     ]);
-    setFavoritedIds(favorited);
-    setFavoritedItemKeys(favoritedItems);
-    setWantToTriedItemKeys(wantToTriedItems);
-    setCheckedInIds(checkedIn);
+    setLovedIds(loved);
+    setLovedItemKeys(lovedItems);
+    setNeedItItemKeys(needItItems);
+    setGotItItemCounts(gotItItems);
+    setGotItRestaurantCounts(gotItRestaurants);
   }, []);
 
   useEffect(() => {
@@ -83,12 +91,12 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       .catch((err) => console.warn('sync on sign-in failed:', err));
   }, [user, reloadFromDb]);
 
-  const toggleFavorite = useCallback(
+  const toggleLove = useCallback(
     async (restaurantId: string) => {
-      const nowFavorited = await toggleFavoriteDb(restaurantId);
-      setFavoritedIds((prev) => {
+      const nowLoved = await toggleLoveDb(restaurantId);
+      setLovedIds((prev) => {
         const next = new Set(prev);
-        if (nowFavorited) {
+        if (nowLoved) {
           next.add(restaurantId);
         } else {
           next.delete(restaurantId);
@@ -96,19 +104,19 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
       if (user) {
-        syncActivity(user.id).catch((err) => console.warn('sync after favorite failed:', err));
+        syncActivity(user.id).catch((err) => console.warn('sync after Love failed:', err));
       }
     },
     [user]
   );
 
-  const toggleItemFavorite = useCallback(
+  const toggleItemLove = useCallback(
     async (restaurantId: string, itemId: string) => {
-      const nowFavorited = await toggleItemFavoriteDb(restaurantId, itemId);
+      const nowLoved = await toggleItemLoveDb(restaurantId, itemId);
       const key = itemKey(restaurantId, itemId);
-      setFavoritedItemKeys((prev) => {
+      setLovedItemKeys((prev) => {
         const next = new Set(prev);
-        if (nowFavorited) {
+        if (nowLoved) {
           next.add(key);
         } else {
           next.delete(key);
@@ -116,19 +124,19 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
       if (user) {
-        syncActivity(user.id).catch((err) => console.warn('sync after item favorite failed:', err));
+        syncActivity(user.id).catch((err) => console.warn('sync after item Love failed:', err));
       }
     },
     [user]
   );
 
-  const toggleItemWantToTry = useCallback(
+  const toggleItemNeedIt = useCallback(
     async (restaurantId: string, itemId: string) => {
-      const nowWantToTried = await toggleItemWantToTryDb(restaurantId, itemId);
+      const nowNeeded = await toggleItemNeedItDb(restaurantId, itemId);
       const key = itemKey(restaurantId, itemId);
-      setWantToTriedItemKeys((prev) => {
+      setNeedItItemKeys((prev) => {
         const next = new Set(prev);
-        if (nowWantToTried) {
+        if (nowNeeded) {
           next.add(key);
         } else {
           next.delete(key);
@@ -136,18 +144,74 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         return next;
       });
       if (user) {
-        syncActivity(user.id).catch((err) => console.warn('sync after item want-to-try failed:', err));
+        syncActivity(user.id).catch((err) => console.warn('sync after item Need It failed:', err));
       }
     },
     [user]
   );
 
-  const addCheckIn = useCallback(
+  const addRestaurantGotIt = useCallback(
     async (restaurantId: string) => {
-      await addCheckInDb(restaurantId);
-      setCheckedInIds((prev) => new Set(prev).add(restaurantId));
+      const clientId = await addRestaurantGotItDb(restaurantId);
+      setGotItRestaurantCounts((prev) => {
+        const next = new Map(prev);
+        next.set(restaurantId, (next.get(restaurantId) ?? 0) + 1);
+        return next;
+      });
+      return clientId;
+    },
+    []
+  );
+
+  const addItemGotIt = useCallback(
+    async (restaurantId: string, itemId: string) => {
+      const clientId = await addItemGotItDb(restaurantId, itemId);
+      setGotItItemCounts((prev) => {
+        const next = new Map(prev);
+        const key = itemKey(restaurantId, itemId);
+        next.set(key, (next.get(key) ?? 0) + 1);
+        return next;
+      });
+      return clientId;
+    },
+    []
+  );
+
+  const confirmGotIt = useCallback(
+    async (clientId: string, rating: number | null) => {
+      if (rating !== null) {
+        await setGotItRatingDb(clientId, rating);
+      }
       if (user) {
-        syncActivity(user.id).catch((err) => console.warn('sync after check-in failed:', err));
+        syncActivity(user.id).catch((err) => console.warn('sync after Got It confirmation failed:', err));
+      }
+    },
+    [user]
+  );
+
+  const undoGotIt = useCallback(
+    async (clientId: string, restaurantId: string, itemId: string | null) => {
+      await undoGotItDb(clientId);
+      if (itemId) {
+        const key = itemKey(restaurantId, itemId);
+        setGotItItemCounts((prev) => {
+          const next = new Map(prev);
+          const count = Math.max(0, (next.get(key) ?? 0) - 1);
+          if (count === 0) next.delete(key);
+          else next.set(key, count);
+          return next;
+        });
+      } else {
+        setGotItRestaurantCounts((prev) => {
+          const next = new Map(prev);
+          const count = Math.max(0, (next.get(restaurantId) ?? 0) - 1);
+          if (count === 0) next.delete(restaurantId);
+          else next.set(restaurantId, count);
+          return next;
+        });
+      }
+      if (user) {
+        syncActivity(user.id).catch((err) => console.warn('sync after Got It undo failed:', err));
       }
     },
     [user]
@@ -156,14 +220,18 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
   return (
     <ActivityContext.Provider
       value={{
-        favoritedIds,
-        favoritedItemKeys,
-        wantToTriedItemKeys,
-        checkedInIds,
-        toggleFavorite,
-        toggleItemFavorite,
-        toggleItemWantToTry,
-        addCheckIn,
+        lovedIds,
+        lovedItemKeys,
+        needItItemKeys,
+        gotItItemCounts,
+        gotItRestaurantCounts,
+        toggleLove,
+        toggleItemLove,
+        toggleItemNeedIt,
+        addRestaurantGotIt,
+        addItemGotIt,
+        confirmGotIt,
+        undoGotIt,
       }}
     >
       {children}

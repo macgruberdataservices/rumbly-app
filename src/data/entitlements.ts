@@ -7,13 +7,19 @@ import { supabase } from './supabaseClient';
 
 type EntitlementMap = Record<string, boolean>;
 
+function normalizeEntitlements(map: EntitlementMap): EntitlementMap {
+  if (map.want_to_try === undefined) return map;
+  const { want_to_try, ...rest } = map;
+  return { ...rest, need_it: rest.need_it ?? want_to_try };
+}
+
 function cacheKey(userId: string): string {
   return `rumbly.entitlements.${userId}`;
 }
 
 export async function loadCachedEntitlements(userId: string): Promise<EntitlementMap> {
   const raw = await AsyncStorage.getItem(cacheKey(userId));
-  return raw ? JSON.parse(raw) : {};
+  return raw ? normalizeEntitlements(JSON.parse(raw)) : {};
 }
 
 export async function fetchEntitlements(userId: string): Promise<EntitlementMap> {
@@ -32,7 +38,8 @@ export async function fetchEntitlements(userId: string): Promise<EntitlementMap>
 
   const map: EntitlementMap = {};
   for (const row of data) {
-    map[row.feature_key as string] = row.enabled as boolean;
+    const featureKey = row.feature_key === 'want_to_try' ? 'need_it' : (row.feature_key as string);
+    map[featureKey] = map[featureKey] === true || (row.enabled as boolean);
   }
   await AsyncStorage.setItem(cacheKey(userId), JSON.stringify(map));
   return map;

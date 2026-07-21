@@ -89,7 +89,7 @@ function NearMeIcon({ active }: { active: boolean }) {
 
 export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
-  const { favoritedIds } = useActivity();
+  const { lovedIds } = useActivity();
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
   const initialState = initialStateRef.current;
   const initialContentOffsetRef = useRef({ x: 0, y: initialState.resultListOffset });
@@ -118,8 +118,8 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const isSearchActiveRef = useRef(initialState.query.trim().length >= 2);
 
   const filteredRestaurants = useMemo(
-    () => applyFilters(restaurants, filters, favoritedIds, false, null),
-    [restaurants, filters, favoritedIds]
+    () => applyFilters(restaurants, filters, lovedIds, false, null),
+    [restaurants, filters, lovedIds]
   );
   const filterOptions = useMemo(() => collectFilterOptions(restaurants), [restaurants]);
   const activeFilterCount = countActiveFilters(filters);

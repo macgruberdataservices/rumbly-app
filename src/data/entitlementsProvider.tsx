@@ -2,7 +2,7 @@
 // local cache first (so a flag check works offline immediately), then
 // refreshes from Supabase. Signed-out users get an empty map -- entitlements
 // are account-scoped by design, there's no anonymous/local variant of a
-// feature gate the way Favorites has a local-only mode.
+// feature gate the way Love It has a local-only mode.
 
 import React, { createContext, useEffect, useState } from 'react';
 import { useAuth } from '../hooks/useAuth';

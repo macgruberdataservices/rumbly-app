@@ -29,11 +29,15 @@ export function ExploreNavigator() {
         component={ExploreHomeScreen}
         options={{ headerShown: false, title: 'Explore' }}
       />
-      <Stack.Screen name="LocationList" component={ParkListScreen} options={{ title: 'Explore by Location' }} />
+      <Stack.Screen
+        name="LocationList"
+        component={ParkListScreen}
+        options={{ headerShown: false, title: 'Explore by Location' }}
+      />
       <Stack.Screen
         name="RestaurantList"
         component={RestaurantListScreen}
-        options={({ route }) => ({ title: route.params.groupLabel })}
+        options={{ headerShown: false }}
       />
       <Stack.Screen
         name="RestaurantDetail"

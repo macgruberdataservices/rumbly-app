@@ -4,6 +4,7 @@ import * as Haptics from 'expo-haptics';
 import type { Restaurant } from '../data/types';
 import { formatProximityDistance } from '../location/proximity';
 import { useActivity } from '../hooks/useActivity';
+import { useEntitlement } from '../hooks/useEntitlement';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { getTodayStatus } from '../data/hoursStatus';
 import { HighlightedText } from './HighlightedText';
@@ -28,8 +29,8 @@ function locationLabel(r: Restaurant): string {
 // non-search call sites (ParkListScreen, RestaurantListScreen) pass
 // nothing and render exactly as before Milestone 6.
 //
-// No swipe here -- Favorite/Want-to-Try are item-level activities, live
-// on MenuItemRow/ItemResultRow; restaurant-level Favorite stays on
+// No swipe here -- Need It/Got It/Love It item actions live on
+// MenuItemRow/ItemResultRow; restaurant-level Love stays on
 // ExpandedHeader, so there's no item-level action to reveal via swipe at
 // this granularity. Long-press *does* get the same native-feeling peek
 // as MenuItemRow (owner decision 2026-07-20, applied after that pattern
@@ -60,10 +61,12 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
     priceDots(restaurant.price_tier),
     restaurant.experience_type,
   ].filter(Boolean);
-  const { favoritedIds, checkedInIds } = useActivity();
+  const { lovedIds, gotItRestaurantCounts } = useActivity();
+  const gotItEnabled = useEntitlement('got_it');
   const { hoursData } = useDataProvider();
-  const isFavorited = favoritedIds.has(restaurant.restaurant_id);
-  const hasActivity = isFavorited || checkedInIds.has(restaurant.restaurant_id);
+  const isLoved = lovedIds.has(restaurant.restaurant_id);
+  const gotItCount = gotItRestaurantCounts.get(restaurant.restaurant_id) ?? 0;
+  const hasActivity = isLoved || (gotItEnabled && gotItCount > 0);
 
   const rowRef = useRef<View>(null);
   // Merges this component's own measurement ref with the ref the parent
@@ -140,7 +143,8 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
       <RestaurantPreviewCard
         restaurant={previewVisible ? restaurant : null}
         hoursStatus={hoursStatus}
-        isFavorited={isFavorited}
+        isLoved={isLoved}
+        gotItCount={gotItEnabled ? gotItCount : 0}
         origin={previewOrigin}
         onOpen={() => {
           setPreviewVisible(false);

@@ -28,14 +28,16 @@ function hasDiningPlan(r: Restaurant): boolean {
 export function RestaurantPreviewCard({
   restaurant,
   hoursStatus,
-  isFavorited,
+  isLoved,
+  gotItCount,
   origin,
   onOpen,
   onClose,
 }: {
   restaurant: Restaurant | null;
   hoursStatus: HoursStatus;
-  isFavorited: boolean;
+  isLoved: boolean;
+  gotItCount: number;
   origin: Origin | null;
   onOpen: () => void;
   onClose: () => void;
@@ -89,7 +91,10 @@ export function RestaurantPreviewCard({
                 >
                   {hoursStatus.label}
                 </Text>
-                {isFavorited && <Text style={[text.bodyMuted, styles.favorited]}>♥ Favorited</Text>}
+                {isLoved && <Text style={[text.bodyMuted, styles.loved]}>♥ Love It</Text>}
+                {gotItCount > 0 && (
+                  <Text style={[text.bodyMuted, styles.gotIt]}>✓ Got It ×{gotItCount}</Text>
+                )}
                 {pills.length > 0 && (
                   <View style={styles.pillRow}>
                     {pills.map((p) => (
@@ -134,8 +139,12 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginTop: SPACING.sm,
   },
-  favorited: {
+  loved: {
     color: COLORS.pine,
+    marginTop: SPACING.xs,
+  },
+  gotIt: {
+    color: COLORS.barkBrown,
     marginTop: SPACING.xs,
   },
   pillRow: {

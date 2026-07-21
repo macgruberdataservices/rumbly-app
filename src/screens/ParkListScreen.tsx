@@ -1,6 +1,6 @@
-import { useLayoutEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { FlatList, Pressable, StyleSheet, Text } from 'react-native';
+import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BrowseStackParamList } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
@@ -22,12 +22,14 @@ export function ParkListScreen({ navigation, route }: Props) {
     [parentGroupKey, restaurants]
   );
 
-  useLayoutEffect(() => {
-    navigation.setOptions({ title: parentGroupLabel ?? 'Explore by Location' });
-  }, [navigation, parentGroupLabel]);
-
   return (
-    <SafeAreaView style={styles.container} edges={['bottom']}>
+    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      <View style={styles.header}>
+        <Pressable onPress={() => navigation.goBack()} hitSlop={8} style={styles.backButton}>
+          <Text style={text.buttonLabel}>‹ Back</Text>
+        </Pressable>
+        <Text style={styles.title}>{parentGroupLabel ?? 'Explore by Location'}</Text>
+      </View>
       <FlatList
         data={groups}
         keyExtractor={(g) => g.key}
@@ -51,8 +53,24 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.surface,
   },
+  header: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
+    backgroundColor: COLORS.surface,
+  },
+  backButton: {
+    alignSelf: 'flex-start',
+    marginBottom: SPACING.sm,
+  },
+  title: {
+    fontFamily: text.sectionTitle.fontFamily,
+    fontSize: 24,
+    color: COLORS.ink,
+  },
   list: {
-    padding: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.lg,
   },
   tile: {
     backgroundColor: COLORS.surface,

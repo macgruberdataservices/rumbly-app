@@ -1,8 +1,11 @@
+import { useRef, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant } from '../../data/types';
 import type { HoursStatus } from '../../data/hoursStatus';
 import type { CapabilityKind } from './CapabilityDetailSheet';
 import { useActivity } from '../../hooks/useActivity';
+import { useEntitlement } from '../../hooks/useEntitlement';
+import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -33,66 +36,105 @@ export function ExpandedHeader({
 
   const hasDirections = restaurant.lat !== null && restaurant.lng !== null;
 
-  const { favoritedIds, checkedInIds, toggleFavorite, addCheckIn } = useActivity();
-  const isFavorited = favoritedIds.has(restaurant.restaurant_id);
-  const hasCheckedIn = checkedInIds.has(restaurant.restaurant_id);
+  const { lovedIds, gotItRestaurantCounts, toggleLove, addRestaurantGotIt, confirmGotIt, undoGotIt } = useActivity();
+  const gotItEnabled = useEntitlement('got_it');
+  const ratingsEnabled = useEntitlement('ratings');
+  const isLoved = lovedIds.has(restaurant.restaurant_id);
+  const gotItCount = gotItRestaurantCounts.get(restaurant.restaurant_id) ?? 0;
+  const gotItButtonRef = useRef<View>(null);
+  const [gotItEvent, setGotItEvent] = useState<GotItCardEvent | null>(null);
+
+  const measureGotItOrigin = (): Promise<GotItCardOrigin | null> =>
+    new Promise((resolve) => {
+      if (!gotItButtonRef.current) {
+        resolve(null);
+        return;
+      }
+      gotItButtonRef.current.measureInWindow((x, y, width, height) => resolve({ x, y, width, height }));
+    });
+
+  const openGotItCard = async () => {
+    const origin = await measureGotItOrigin();
+    const clientId = await addRestaurantGotIt(restaurant.restaurant_id);
+    setGotItEvent({ clientId, targetName: restaurant.restaurant, count: gotItCount + 1, origin });
+  };
 
   return (
-    <View style={styles.container}>
-      <Text style={text.restaurantName} numberOfLines={2}>
-        {restaurant.restaurant}
-      </Text>
-      <Text style={text.bodyMuted}>{locationLine(restaurant)}</Text>
+    <>
+      <View style={styles.container}>
+        <Text style={text.restaurantName} numberOfLines={2}>
+          {restaurant.restaurant}
+        </Text>
+        <Text style={text.bodyMuted}>{locationLine(restaurant)}</Text>
 
-      <Text style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}>
-        {hoursStatus.label}
-      </Text>
-      {!!serviceLine && <Text style={text.bodyMuted}>{serviceLine}</Text>}
+        <Text style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}>
+          {hoursStatus.label}
+        </Text>
+        {!!serviceLine && <Text style={text.bodyMuted}>{serviceLine}</Text>}
 
-      <View style={styles.pillRow}>
-        {restaurant.accepts_reservations && (
-          <Pressable style={styles.pill} onPress={() => onCapabilityPress('reservations')}>
-            <Text style={text.chip}>Reservations</Text>
+        <View style={styles.pillRow}>
+          {restaurant.accepts_reservations && (
+            <Pressable style={styles.pill} onPress={() => onCapabilityPress('reservations')}>
+              <Text style={text.chip}>Reservations</Text>
+            </Pressable>
+          )}
+          {restaurant.has_walkup_list && (
+            <Pressable style={styles.pill} onPress={() => onCapabilityPress('walkup')}>
+              <Text style={text.chip}>Walk-up List</Text>
+            </Pressable>
+          )}
+          {hasDiningPlan(restaurant) && (
+            <Pressable style={styles.pill} onPress={() => onCapabilityPress('diningPlan')}>
+              <Text style={text.chip}>Dining Plan</Text>
+            </Pressable>
+          )}
+        </View>
+
+        <View style={styles.actionRow}>
+          {hasDirections && (
+            <Pressable
+              style={styles.action}
+              onPress={() => {
+                const url =
+                  Platform.select({
+                    ios: `maps://?daddr=${restaurant.lat},${restaurant.lng}`,
+                    default: `geo:${restaurant.lat},${restaurant.lng}?q=${restaurant.lat},${restaurant.lng}`,
+                  }) ?? '';
+                Linking.openURL(url);
+              }}
+            >
+              <Text style={text.buttonLabel}>Directions</Text>
+            </Pressable>
+          )}
+          <Pressable style={styles.action} onPress={() => toggleLove(restaurant.restaurant_id)}>
+            <Text style={[text.buttonLabel, isLoved && styles.actionActiveText]}>
+              {isLoved ? 'Loved' : 'Love'}
+            </Text>
           </Pressable>
-        )}
-        {restaurant.has_walkup_list && (
-          <Pressable style={styles.pill} onPress={() => onCapabilityPress('walkup')}>
-            <Text style={text.chip}>Walk-up List</Text>
-          </Pressable>
-        )}
-        {hasDiningPlan(restaurant) && (
-          <Pressable style={styles.pill} onPress={() => onCapabilityPress('diningPlan')}>
-            <Text style={text.chip}>Dining Plan</Text>
-          </Pressable>
-        )}
+          {gotItEnabled && (
+            <Pressable ref={gotItButtonRef} style={styles.action} onPress={openGotItCard}>
+              <Text style={[text.buttonLabel, gotItCount > 0 && styles.actionActiveText]}>
+                Got It{gotItCount > 0 ? ` · ${gotItCount}` : ''}
+              </Text>
+            </Pressable>
+          )}
+        </View>
       </View>
-
-      <View style={styles.actionRow}>
-        {hasDirections && (
-          <Pressable
-            style={styles.action}
-            onPress={() => {
-              const url =
-                Platform.select({
-                  ios: `maps://?daddr=${restaurant.lat},${restaurant.lng}`,
-                  default: `geo:${restaurant.lat},${restaurant.lng}?q=${restaurant.lat},${restaurant.lng}`,
-                }) ?? '';
-              Linking.openURL(url);
-            }}
-          >
-            <Text style={text.buttonLabel}>Directions</Text>
-          </Pressable>
-        )}
-        <Pressable style={styles.action} onPress={() => toggleFavorite(restaurant.restaurant_id)}>
-          <Text style={[text.buttonLabel, isFavorited && styles.actionActiveText]}>
-            {isFavorited ? 'Favorited' : 'Favorite'}
-          </Text>
-        </Pressable>
-        <Pressable style={styles.action} onPress={() => addCheckIn(restaurant.restaurant_id)}>
-          <Text style={[text.buttonLabel, hasCheckedIn && styles.actionActiveText]}>Check In</Text>
-        </Pressable>
-      </View>
-    </View>
+      <GotItRatingCard
+        event={gotItEvent}
+        ratingsEnabled={ratingsEnabled}
+        onConfirm={async (rating) => {
+          if (!gotItEvent) return;
+          await confirmGotIt(gotItEvent.clientId, rating);
+          setGotItEvent(null);
+        }}
+        onUndo={async () => {
+          if (!gotItEvent) return;
+          await undoGotIt(gotItEvent.clientId, restaurant.restaurant_id, null);
+          setGotItEvent(null);
+        }}
+      />
+    </>
   );
 }
 
