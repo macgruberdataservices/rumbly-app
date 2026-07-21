@@ -95,32 +95,50 @@ export function FilterPanel({
   const expandedHeight = Math.min(220, windowHeight * 0.25);
   const height = useRef(new Animated.Value(visible ? PANEL_COLLAPSED_HEIGHT : 0)).current;
   const contentOpacity = useRef(new Animated.Value(expanded ? 1 : 0)).current;
-  const contentTranslateY = useRef(new Animated.Value(expanded ? 0 : 12)).current;
+  // "Toast popping out of a toaster" (owner reference, 2026-07-21): now
+  // that the pane is edge-to-edge and square-bottomed against the bar
+  // (see expandedPane below), a width-changing scale would fight the
+  // "flush with the bar" look -- dropped in favor of a bigger, bouncier
+  // pure vertical launch. 70 (was 16) gives real travel distance; higher
+  // bounciness (14, was 8) gives a real overshoot on the way up.
+  const contentTranslateY = useRef(new Animated.Value(expanded ? 0 : 70)).current;
+  // Bar's own slide-in, independent of the height-driven reveal below --
+  // owner feedback: the 4-pill bar wanted "a little more slide" than the
+  // height-clip reveal alone gave it.
+  const pillBarTranslateY = useRef(new Animated.Value(visible ? 0 : PANEL_COLLAPSED_HEIGHT)).current;
   const activeCount = countActiveFilters(filters);
   const activeGroupCount = groupCount(filters, activeGroup);
 
   useEffect(() => {
     const targetHeight = !visible ? 0 : expanded ? expandedHeight : PANEL_COLLAPSED_HEIGHT;
+    Animated.timing(height, {
+      toValue: targetHeight,
+      duration: expanded ? 300 : 220,
+      easing: Easing.out(Easing.cubic),
+      useNativeDriver: false,
+    }).start();
+
+    Animated.spring(pillBarTranslateY, {
+      toValue: visible ? 0 : PANEL_COLLAPSED_HEIGHT,
+      useNativeDriver: true,
+      speed: 14,
+      bounciness: 6,
+    }).start();
+
+    const showingContent = visible && expanded;
     Animated.parallel([
-      Animated.timing(height, {
-        toValue: targetHeight,
-        duration: expanded ? 300 : 220,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
-      }),
       Animated.timing(contentOpacity, {
-        toValue: visible && expanded ? 1 : 0,
-        duration: expanded ? 220 : 120,
+        toValue: showingContent ? 1 : 0,
+        duration: showingContent ? 120 : 100,
         useNativeDriver: true,
       }),
-      Animated.timing(contentTranslateY, {
-        toValue: visible && expanded ? 0 : 12,
-        duration: expanded ? 280 : 160,
-        easing: Easing.out(Easing.cubic),
-        useNativeDriver: true,
-      }),
+      // Bouncy launch on the way in, quick and settled on the way out --
+      // matches how iOS sheets typically feel: playful open, brisk close.
+      showingContent
+        ? Animated.spring(contentTranslateY, { toValue: 0, useNativeDriver: true, speed: 14, bounciness: 14 })
+        : Animated.timing(contentTranslateY, { toValue: 70, duration: 120, useNativeDriver: true }),
     ]).start();
-  }, [contentOpacity, contentTranslateY, expanded, expandedHeight, height, visible]);
+  }, [contentOpacity, contentTranslateY, expanded, expandedHeight, height, pillBarTranslateY, visible]);
 
   const renderOptions = () => {
     if (activeGroup === 'location') {
@@ -220,96 +238,104 @@ export function FilterPanel({
 
   return (
     <Animated.View style={[styles.dock, { height }]} pointerEvents={visible ? 'auto' : 'none'}>
-      <View style={styles.panel}>
-        <Animated.View
-          style={[
-            styles.expandedContent,
-            { opacity: contentOpacity, transform: [{ translateY: contentTranslateY }] },
-          ]}
-          pointerEvents={expanded ? 'auto' : 'none'}
-        >
-          <View style={styles.groupActions}>
-            <Text style={text.buttonLabel}>{resultCount} results</Text>
-            <View style={styles.actionButtons}>
-              <Pressable
-                onPress={() => onChange(clearGroup(filters, activeGroup))}
-                disabled={activeGroupCount === 0}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: activeGroupCount === 0 }}
-              >
-                <Text style={[text.buttonLabel, activeGroupCount === 0 && styles.disabledText]}>Clear group</Text>
-              </Pressable>
-              <Pressable
-                onPress={() => onChange(emptyFilters())}
-                disabled={activeCount === 0}
-                accessibilityRole="button"
-                accessibilityState={{ disabled: activeCount === 0 }}
-              >
-                <Text style={[text.buttonLabel, activeCount === 0 && styles.disabledText]}>Clear all</Text>
-              </Pressable>
-            </View>
+      <Animated.View
+        style={[
+          styles.expandedPane,
+          {
+            opacity: contentOpacity,
+            transform: [{ translateY: contentTranslateY }],
+          },
+        ]}
+        pointerEvents={expanded ? 'auto' : 'none'}
+      >
+        <View style={styles.groupActions}>
+          <Text style={text.buttonLabel}>{resultCount} results</Text>
+          <View style={styles.actionButtons}>
+            <Pressable
+              onPress={() => onChange(clearGroup(filters, activeGroup))}
+              disabled={activeGroupCount === 0}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: activeGroupCount === 0 }}
+            >
+              <Text style={[text.buttonLabel, activeGroupCount === 0 && styles.disabledText]}>Clear group</Text>
+            </Pressable>
+            <Pressable
+              onPress={() => onChange(emptyFilters())}
+              disabled={activeCount === 0}
+              accessibilityRole="button"
+              accessibilityState={{ disabled: activeCount === 0 }}
+            >
+              <Text style={[text.buttonLabel, activeCount === 0 && styles.disabledText]}>Clear all</Text>
+            </Pressable>
           </View>
-
-          <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsContent}>
-            {renderOptions()}
-          </ScrollView>
-        </Animated.View>
-
-        <View style={styles.groupTabs}>
-          {(['location', 'food', 'dining', 'price'] as const).map((group) => {
-            const selected = expanded && activeGroup === group;
-            const count = groupCount(filters, group);
-            const label = group === 'price' ? 'Price' : group.charAt(0).toUpperCase() + group.slice(1);
-            return (
-              <Pressable
-                key={group}
-                onPress={() => {
-                  onActiveGroupChange(group);
-                  onExpandedChange(true);
-                }}
-                style={[styles.groupTab, selected && styles.groupTabActive]}
-                accessibilityRole="tab"
-                accessibilityState={{ selected }}
-              >
-                <Text style={[text.chip, selected && styles.groupTabTextActive]}>
-                  {label}{count ? ` ${count}` : ''}
-                </Text>
-              </Pressable>
-            );
-          })}
         </View>
-      </View>
+
+        <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsContent}>
+          {renderOptions()}
+        </ScrollView>
+      </Animated.View>
+
+      {/* Full-width, edge-to-edge -- the expanded pane above pops out of
+          this bar rather than the bar itself being inset/rounded. */}
+      <Animated.View style={[styles.pillBar, { transform: [{ translateY: pillBarTranslateY }] }]}>
+        {(['location', 'food', 'dining', 'price'] as const).map((group) => {
+          const selected = expanded && activeGroup === group;
+          const count = groupCount(filters, group);
+          const label = group === 'price' ? 'Price' : group.charAt(0).toUpperCase() + group.slice(1);
+          return (
+            <Pressable
+              key={group}
+              onPress={() => {
+                onActiveGroupChange(group);
+                onExpandedChange(true);
+              }}
+              style={[styles.groupTab, selected && styles.groupTabActive]}
+              accessibilityRole="tab"
+              accessibilityState={{ selected }}
+            >
+              <Text style={[text.chip, selected && styles.groupTabTextActive]}>
+                {label}{count ? ` ${count}` : ''}
+              </Text>
+            </Pressable>
+          );
+        })}
+      </Animated.View>
     </Animated.View>
   );
 }
 
 const styles = StyleSheet.create({
   dock: {
-    overflow: 'hidden',
-  },
-  panel: {
-    flex: 1,
     position: 'relative',
-    marginHorizontal: SPACING.md,
-    marginTop: SPACING.xs,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderTopLeftRadius: RADII.lg,
-    borderTopRightRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
+    // Hidden, not visible -- needed so the dock visually shrinks to
+    // nothing when collapsing/hiding rather than the pillBar/expandedPane
+    // poking out past its animated height mid-transition. Trade-off: a
+    // few pixels of the expanded pane's shadow blur get clipped at rest
+    // (unlike Swipeable's containerStyle override elsewhere, there's no
+    // safe way to relax this one without breaking the collapse animation).
     overflow: 'hidden',
   },
   disabledText: {
     color: COLORS.dim,
   },
-  groupTabs: {
+  // Full-width, edge-to-edge -- deliberately flat/unrounded (owner
+  // decision 2026-07-20) so the expanded pane above visibly "springs out
+  // of" this wider bar rather than the two reading as one continuous
+  // rounded panel, which was the previous look.
+  pillBar: {
     position: 'absolute',
-    left: SPACING.md,
-    right: SPACING.md,
-    bottom: SPACING.sm,
-    height: PANEL_TAB_HEIGHT,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: PANEL_COLLAPSED_HEIGHT,
     flexDirection: 'row',
+    alignItems: 'center',
     gap: SPACING.xs,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.surface,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
   },
   groupTab: {
     flex: 1,
@@ -333,19 +359,40 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     gap: SPACING.md,
-    marginTop: SPACING.sm,
     marginBottom: SPACING.xs,
   },
   actionButtons: {
     flexDirection: 'row',
     gap: SPACING.md,
   },
-  expandedContent: {
+  // The rounded pane that springs out of the flat pillBar below it --
+  // owns its own border/radius/background/shadow now that it's no longer
+  // sharing a single panel container with the bar.
+  // "Toast popping out of a toaster" (owner reference, 2026-07-21):
+  // edge-to-edge and flush against pillBar's top edge (bottom:
+  // PANEL_COLLAPSED_HEIGHT, no gap), square where it meets the bar,
+  // rounded only at the top -- reads as one continuous slot the pane
+  // rises out of rather than a separate floating card. No bottom border
+  // either, so pillBar's own top border is the only seam between them.
+  expandedPane: {
     position: 'absolute',
     top: 0,
-    right: SPACING.md,
-    bottom: PANEL_TAB_HEIGHT + SPACING.sm,
-    left: SPACING.md,
+    right: 0,
+    bottom: PANEL_COLLAPSED_HEIGHT,
+    left: 0,
+    borderLeftWidth: 1,
+    borderRightWidth: 1,
+    borderTopWidth: 1,
+    borderColor: COLORS.border,
+    borderTopLeftRadius: RADII.lg,
+    borderTopRightRadius: RADII.lg,
+    backgroundColor: COLORS.surface,
+    padding: SPACING.md,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 0 },
+    shadowRadius: 8,
+    shadowOpacity: 0.15,
+    elevation: 6,
   },
   optionsScroll: {
     flex: 1,
