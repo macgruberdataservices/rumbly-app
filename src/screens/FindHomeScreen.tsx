@@ -26,7 +26,6 @@ import { useDataProvider } from '../hooks/useDataProvider';
 import { useActivity } from '../hooks/useActivity';
 import { useSearch } from '../hooks/useSearch';
 import { useNearMe } from '../hooks/useNearMe';
-import { groupRestaurants } from '../data/groups';
 import { formatRelative } from '../components/SyncStatusBar';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { RestaurantCard } from '../components/RestaurantCard';
@@ -225,10 +224,6 @@ export function FindHomeScreen({ navigation, route }: Props) {
     }, [focusRestoredResult])
   );
 
-  const groups = useMemo(
-    () => groupRestaurants(filteredRestaurants, nearMeOrigin),
-    [filteredRestaurants, nearMeOrigin]
-  );
   // Restaurants-first, then items, each grouped by park/resort/Disney
   // Springs/water-park/other then by area — owner direction, 2026-07-20.
   // Related-tag results (no location to group by) pass through ungrouped.
@@ -631,31 +626,12 @@ export function FindHomeScreen({ navigation, route }: Props) {
               </View>
             </View>
           )}
-          <Text style={[text.sectionTitle, styles.sectionTitle]}>Browse by location</Text>
-          {groups.length === 0 ? (
-            <Text style={text.bodyMuted}>No restaurants match the current filters.</Text>
-          ) : (
-            <View style={styles.pillWrap}>
-              {groups.map((group) => (
-                <Pressable
-                  key={group.key}
-                  style={({ pressed }) => [styles.pill, pressed && styles.pillPressed]}
-                  onPress={() => {
-                    const nextBrowseContext = { groupKey: group.key, groupLabel: group.label };
-                    setBrowseContext(nextBrowseContext);
-                    persistRestoreState({ browseContext: nextBrowseContext });
-                    navigation.navigate('RestaurantList', {
-                      ...nextBrowseContext,
-                      nearMeOrigin: nearMeOrigin ?? undefined,
-                    });
-                  }}
-                >
-                  <Text style={text.chip}>{group.label}</Text>
-                  <Text style={text.bodyMuted}>{group.restaurants.length}</Text>
-                </Pressable>
-              ))}
-            </View>
-          )}
+          <View style={styles.welcomePanel}>
+            <Text style={styles.welcomeTitle}>Find your next bite</Text>
+            <Text style={[text.bodyMuted, styles.welcomeText]}>
+              Search restaurants, menu items, snacks, cuisines, or prices. Location browsing now lives in Explore.
+            </Text>
+          </View>
         </ScrollView>
       )}
 
@@ -875,24 +851,24 @@ const styles = StyleSheet.create({
   sectionTitle: {
     marginBottom: SPACING.md,
   },
-  pillWrap: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: SPACING.sm,
-  },
-  pill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.xs,
-    backgroundColor: COLORS.surface,
-    borderWidth: 1,
-    borderColor: COLORS.borderMid,
-    borderRadius: RADII.xl,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-  },
   pillPressed: {
     opacity: 0.6,
+  },
+  welcomePanel: {
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.cream,
+    padding: SPACING.lg,
+  },
+  welcomeTitle: {
+    fontFamily: text.sectionTitle.fontFamily,
+    fontSize: 20,
+    color: COLORS.ink,
+    marginBottom: SPACING.xs,
+  },
+  welcomeText: {
+    lineHeight: 19,
   },
   noResults: {
     flex: 1,

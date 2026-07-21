@@ -1,19 +1,19 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlatList, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { FindStackParamList } from '../navigation/FindNavigator';
+import type { BrowseStackParamList } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
-import { groupRestaurants } from '../data/groups';
+import { findRestaurantGroup } from '../data/groups';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { distanceToRestaurant } from '../location/proximity';
 import { COLORS, SPACING } from '../theme/tokens';
 
-type Props = NativeStackScreenProps<FindStackParamList, 'RestaurantList'>;
+type Props = NativeStackScreenProps<BrowseStackParamList, 'RestaurantList'>;
 
 export function RestaurantListScreen({ route, navigation }: Props) {
   const { restaurants } = useDataProvider();
   const origin = route.params.nearMeOrigin ?? null;
-  const group = groupRestaurants(restaurants, origin).find((g) => g.key === route.params.groupKey);
+  const group = findRestaurantGroup(restaurants, route.params.groupKey, origin);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>

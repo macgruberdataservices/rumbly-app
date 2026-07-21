@@ -1,17 +1,30 @@
+import { useLayoutEffect, useMemo } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { FlatList, Pressable, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { FindStackParamList } from '../navigation/FindNavigator';
+import type { BrowseStackParamList } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
-import { groupRestaurants } from '../data/groups';
+import { groupRestaurants, groupWaterParkRestaurants, WATER_PARKS_GROUP_KEY } from '../data/groups';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<FindStackParamList, 'LocationList'>;
+type Props = NativeStackScreenProps<BrowseStackParamList, 'LocationList'>;
 
-export function ParkListScreen({ navigation }: Props) {
+export function ParkListScreen({ navigation, route }: Props) {
   const { restaurants } = useDataProvider();
-  const groups = groupRestaurants(restaurants);
+  const parentGroupKey = route.params?.parentGroupKey;
+  const parentGroupLabel = route.params?.parentGroupLabel;
+  const groups = useMemo(
+    () =>
+      parentGroupKey === WATER_PARKS_GROUP_KEY
+        ? groupWaterParkRestaurants(restaurants)
+        : groupRestaurants(restaurants),
+    [parentGroupKey, restaurants]
+  );
+
+  useLayoutEffect(() => {
+    navigation.setOptions({ title: parentGroupLabel ?? 'Explore by Location' });
+  }, [navigation, parentGroupLabel]);
 
   return (
     <SafeAreaView style={styles.container} edges={['bottom']}>

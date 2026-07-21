@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { AccessibilityInfo, Animated, Dimensions, SectionList, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { FindStackParamList } from '../navigation/FindNavigator';
+import type { RestaurantDetailRouteParams } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { getMenuItemsByRestaurant } from '../data/db';
 import { getTodayStatus } from '../data/hoursStatus';
@@ -16,7 +15,10 @@ import { MenuItemRow } from '../components/MenuItemRow';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<FindStackParamList, 'RestaurantDetail'>;
+type Props = {
+  route: { params: RestaurantDetailRouteParams };
+  navigation: { goBack: () => void };
+};
 
 const COLLAPSED_HEADER_HEIGHT = 52;
 const DEFAULT_EXPANDED_HEIGHT = 260;

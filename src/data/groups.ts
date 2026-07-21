@@ -14,6 +14,13 @@ const PARK_ORDER = [
   "Disney's Animal Kingdom Theme Park",
 ];
 
+const DISNEY_SPRINGS_AREAS = new Set(['The Landing', 'West Side', 'Marketplace', 'Town Center']);
+const WATER_PARK_ORDER = ["Disney's Blizzard Beach Water Park", "Disney's Typhoon Lagoon Water Park"];
+
+export const WATER_PARKS_GROUP_KEY = 'Water Parks';
+
+const BROWSE_FALLBACK_ORDER = ['Disney Springs', 'Disney Resorts', WATER_PARKS_GROUP_KEY, 'Other'];
+
 export interface RestaurantGroup {
   key: string;
   label: string;
@@ -28,15 +35,30 @@ function compareDistance(a: Restaurant, b: Restaurant, origin: Coordinates): num
 }
 
 function groupKeyFor(r: Restaurant): string {
+  if (r.park && WATER_PARK_ORDER.includes(r.park)) return WATER_PARKS_GROUP_KEY;
   if (r.park) return r.park;
   if (r.resort) return 'Disney Resorts';
+  if (r.area && DISNEY_SPRINGS_AREAS.has(r.area)) return 'Disney Springs';
   return 'Other';
 }
 
-export function groupRestaurants(restaurants: Restaurant[], origin: Coordinates | null = null): RestaurantGroup[] {
+function topLevelOrderFor(key: string): number {
+  const parkIndex = PARK_ORDER.indexOf(key);
+  if (parkIndex !== -1) return parkIndex;
+  const fallbackIndex = BROWSE_FALLBACK_ORDER.indexOf(key);
+  if (fallbackIndex !== -1) return PARK_ORDER.length + fallbackIndex;
+  return PARK_ORDER.length + BROWSE_FALLBACK_ORDER.length;
+}
+
+function groupRestaurantsByKey(
+  restaurants: Restaurant[],
+  keyForRestaurant: (restaurant: Restaurant) => string | null,
+  origin: Coordinates | null
+): RestaurantGroup[] {
   const byKey = new Map<string, Restaurant[]>();
   for (const r of restaurants) {
-    const key = groupKeyFor(r);
+    const key = keyForRestaurant(r);
+    if (!key) continue;
     const list = byKey.get(key);
     if (list) {
       list.push(r);
@@ -45,7 +67,7 @@ export function groupRestaurants(restaurants: Restaurant[], origin: Coordinates 
     }
   }
 
-  const groups = Array.from(byKey.entries()).map(([key, list]) => ({
+  return Array.from(byKey.entries()).map(([key, list]) => ({
     key,
     label: key,
     restaurants: list.sort((a, b) => {
@@ -56,19 +78,52 @@ export function groupRestaurants(restaurants: Restaurant[], origin: Coordinates 
       return a.restaurant.localeCompare(b.restaurant);
     }),
   }));
+}
+
+export function groupRestaurants(restaurants: Restaurant[], origin: Coordinates | null = null): RestaurantGroup[] {
+  const groups = groupRestaurantsByKey(restaurants, groupKeyFor, origin);
 
   groups.sort((a, b) => {
     if (origin) {
       const distanceComparison = compareDistance(a.restaurants[0], b.restaurants[0], origin);
       if (distanceComparison !== 0) return distanceComparison;
     }
-    const ai = PARK_ORDER.indexOf(a.key);
-    const bi = PARK_ORDER.indexOf(b.key);
-    const aOrder = ai === -1 ? PARK_ORDER.length + (a.key === 'Disney Resorts' ? 0 : 1) : ai;
-    const bOrder = bi === -1 ? PARK_ORDER.length + (b.key === 'Disney Resorts' ? 0 : 1) : bi;
+    const aOrder = topLevelOrderFor(a.key);
+    const bOrder = topLevelOrderFor(b.key);
     if (aOrder !== bOrder) return aOrder - bOrder;
     return a.label.localeCompare(b.label);
   });
 
   return groups;
+}
+
+export function groupWaterParkRestaurants(
+  restaurants: Restaurant[],
+  origin: Coordinates | null = null
+): RestaurantGroup[] {
+  const groups = groupRestaurantsByKey(
+    restaurants,
+    (restaurant) => (restaurant.park && WATER_PARK_ORDER.includes(restaurant.park) ? restaurant.park : null),
+    origin
+  );
+
+  groups.sort((a, b) => {
+    const ai = WATER_PARK_ORDER.indexOf(a.key);
+    const bi = WATER_PARK_ORDER.indexOf(b.key);
+    if (ai !== bi) return ai - bi;
+    return a.label.localeCompare(b.label);
+  });
+
+  return groups;
+}
+
+export function findRestaurantGroup(
+  restaurants: Restaurant[],
+  groupKey: string,
+  origin: Coordinates | null = null
+): RestaurantGroup | undefined {
+  return (
+    groupRestaurants(restaurants, origin).find((group) => group.key === groupKey) ??
+    groupWaterParkRestaurants(restaurants, origin).find((group) => group.key === groupKey)
+  );
 }
