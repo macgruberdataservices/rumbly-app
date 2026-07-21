@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '48%',
-    height: 50,
+    height: 55,
     borderRadius: RADII.sm,
     paddingHorizontal: SPACING.sm,
     paddingVertical: 7,
