@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { BrowseStackParamList } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { groupRestaurants, groupWaterParkRestaurants, WATER_PARKS_GROUP_KEY } from '../data/groups';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<BrowseStackParamList, 'LocationList'>;
@@ -68,17 +68,22 @@ const styles = StyleSheet.create({
     fontSize: 24,
     color: COLORS.ink,
   },
+  // No horizontal padding here -- tile carries its own, matching
+  // RestaurantListScreen's SectionList/RestaurantCard convention (row
+  // owns its own horizontal inset, container doesn't double it up).
   list: {
-    paddingHorizontal: SPACING.lg,
     paddingBottom: SPACING.lg,
   },
+  // Flat divider row, matching RestaurantCard/MenuItemRow/ItemResultRow's
+  // convention (owner decision 2026-07-21) -- this screen previously kept
+  // the pre-Milestone-13 bordered/rounded card look, which stood out next
+  // to every other list in the app once those flattened.
   tile: {
     backgroundColor: COLORS.surface,
-    borderRadius: RADII.lg,
-    borderWidth: 1,
-    borderColor: COLORS.borderMid,
-    padding: SPACING.lg,
-    marginBottom: SPACING.md,
+    paddingVertical: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   tilePressed: {
     opacity: 0.6,
