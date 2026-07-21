@@ -1,3 +1,4 @@
+import { useMemo } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -6,6 +7,10 @@ import { useDataProvider } from '../hooks/useDataProvider';
 import { groupRestaurants, WATER_PARKS_GROUP_KEY, type RestaurantGroup } from '../data/groups';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
+import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions';
+import { evaluateChallenge } from '../challenges/evaluate';
+import { ChallengeSummaryCard } from '../components/challenges/ChallengeSummaryCard';
+import { useActivity } from '../hooks/useActivity';
 
 type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreHome'>;
 
@@ -29,7 +34,12 @@ function cardTitle(group: RestaurantGroup): string {
 
 export function ExploreHomeScreen({ navigation }: Props) {
   const { restaurants, isLoading, error } = useDataProvider();
+  const { personalActivity } = useActivity();
   const groups = groupRestaurants(restaurants);
+  const quickFiveProgress = useMemo(
+    () => evaluateChallenge(QUICK_FIVE_CHALLENGE, personalActivity.gotItHistory, restaurants),
+    [personalActivity.gotItHistory, restaurants]
+  );
 
   const openGroup = (group: RestaurantGroup) => {
     if (group.key === WATER_PARKS_GROUP_KEY) {
@@ -94,6 +104,18 @@ export function ExploreHomeScreen({ navigation }: Props) {
                 <View style={styles.cardAccent} />
               </Pressable>
             ))}
+          </View>
+        )}
+
+        {restaurants.length > 0 && (
+          <View style={styles.challengeSection}>
+            <Text style={[text.sectionToggle, styles.sectionLabel]}>CHALLENGES</Text>
+            <ChallengeSummaryCard
+              compact
+              definition={QUICK_FIVE_CHALLENGE}
+              progress={quickFiveProgress}
+              onPress={() => navigation.navigate('ChallengeDetail', { challengeId: QUICK_FIVE_CHALLENGE.id })}
+            />
           </View>
         )}
       </ScrollView>
@@ -168,5 +190,8 @@ const styles = StyleSheet.create({
   stateHint: {
     marginTop: SPACING.xs,
     textAlign: 'center',
+  },
+  challengeSection: {
+    marginTop: SPACING.xl,
   },
 });

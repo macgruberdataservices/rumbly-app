@@ -36,6 +36,7 @@
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "test:challenges": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/challenges.test.mjs",
     "web": "expo start --web"
   },
   "private": true

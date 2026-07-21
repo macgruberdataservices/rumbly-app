@@ -3,12 +3,14 @@ import { ExploreHomeScreen } from '../screens/ExploreHomeScreen';
 import { ParkListScreen } from '../screens/ParkListScreen';
 import { RestaurantDetailScreen } from '../screens/RestaurantDetailScreen';
 import { RestaurantListScreen } from '../screens/RestaurantListScreen';
+import { ChallengeDetailScreen } from '../screens/ChallengeDetailScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 import type { BrowseStackParamList } from './browseTypes';
 
 export type ExploreStackParamList = BrowseStackParamList & {
   ExploreHome: undefined;
+  ChallengeDetail: { challengeId: string };
 };
 
 const Stack = createNativeStackNavigator<ExploreStackParamList>();
@@ -44,6 +46,7 @@ export function ExploreNavigator() {
         component={RestaurantDetailScreen}
         options={{ headerShown: false }}
       />
+      <Stack.Screen name="ChallengeDetail" component={ChallengeDetailScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }
