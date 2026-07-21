@@ -277,20 +277,20 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
           animateShadow(0);
         }}
       />
-      <GotItRatingCard
-        event={gotItEvent}
-        ratingsEnabled={ratingsEnabled}
-        onConfirm={async (rating) => {
-          if (!gotItEvent) return;
-          await confirmGotIt(gotItEvent.clientId, rating);
-          setGotItEvent(null);
-        }}
-        onUndo={async () => {
-          if (!gotItEvent) return;
-          await undoGotIt(gotItEvent.clientId, item.restaurant_id, item.item_id);
-          setGotItEvent(null);
-        }}
-      />
+      {gotItEvent && (
+        <GotItRatingCard
+          event={gotItEvent}
+          ratingsEnabled={ratingsEnabled}
+          onConfirm={async (rating) => {
+            await confirmGotIt(gotItEvent.clientId, rating);
+            setGotItEvent(null);
+          }}
+          onUndo={async () => {
+            await undoGotIt(gotItEvent.clientId, item.restaurant_id, item.item_id);
+            setGotItEvent(null);
+          }}
+        />
+      )}
     </>
   );
 });

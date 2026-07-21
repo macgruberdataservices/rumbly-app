@@ -13,9 +13,21 @@ import { readJSON } from '../data/fileStore';
 
 let cached: Promise<SearchIndexEntry[]> | null = null;
 
+function prepareSearchIndex(data: SearchIndexEntry[]): SearchIndexEntry[] {
+  const seen = new Set<string>();
+
+  return data.filter((item) => {
+    if (!item.show_in_menu) return false;
+    const key = `${item.restaurant_id}:${item.item_id}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
 export function loadSearchIndex(): Promise<SearchIndexEntry[]> {
   if (!cached) {
-    cached = readJSON<SearchIndexEntry[]>(LOCAL_FILES.searchIndex).then((data) => data ?? []);
+    cached = readJSON<SearchIndexEntry[]>(LOCAL_FILES.searchIndex).then((data) => prepareSearchIndex(data ?? []));
   }
   return cached;
 }

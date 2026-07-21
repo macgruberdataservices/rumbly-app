@@ -116,6 +116,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const shouldRestoreFocusRef = useRef(initialState.focusedResultKey !== null);
   const pendingAccessibilityFocusRef = useRef(false);
   const isSearchActiveRef = useRef(initialState.query.trim().length >= 2);
+  const latestRestoreStateRef = useRef<FindRestoreState>(initialState);
 
   const filteredRestaurants = useMemo(
     () => applyFilters(restaurants, filters, lovedIds, false, null),
@@ -192,8 +193,17 @@ export function FindHomeScreen({ navigation, route }: Props) {
   );
 
   useEffect(() => {
-    persistRestoreState();
-  }, [persistRestoreState]);
+    latestRestoreStateRef.current = buildRestoreState();
+  }, [buildRestoreState]);
+
+  useFocusEffect(
+    useCallback(
+      () => () => {
+        navigation.setParams({ state: latestRestoreStateRef.current });
+      },
+      [navigation]
+    )
+  );
 
   const focusRestoredResult = useCallback(() => {
     const handle = focusedResultNodeRef.current ? findNodeHandle(focusedResultNodeRef.current) : null;
