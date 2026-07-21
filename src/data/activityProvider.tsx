@@ -27,6 +27,9 @@ import {
   loadNeedItItemKeys,
   loadGotItItemCounts,
   loadGotItRestaurantCounts,
+  emptyPersonalActivityReadModel,
+  loadPersonalActivityReadModel,
+  type PersonalActivityReadModel,
 } from './activity';
 import { syncActivity } from './sync';
 import { useAuth } from '../hooks/useAuth';
@@ -41,6 +44,9 @@ interface ActivityContextValue {
   needItItemKeys: Set<string>;
   gotItItemCounts: Map<string, number>;
   gotItRestaurantCounts: Map<string, number>;
+  personalActivity: PersonalActivityReadModel;
+  isActivityReady: boolean;
+  reloadActivity: () => Promise<void>;
   toggleLove: (restaurantId: string) => Promise<void>;
   toggleItemLove: (restaurantId: string, itemId: string) => Promise<void>;
   toggleItemNeedIt: (restaurantId: string, itemId: string) => Promise<void>;
@@ -59,20 +65,33 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
   const [needItItemKeys, setNeedItItemKeys] = useState<Set<string>>(new Set());
   const [gotItItemCounts, setGotItItemCounts] = useState<Map<string, number>>(new Map());
   const [gotItRestaurantCounts, setGotItRestaurantCounts] = useState<Map<string, number>>(new Map());
+  const [personalActivity, setPersonalActivity] = useState<PersonalActivityReadModel>(
+    emptyPersonalActivityReadModel()
+  );
+  const [isActivityReady, setIsActivityReady] = useState(false);
+
+  const refreshPersonalActivity = useCallback(() => {
+    loadPersonalActivityReadModel()
+      .then(setPersonalActivity)
+      .catch((error) => console.warn('personal activity refresh failed:', error));
+  }, []);
 
   const reloadFromDb = useCallback(async () => {
-    const [loved, lovedItems, needItItems, gotItItems, gotItRestaurants] = await Promise.all([
+    const [loved, lovedItems, needItItems, gotItItems, gotItRestaurants, readModel] = await Promise.all([
       loadLovedIds(),
       loadLovedItemKeys(),
       loadNeedItItemKeys(),
       loadGotItItemCounts(),
       loadGotItRestaurantCounts(),
+      loadPersonalActivityReadModel(),
     ]);
     setLovedIds(loved);
     setLovedItemKeys(lovedItems);
     setNeedItItemKeys(needItItems);
     setGotItItemCounts(gotItItems);
     setGotItRestaurantCounts(gotItRestaurants);
+    setPersonalActivity(readModel);
+    setIsActivityReady(true);
   }, []);
 
   useEffect(() => {
@@ -106,6 +125,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         syncActivity(user.id).catch((err) => console.warn('sync after Love failed:', err));
       }
+      refreshPersonalActivity();
     },
     [user]
   );
@@ -126,6 +146,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         syncActivity(user.id).catch((err) => console.warn('sync after item Love failed:', err));
       }
+      refreshPersonalActivity();
     },
     [user]
   );
@@ -146,6 +167,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         syncActivity(user.id).catch((err) => console.warn('sync after item Need It failed:', err));
       }
+      refreshPersonalActivity();
     },
     [user]
   );
@@ -158,6 +180,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         next.set(restaurantId, (next.get(restaurantId) ?? 0) + 1);
         return next;
       });
+      refreshPersonalActivity();
       return clientId;
     },
     []
@@ -172,6 +195,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         next.set(key, (next.get(key) ?? 0) + 1);
         return next;
       });
+      refreshPersonalActivity();
       return clientId;
     },
     []
@@ -185,6 +209,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         syncActivity(user.id).catch((err) => console.warn('sync after Got It confirmation failed:', err));
       }
+      refreshPersonalActivity();
     },
     [user]
   );
@@ -213,6 +238,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       if (user) {
         syncActivity(user.id).catch((err) => console.warn('sync after Got It undo failed:', err));
       }
+      refreshPersonalActivity();
     },
     [user]
   );
@@ -225,6 +251,9 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         needItItemKeys,
         gotItItemCounts,
         gotItRestaurantCounts,
+        personalActivity,
+        isActivityReady,
+        reloadActivity: reloadFromDb,
         toggleLove,
         toggleItemLove,
         toggleItemNeedIt,

@@ -222,6 +222,98 @@ export interface ActivityRow {
   deleted: boolean;
 }
 
+export type PersonalActivityType = 'love_it' | 'need_it' | 'got_it';
+
+export interface PersonalActivityEvent {
+  clientId: string;
+  targetType: 'restaurant' | 'item';
+  restaurantId: string;
+  itemId: string | null;
+  activityType: PersonalActivityType;
+  rating: number | null;
+  occurredAt: string;
+  updatedAt: string;
+}
+
+export interface PersonalActivityReadModel {
+  lovedRestaurants: PersonalActivityEvent[];
+  lovedItems: PersonalActivityEvent[];
+  neededItems: PersonalActivityEvent[];
+  gotItHistory: PersonalActivityEvent[];
+  totalGotItCount: number;
+  ratedGotItCount: number;
+}
+
+const EMPTY_PERSONAL_ACTIVITY: PersonalActivityReadModel = {
+  lovedRestaurants: [],
+  lovedItems: [],
+  neededItems: [],
+  gotItHistory: [],
+  totalGotItCount: 0,
+  ratedGotItCount: 0,
+};
+
+export function emptyPersonalActivityReadModel(): PersonalActivityReadModel {
+  return EMPTY_PERSONAL_ACTIVITY;
+}
+
+function latestUniqueEvents(events: PersonalActivityEvent[]): PersonalActivityEvent[] {
+  const seen = new Set<string>();
+  return events.filter((event) => {
+    const key = `${event.restaurantId}:${event.itemId ?? ''}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+export async function loadPersonalActivityReadModel(): Promise<PersonalActivityReadModel> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{
+    client_id: string;
+    target_type: string;
+    restaurant_id: string;
+    item_id: string | null;
+    activity_type: string;
+    value: number | null;
+    occurred_at: string;
+    updated_at: string;
+  }>(
+    `SELECT client_id, target_type, restaurant_id, item_id, activity_type, value, occurred_at, updated_at
+     FROM activity
+     WHERE deleted = 0 AND activity_type IN ('love_it', 'need_it', 'got_it')
+     ORDER BY updated_at DESC, id DESC;`
+  );
+  const events: PersonalActivityEvent[] = rows.map((row) => ({
+    clientId: row.client_id,
+    targetType: row.item_id === null ? 'restaurant' : 'item',
+    restaurantId: row.restaurant_id,
+    itemId: row.item_id,
+    activityType: normalizeActivityType(row.activity_type) as PersonalActivityType,
+    rating: row.value,
+    occurredAt: row.occurred_at,
+    updatedAt: row.updated_at,
+  }));
+  const gotItHistory = events
+    .filter((event) => event.activityType === 'got_it')
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+
+  return {
+    lovedRestaurants: latestUniqueEvents(
+      events.filter((event) => event.activityType === 'love_it' && event.itemId === null)
+    ),
+    lovedItems: latestUniqueEvents(
+      events.filter((event) => event.activityType === 'love_it' && event.itemId !== null)
+    ),
+    neededItems: latestUniqueEvents(
+      events.filter((event) => event.activityType === 'need_it' && event.itemId !== null)
+    ),
+    gotItHistory,
+    totalGotItCount: gotItHistory.length,
+    ratedGotItCount: gotItHistory.filter((event) => event.rating !== null).length,
+  };
+}
+
 function normalizeActivityType(activityType: string): string {
   if (activityType === 'favorited') return 'love_it';
   if (activityType === 'want_to_try') return 'need_it';
