@@ -3,13 +3,10 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
-  KeyboardAvoidingView,
-  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -22,7 +19,6 @@ import { useActivity } from '../hooks/useActivity';
 import { useAuth } from '../hooks/useAuth';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useEntitlement } from '../hooks/useEntitlement';
-import { SyncStatusBar } from '../components/SyncStatusBar';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
@@ -45,8 +41,8 @@ function restaurantLocation(restaurant: Restaurant | undefined): string {
 }
 
 export function MyActivityScreen({ navigation }: Props) {
-  const { restaurants, isLoading: dataLoading, lastSyncedAt, forceRefresh } = useDataProvider();
-  const { user, initializing, signOut } = useAuth();
+  const { restaurants } = useDataProvider();
+  const { user, initializing } = useAuth();
   const needItEnabled = useEntitlement('need_it');
   const { personalActivity, isActivityReady, reloadActivity } = useActivity();
   const [activeTab, setActiveTab] = useState<CollectionTab>('love');
@@ -175,22 +171,6 @@ export function MyActivityScreen({ navigation }: Props) {
           )}
         </View>
 
-        <View style={styles.accountSection}>
-          <Text style={[styles.collectionTitle, styles.accountSectionTitle]}>Account</Text>
-          {user ? <SignedInPanel email={user.email ?? ''} onSignOut={signOut} /> : <AuthPanel />}
-        </View>
-
-        <View style={styles.syncSection}>
-          <Text style={[styles.collectionTitle, styles.accountSectionTitle]}>Dining Data</Text>
-          <Text style={[text.bodyMuted, styles.accountHint]}>
-            Restaurant and menu data refreshes automatically once a day. Force a check now if something
-            looks out of date -- e.g. Explore's See Changes reports something you don't see on a menu yet.
-          </Text>
-        </View>
-        {/* Outside syncSection's padded View deliberately -- SyncStatusBar
-            already carries its own marginHorizontal, nesting it inside a
-            second horizontally-padded container would double the inset. */}
-        <SyncStatusBar lastSyncedAt={lastSyncedAt} isLoading={dataLoading} onRefresh={forceRefresh} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -249,86 +229,6 @@ function ActivityRow({
         <Text style={styles.chevron}>›</Text>
       )}
     </Pressable>
-  );
-}
-
-function SignedInPanel({ email, onSignOut }: { email: string; onSignOut: () => Promise<void> }) {
-  return (
-    <View>
-      <Text style={text.body}>Signed in as {email}</Text>
-      <Text style={[text.bodyMuted, styles.accountHint]}>Your activity syncs across signed-in devices.</Text>
-      <Pressable style={styles.secondaryButton} onPress={onSignOut} accessibilityRole="button">
-        <Text style={text.buttonLabel}>Sign out</Text>
-      </Pressable>
-    </View>
-  );
-}
-
-function AuthPanel() {
-  const { signIn, signUp } = useAuth();
-  const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const canSubmit = email.trim().length > 0 && password.length >= 6 && !submitting;
-
-  const handleSubmit = async () => {
-    setError(null);
-    setSubmitting(true);
-    const action = mode === 'signIn' ? signIn : signUp;
-    const { error: actionError } = await action(email.trim(), password);
-    setSubmitting(false);
-    if (actionError) setError(actionError);
-  };
-
-  return (
-    <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <Text style={[text.bodyMuted, styles.accountHint]}>Sign in to sync this device's activity.</Text>
-      <TextInput
-        style={styles.input}
-        placeholder="Email"
-        placeholderTextColor={COLORS.muted}
-        value={email}
-        onChangeText={setEmail}
-        autoCapitalize="none"
-        autoCorrect={false}
-        keyboardType="email-address"
-        accessibilityLabel="Email"
-      />
-      <TextInput
-        style={styles.input}
-        placeholder="Password"
-        placeholderTextColor={COLORS.muted}
-        value={password}
-        onChangeText={setPassword}
-        secureTextEntry
-        accessibilityLabel="Password"
-      />
-      {error && <Text style={styles.error}>{error}</Text>}
-      <Pressable
-        style={[styles.primaryButton, !canSubmit && styles.primaryButtonDisabled]}
-        onPress={handleSubmit}
-        disabled={!canSubmit}
-        accessibilityRole="button"
-      >
-        {submitting ? (
-          <ActivityIndicator color={COLORS.surface} />
-        ) : (
-          <Text style={styles.primaryButtonLabel}>{mode === 'signIn' ? 'Sign in' : 'Create account'}</Text>
-        )}
-      </Pressable>
-      <Pressable
-        onPress={() => {
-          setError(null);
-          setMode((current) => (current === 'signIn' ? 'signUp' : 'signIn'));
-        }}
-      >
-        <Text style={styles.switchModeLabel}>
-          {mode === 'signIn' ? "Don't have an account? Create one" : 'Already have an account? Sign in'}
-        </Text>
-      </Pressable>
-    </KeyboardAvoidingView>
   );
 }
 
@@ -394,26 +294,4 @@ const styles = StyleSheet.create({
   eventDate: { fontFamily: FONT_FAMILY.interRegular, fontSize: 11, color: COLORS.dim, marginTop: 2 },
   rating: { fontFamily: FONT_FAMILY.interMedium, fontSize: 12, color: COLORS.gold, marginLeft: SPACING.sm },
   chevron: { fontFamily: FONT_FAMILY.interRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
-  accountSection: { borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: SPACING.xl, paddingTop: SPACING.lg, paddingHorizontal: SPACING.lg },
-  syncSection: { borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: SPACING.xl, paddingTop: SPACING.lg, paddingHorizontal: SPACING.lg },
-  accountSectionTitle: { paddingHorizontal: 0 },
-  accountHint: { marginBottom: SPACING.md },
-  input: {
-    fontFamily: FONT_FAMILY.interRegular,
-    fontSize: 15,
-    color: COLORS.ink,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.sm,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
-    marginBottom: SPACING.md,
-    backgroundColor: COLORS.surface,
-  },
-  error: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
-  primaryButton: { backgroundColor: COLORS.pine, borderRadius: RADII.sm, minHeight: 44, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
-  primaryButtonDisabled: { opacity: 0.5 },
-  primaryButtonLabel: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 14, color: COLORS.surface },
-  switchModeLabel: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.muted, textAlign: 'center' },
-  secondaryButton: { borderWidth: 1, borderColor: COLORS.border, borderRadius: RADII.sm, paddingVertical: SPACING.sm, paddingHorizontal: SPACING.lg, alignSelf: 'flex-start' },
 });

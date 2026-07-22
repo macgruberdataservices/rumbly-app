@@ -25,9 +25,11 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useActivity } from '../hooks/useActivity';
+import { useAuth } from '../hooks/useAuth';
 import { useSearch } from '../hooks/useSearch';
 import { useNearMe } from '../hooks/useNearMe';
 import { formatRelative } from '../components/SyncStatusBar';
+import { loadUserProfile } from '../data/profiles';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { ItemResultRow } from '../components/search/ItemResultRow';
@@ -96,6 +98,8 @@ function NearMeIcon({ active }: { active: boolean }) {
 export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
   const { lovedIds } = useActivity();
+  const { user } = useAuth();
+  const [welcomeName, setWelcomeName] = useState('');
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
   const initialState = initialStateRef.current;
   const initialContentOffsetRef = useRef({ x: 0, y: initialState.resultListOffset });
@@ -133,6 +137,28 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const recentReveal = useRef(
     new Animated.Value(initialState.searchInputFocused && initialState.query.trim().length === 0 ? 1 : 0)
   ).current;
+
+  useFocusEffect(
+    useCallback(() => {
+      if (!user) {
+        setWelcomeName('');
+        return undefined;
+      }
+
+      let active = true;
+      loadUserProfile(user.id)
+        .then((profile) => {
+          if (active) setWelcomeName(profile.nickname || profile.firstName);
+        })
+        .catch(() => {
+          if (active) setWelcomeName('');
+        });
+
+      return () => {
+        active = false;
+      };
+    }, [user])
+  );
 
   const locationDetailGroups = useMemo(
     () => collectQuickLocationDetailGroups(restaurants, quickLocations),
@@ -641,7 +667,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
         <View style={styles.searchInputShell}>
           <TextInput
             style={styles.searchInput}
-            placeholder="Search"
+            placeholder="find your next bite"
             placeholderTextColor={COLORS.muted}
             value={query}
             onChangeText={handleSearchChange}
@@ -775,9 +801,11 @@ export function FindHomeScreen({ navigation, route }: Props) {
           </Animated.View>
           {!showRecentSearches && (
             <View style={styles.welcomePanel}>
-              <Text style={styles.welcomeTitle}>Find your next bite</Text>
+              <Text style={styles.welcomeTitle}>
+                {welcomeName ? `${welcomeName}, LET'S EAT!` : "LET'S EAT!"}
+              </Text>
               <Text style={[text.bodyMuted, styles.welcomeText]}>
-                Search restaurants, menu items, snacks, cuisines, or prices. Location browsing now lives in Explore.
+                Search for restaurants and menu items. Filter by location, cuisine or price. Sort by proximity. Or just Explore!
               </Text>
             </View>
           )}
