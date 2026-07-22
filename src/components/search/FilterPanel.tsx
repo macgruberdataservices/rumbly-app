@@ -4,10 +4,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import {
   countActiveFilters,
   cuisineLabel,
-  emptyFilters,
   type FilterOptions,
   type SearchFilters,
 } from '../../search/filters';
+import {
+  QUICK_LOCATIONS,
+  type QuickLocationDetailGroup,
+  type QuickLocationKey,
+} from '../../search/quickLocations';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 import type { FilterGroupKey } from '../../search/findState';
@@ -23,13 +27,13 @@ function toggleInSet<T>(set: Set<T>, value: T): Set<T> {
   return next;
 }
 
-function groupCount(filters: SearchFilters, group: FilterGroupKey): number {
+function groupCount(filters: SearchFilters, group: FilterGroupKey, locationDetailCount = 0): number {
   if (group === 'location') {
-    return filters.parks.size + filters.resorts.size + (filters.accessibleWithoutAdmission ? 1 : 0);
+    return locationDetailCount;
   }
   if (group === 'food') return filters.cuisines.size;
   if (group === 'dining') return filters.mealPeriods.size + filters.serviceTypes.size;
-  return filters.priceTiers.size + (filters.lovedOnly ? 1 : 0);
+  return filters.priceTiers.size;
 }
 
 function clearGroup(filters: SearchFilters, group: FilterGroupKey): SearchFilters {
@@ -78,8 +82,14 @@ export function FilterPanel({
   visible,
   expanded,
   activeGroup,
-  onExpandedChange,
+  quickLocations,
+  quickLocationDetails,
+  locationDetailGroups,
   onActiveGroupChange,
+  onQuickLocationToggle,
+  onQuickLocationDetailToggle,
+  onClearLocationDetails,
+  onClearAll,
   onChange,
 }: {
   filters: SearchFilters;
@@ -88,8 +98,14 @@ export function FilterPanel({
   visible: boolean;
   expanded: boolean;
   activeGroup: FilterGroupKey;
-  onExpandedChange: (expanded: boolean) => void;
+  quickLocations: Set<QuickLocationKey>;
+  quickLocationDetails: Set<string>;
+  locationDetailGroups: QuickLocationDetailGroup[];
   onActiveGroupChange: (group: FilterGroupKey) => void;
+  onQuickLocationToggle: (location: QuickLocationKey) => void;
+  onQuickLocationDetailToggle: (detail: string) => void;
+  onClearLocationDetails: () => void;
+  onClearAll: () => void;
   onChange: (filters: SearchFilters) => void;
 }) {
   const { height: windowHeight } = useWindowDimensions();
@@ -108,8 +124,8 @@ export function FilterPanel({
   // owner feedback: the 4-pill bar wanted "a little more slide" than the
   // height-clip reveal alone gave it.
   const pillBarTranslateY = useRef(new Animated.Value(visible ? 0 : PANEL_COLLAPSED_HEIGHT)).current;
-  const activeCount = countActiveFilters(filters);
-  const activeGroupCount = groupCount(filters, activeGroup);
+  const activeCount = countActiveFilters(filters) + quickLocationDetails.size;
+  const activeGroupCount = groupCount(filters, activeGroup, quickLocationDetails.size);
   const dockMarginBottom = height.interpolate({
     inputRange: [0, PANEL_COLLAPSED_HEIGHT],
     outputRange: [0, -insets.bottom],
@@ -151,33 +167,18 @@ export function FilterPanel({
     if (activeGroup === 'location') {
       return (
         <>
-          <OptionBlock title="Parks">
-            {options.parks.map((park) => (
-              <FilterChip
-                key={park}
-                label={park}
-                active={filters.parks.has(park)}
-                onPress={() => onChange({ ...filters, parks: toggleInSet(filters.parks, park) })}
-              />
-            ))}
-          </OptionBlock>
-          <OptionBlock title="Resorts">
-            {options.resorts.map((resort) => (
-              <FilterChip
-                key={resort}
-                label={resort}
-                active={filters.resorts.has(resort)}
-                onPress={() => onChange({ ...filters, resorts: toggleInSet(filters.resorts, resort) })}
-              />
-            ))}
-          </OptionBlock>
-          <OptionBlock title="Admission">
-            <FilterChip
-              label="No park admission"
-              active={filters.accessibleWithoutAdmission}
-              onPress={() => onChange({ ...filters, accessibleWithoutAdmission: !filters.accessibleWithoutAdmission })}
-            />
-          </OptionBlock>
+          {locationDetailGroups.map((group) => (
+            <OptionBlock key={group.key} title={group.label}>
+              {group.options.map((option) => (
+                <FilterChip
+                  key={option.key}
+                  label={option.label}
+                  active={quickLocationDetails.has(option.key)}
+                  onPress={() => onQuickLocationDetailToggle(option.key)}
+                />
+              ))}
+            </OptionBlock>
+          ))}
         </>
       );
     }
@@ -225,7 +226,7 @@ export function FilterPanel({
     }
 
     return (
-      <OptionBlock title="Price & Personal">
+      <OptionBlock title="Price">
         {[1, 2, 3, 4].map((tier) => (
           <FilterChip
             key={tier}
@@ -234,11 +235,6 @@ export function FilterPanel({
             onPress={() => onChange({ ...filters, priceTiers: toggleInSet(filters.priceTiers, tier) })}
           />
         ))}
-        <FilterChip
-          label="Love It"
-          active={filters.lovedOnly}
-          onPress={() => onChange({ ...filters, lovedOnly: !filters.lovedOnly })}
-        />
       </OptionBlock>
     );
   };
@@ -262,7 +258,10 @@ export function FilterPanel({
           <Text style={text.buttonLabel}>{resultCount} results</Text>
           <View style={styles.actionButtons}>
             <Pressable
-              onPress={() => onChange(clearGroup(filters, activeGroup))}
+              onPress={() => {
+                if (activeGroup === 'location') onClearLocationDetails();
+                else onChange(clearGroup(filters, activeGroup));
+              }}
               disabled={activeGroupCount === 0}
               accessibilityRole="button"
               accessibilityState={{ disabled: activeGroupCount === 0 }}
@@ -270,14 +269,42 @@ export function FilterPanel({
               <Text style={[text.buttonLabel, activeGroupCount === 0 && styles.disabledText]}>Clear group</Text>
             </Pressable>
             <Pressable
-              onPress={() => onChange(emptyFilters())}
-              disabled={activeCount === 0}
+              onPress={onClearAll}
+              disabled={activeCount === 0 && quickLocations.size === 0}
               accessibilityRole="button"
-              accessibilityState={{ disabled: activeCount === 0 }}
+              accessibilityState={{ disabled: activeCount === 0 && quickLocations.size === 0 }}
             >
-              <Text style={[text.buttonLabel, activeCount === 0 && styles.disabledText]}>Clear all</Text>
+              <Text
+                style={[
+                  text.buttonLabel,
+                  activeCount === 0 && quickLocations.size === 0 && styles.disabledText,
+                ]}
+              >
+                Clear all
+              </Text>
             </Pressable>
           </View>
+        </View>
+
+        <View style={styles.detailGroups} accessibilityRole="tablist">
+          {(['location', 'food', 'dining', 'price'] as const).map((group) => {
+            const selected = activeGroup === group;
+            const count = groupCount(filters, group, quickLocationDetails.size);
+            const label = group === 'price' ? 'Price' : group.charAt(0).toUpperCase() + group.slice(1);
+            return (
+              <Pressable
+                key={group}
+                onPress={() => onActiveGroupChange(group)}
+                style={[styles.detailGroup, selected && styles.detailGroupActive]}
+                accessibilityRole="tab"
+                accessibilityState={{ selected }}
+              >
+                <Text style={[styles.detailGroupLabel, selected && styles.detailGroupLabelActive]}>
+                  {label}{count ? ` ${count}` : ''}
+                </Text>
+              </Pressable>
+            );
+          })}
         </View>
 
         <ScrollView style={styles.optionsScroll} contentContainerStyle={styles.optionsContent}>
@@ -285,34 +312,31 @@ export function FilterPanel({
         </ScrollView>
       </Animated.View>
 
-      {/* Full-width, edge-to-edge -- the expanded pane above pops out of
-          this bar rather than the bar itself being inset/rounded. */}
+      {/* Search-time coarse location filters stay available while the
+          detailed pane above expands independently from the filter icon. */}
       <Animated.View style={[styles.pillBar, { transform: [{ translateY: pillBarTranslateY }] }]}>
-        {(['location', 'food', 'dining', 'price'] as const).map((group) => {
-          const selected = expanded && activeGroup === group;
-          const count = groupCount(filters, group);
-          const label = group === 'price' ? 'Price' : group.charAt(0).toUpperCase() + group.slice(1);
-          return (
-            <Pressable
-              key={group}
-              onPress={() => {
-                if (selected) {
-                  onExpandedChange(false);
-                  return;
-                }
-                onActiveGroupChange(group);
-                onExpandedChange(true);
-              }}
-              style={[styles.groupTab, selected && styles.groupTabActive]}
-              accessibilityRole="tab"
-              accessibilityState={{ selected }}
-            >
-              <Text style={[text.chip, selected && styles.groupTabTextActive]}>
-                {label}{count ? ` ${count}` : ''}
-              </Text>
-            </Pressable>
-          );
-        })}
+        <ScrollView
+          horizontal
+          style={styles.quickScroll}
+          contentContainerStyle={styles.quickContent}
+          showsHorizontalScrollIndicator={false}
+          keyboardShouldPersistTaps="handled"
+        >
+          {QUICK_LOCATIONS.map((location) => {
+            const selected = quickLocations.has(location.key);
+            return (
+              <Pressable
+                key={location.key}
+                onPress={() => onQuickLocationToggle(location.key)}
+                style={[styles.quickTab, selected && styles.quickTabActive]}
+                accessibilityRole="button"
+                accessibilityState={{ selected }}
+              >
+                <Text style={[text.chip, selected && styles.quickTabLabelActive]}>{location.label}</Text>
+              </Pressable>
+            );
+          })}
+        </ScrollView>
       </Animated.View>
     </Animated.View>
   );
@@ -342,30 +366,34 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     height: PANEL_COLLAPSED_HEIGHT,
-    flexDirection: 'row',
     alignItems: 'center',
-    gap: SPACING.xs,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
     backgroundColor: COLORS.surface,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
   },
-  groupTab: {
+  quickScroll: {
     flex: 1,
+  },
+  quickContent: {
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  quickTab: {
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADII.md,
+    paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.xs,
     height: PANEL_TAB_HEIGHT,
   },
-  groupTabActive: {
+  quickTabActive: {
     backgroundColor: COLORS.forest,
     borderColor: COLORS.forest,
   },
-  groupTabTextActive: {
+  quickTabLabelActive: {
     color: COLORS.goldLight,
   },
   groupActions: {
@@ -378,6 +406,30 @@ const styles = StyleSheet.create({
   actionButtons: {
     flexDirection: 'row',
     gap: SPACING.md,
+  },
+  detailGroups: {
+    flexDirection: 'row',
+    gap: SPACING.xs,
+    marginBottom: SPACING.sm,
+  },
+  detailGroup: {
+    flex: 1,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
+  },
+  detailGroupActive: {
+    borderBottomColor: COLORS.forest,
+  },
+  detailGroupLabel: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 10,
+    color: COLORS.muted,
+  },
+  detailGroupLabelActive: {
+    color: COLORS.forest,
   },
   // The rounded pane that springs out of the flat pillBar below it --
   // owns its own border/radius/background/shadow now that it's no longer

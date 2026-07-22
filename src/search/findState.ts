@@ -1,6 +1,7 @@
 import type { RelatedTag } from './relatedTaxonomy';
 import { emptyFilters, type SearchFilters } from './filters';
 import type { Coordinates } from '../location/proximity';
+import type { QuickLocationKey } from './quickLocations';
 
 export type SearchCategory = 'all' | 'items' | 'restaurants' | 'related';
 export type FilterPanelState = 'hidden' | 'peek' | 'expanded';
@@ -24,9 +25,12 @@ export interface FindBrowseContext {
 }
 
 export interface FindRestoreState {
-  version: 2;
+  version: 4;
   query: string;
   filters: SerializedSearchFilters;
+  quickLocations: QuickLocationKey[];
+  quickLocationDetails: string[];
+  showAllResults: boolean;
   activeCategory: SearchCategory;
   activeRelated: RelatedTag | null;
   filterPanelState: FilterPanelState;
@@ -68,9 +72,12 @@ export function deserializeFilters(filters?: SerializedSearchFilters): SearchFil
 
 export function defaultFindRestoreState(): FindRestoreState {
   return {
-    version: 2,
+    version: 4,
     query: '',
     filters: serializeFilters(emptyFilters()),
+    quickLocations: [],
+    quickLocationDetails: [],
+    showAllResults: false,
     activeCategory: 'all',
     activeRelated: null,
     filterPanelState: 'hidden',
@@ -85,7 +92,7 @@ export function defaultFindRestoreState(): FindRestoreState {
 }
 
 export function resolveFindRestoreState(state?: FindRestoreState): FindRestoreState {
-  return state?.version === 2
+  return state?.version === 4
     ? { ...defaultFindRestoreState(), ...state, nearMeOrigin: state.nearMeOrigin ?? null }
     : defaultFindRestoreState();
 }

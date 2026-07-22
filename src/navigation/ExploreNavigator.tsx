@@ -4,14 +4,19 @@ import { ParkListScreen } from '../screens/ParkListScreen';
 import { RestaurantDetailScreen } from '../screens/RestaurantDetailScreen';
 import { RestaurantListScreen } from '../screens/RestaurantListScreen';
 import { ChallengeDetailScreen } from '../screens/ChallengeDetailScreen';
+import { ChangesHomeScreen } from '../screens/ChangesHomeScreen';
+import { ChangesRestaurantScreen } from '../screens/ChangesRestaurantScreen';
+import { ChangesCategoryScreen } from '../screens/ChangesCategoryScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 import type { BrowseStackParamList } from './browseTypes';
+import type { ChangesStackParamList } from './changesTypes';
 
-export type ExploreStackParamList = BrowseStackParamList & {
-  ExploreHome: undefined;
-  ChallengeDetail: { challengeId: string };
-};
+export type ExploreStackParamList = BrowseStackParamList &
+  ChangesStackParamList & {
+    ExploreHome: undefined;
+    ChallengeDetail: { challengeId: string };
+  };
 
 const Stack = createNativeStackNavigator<ExploreStackParamList>();
 
@@ -47,6 +52,9 @@ export function ExploreNavigator() {
         options={{ headerShown: false }}
       />
       <Stack.Screen name="ChallengeDetail" component={ChallengeDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ChangesHome" component={ChangesHomeScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ChangesRestaurant" component={ChangesRestaurantScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="ChangesCategory" component={ChangesCategoryScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

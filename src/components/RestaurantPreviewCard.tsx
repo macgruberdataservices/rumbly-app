@@ -4,16 +4,14 @@ import type { Restaurant } from '../data/types';
 import type { HoursStatus } from '../data/hoursStatus';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
+import { sanitizeRestaurantDescription } from '../data/restaurantDescription';
+import { restaurantLocationLabel } from '../data/locationNames';
 
 interface Origin {
   x: number;
   y: number;
   width: number;
   height: number;
-}
-
-function locationLine(r: Restaurant): string {
-  return r.resort ?? r.area ?? r.park ?? '';
 }
 
 function hasDiningPlan(r: Restaurant): boolean {
@@ -64,6 +62,7 @@ export function RestaurantPreviewCard({
         hasDiningPlan(restaurant) && 'Dining Plan',
       ].filter(Boolean) as string[])
     : [];
+  const description = sanitizeRestaurantDescription(restaurant?.description ?? null);
 
   return (
     <Modal visible={restaurant !== null} transparent animationType="none" onRequestClose={onClose}>
@@ -85,12 +84,17 @@ export function RestaurantPreviewCard({
             {restaurant && (
               <>
                 <Text style={text.sectionTitle}>{restaurant.restaurant}</Text>
-                <Text style={[text.bodyMuted, styles.location]}>{locationLine(restaurant)}</Text>
+                <Text style={[text.bodyMuted, styles.location]}>{restaurantLocationLabel(restaurant)}</Text>
                 <Text
                   style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}
                 >
-                  {hoursStatus.label}
+                  {hoursStatus.scheduleLabel}
                 </Text>
+                {!!description && (
+                  <Text style={[text.bodyMuted, styles.description]} numberOfLines={6}>
+                    {description}
+                  </Text>
+                )}
                 {isLoved && <Text style={[text.bodyMuted, styles.loved]}>♥ Love It</Text>}
                 {gotItCount > 0 && (
                   <Text style={[text.bodyMuted, styles.gotIt]}>✓ Got It ×{gotItCount}</Text>
@@ -138,6 +142,10 @@ const styles = StyleSheet.create({
   closedLabel: {
     color: COLORS.muted,
     marginTop: SPACING.sm,
+  },
+  description: {
+    lineHeight: 18,
+    marginTop: SPACING.md,
   },
   loved: {
     color: COLORS.pine,

@@ -11,18 +11,13 @@ import { HighlightedText } from './HighlightedText';
 import { RestaurantPreviewCard } from './RestaurantPreviewCard';
 import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
+import { restaurantLocationLabel } from '../data/locationNames';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
 function priceDots(tier: number | null): string {
   if (!tier) return '';
   return '$'.repeat(tier);
-}
-
-function locationLabel(r: Restaurant): string {
-  if (r.resort) return r.resort;
-  if (r.area) return r.area;
-  return r.park ?? '';
 }
 
 // highlightQuery is optional and defaults to undefined — existing
@@ -55,12 +50,6 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
   { restaurant, highlightQuery, distanceMiles, onPress },
   ref
 ) {
-  const metaParts = [
-    locationLabel(restaurant),
-    distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
-    priceDots(restaurant.price_tier),
-    restaurant.experience_type,
-  ].filter(Boolean);
   const { lovedIds, gotItRestaurantCounts } = useActivity();
   const gotItEnabled = useEntitlement('got_it');
   const { hoursData } = useDataProvider();
@@ -96,6 +85,13 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
   };
 
   const hoursStatus = getTodayStatus(hoursData, restaurant.restaurant_id);
+  const metaParts = [
+    restaurantLocationLabel(restaurant),
+    distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
+    priceDots(restaurant.price_tier),
+    restaurant.experience_type,
+    hoursStatus.scheduleLabel,
+  ].filter(Boolean);
 
   return (
     <>

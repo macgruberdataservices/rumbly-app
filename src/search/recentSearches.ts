@@ -1,7 +1,7 @@
 import { normalizeForSearch } from '../data/diacritics';
 import { getDb } from '../data/sqlite';
 
-const MAX_RECENT_SEARCHES = 8;
+const MAX_RECENT_SEARCHES = 5;
 
 export interface RecentSearch {
   query: string;

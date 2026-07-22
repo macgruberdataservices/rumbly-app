@@ -6,16 +6,12 @@
 
 import type { Restaurant } from './types';
 import { distanceToRestaurant, type Coordinates } from '../location/proximity';
-
-const PARK_ORDER = [
-  'Magic Kingdom Park',
-  'EPCOT',
-  "Disney's Hollywood Studios",
-  "Disney's Animal Kingdom Theme Park",
-];
-
-const DISNEY_SPRINGS_AREAS = new Set(['The Landing', 'West Side', 'Marketplace', 'Town Center']);
-const WATER_PARK_ORDER = ["Disney's Blizzard Beach Water Park", "Disney's Typhoon Lagoon Water Park"];
+import {
+  DISNEY_SPRINGS_AREAS,
+  THEME_PARK_ORDER,
+  WATER_PARK_ORDER,
+  parkDisplayName,
+} from './locationNames';
 
 export const WATER_PARKS_GROUP_KEY = 'Water Parks';
 
@@ -43,11 +39,11 @@ function groupKeyFor(r: Restaurant): string {
 }
 
 function topLevelOrderFor(key: string): number {
-  const parkIndex = PARK_ORDER.indexOf(key);
+  const parkIndex = THEME_PARK_ORDER.indexOf(key);
   if (parkIndex !== -1) return parkIndex;
   const fallbackIndex = BROWSE_FALLBACK_ORDER.indexOf(key);
-  if (fallbackIndex !== -1) return PARK_ORDER.length + fallbackIndex;
-  return PARK_ORDER.length + BROWSE_FALLBACK_ORDER.length;
+  if (fallbackIndex !== -1) return THEME_PARK_ORDER.length + fallbackIndex;
+  return THEME_PARK_ORDER.length + BROWSE_FALLBACK_ORDER.length;
 }
 
 function groupRestaurantsByKey(
@@ -69,7 +65,7 @@ function groupRestaurantsByKey(
 
   return Array.from(byKey.entries()).map(([key, list]) => ({
     key,
-    label: key,
+    label: key === 'Disney Resorts' ? 'Resorts' : parkDisplayName(key),
     restaurants: list.sort((a, b) => {
       if (origin) {
         const distanceComparison = compareDistance(a, b, origin);

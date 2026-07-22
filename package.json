@@ -37,6 +37,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "test:challenges": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/challenges.test.mjs",
+    "test:locations": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/locationNames.test.mjs",
+    "test:restaurant-cards": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/restaurantCards.test.mjs",
     "web": "expo start --web"
   },
   "private": true

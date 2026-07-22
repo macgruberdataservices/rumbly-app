@@ -3,6 +3,7 @@ import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import type { Restaurant, SearchIndexEntry } from '../../data/types';
+import { restaurantLocationLabel } from '../../data/locationNames';
 import { formatProximityDistance } from '../../location/proximity';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
@@ -13,16 +14,6 @@ import { COLORS, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
-
-// Same resort > area > park single-value priority RestaurantCard already
-// uses — matched for consistency with the already-shipped browse rows
-// rather than the search spec's two-part "Fantasyland · Magic Kingdom"
-// example, a deliberate reduction, not an oversight.
-function locationLabel(r: Restaurant): string {
-  if (r.resort) return r.resort;
-  if (r.area) return r.area;
-  return r.park ?? '';
-}
 
 // Menu-item search result row per the search spec's utility hierarchy:
 // item name, restaurant, location + price.
@@ -186,7 +177,7 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
   );
 
   const metaLabel = [
-    locationLabel(restaurant),
+    restaurantLocationLabel(restaurant),
     distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
   ]
     .filter(Boolean)
@@ -220,7 +211,7 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
           accessibilityLabel={[
             item.item,
             restaurant.restaurant,
-            locationLabel(restaurant),
+            restaurantLocationLabel(restaurant),
             distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
             item.price_display,
           ]

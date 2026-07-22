@@ -12,6 +12,7 @@ export type HoursStatusKind = 'open' | 'closed' | 'refurbishment' | 'unknown';
 export interface HoursStatus {
   kind: HoursStatusKind;
   label: string;
+  scheduleLabel: string;
 }
 
 function to12Hour(hhmm: string): string {
@@ -30,34 +31,39 @@ function minutesSinceMidnight(hhmm: string): number {
 
 export function getTodayStatus(hoursData: HoursData | null, restaurantId: string): HoursStatus {
   if (!hoursData) {
-    return { kind: 'unknown', label: 'Hours unavailable offline' };
+    return { kind: 'unknown', label: 'Hours unavailable offline', scheduleLabel: 'Hours unavailable offline' };
   }
 
   const today = hoursData.days[0];
   const day = hoursData.restaurants[restaurantId]?.[today];
 
   if (!day) {
-    return { kind: 'unknown', label: 'Hours unavailable offline' };
+    return { kind: 'unknown', label: 'Hours unavailable offline', scheduleLabel: 'Hours unavailable offline' };
   }
 
   if ('refurbishment_flag' in day && day.refurbishment_flag) {
-    return { kind: 'refurbishment', label: 'Temporarily closed for refurbishment' };
+    return {
+      kind: 'refurbishment',
+      label: 'Temporarily closed for refurbishment',
+      scheduleLabel: 'Temporarily closed for refurbishment',
+    };
   }
 
   if ('closed_flag' in day && day.closed_flag) {
-    return { kind: 'closed', label: 'Closed today' };
+    return { kind: 'closed', label: 'Closed today', scheduleLabel: 'Closed today' };
   }
 
   // Open day: has real `open`/`close` strings.
   const nowMinutes = new Date().getHours() * 60 + new Date().getMinutes();
   const openMinutes = minutesSinceMidnight(day.open);
   const closeMinutes = minutesSinceMidnight(day.close);
+  const scheduleLabel = `${to12Hour(day.open)} - ${to12Hour(day.close)}`;
 
   if (nowMinutes < openMinutes) {
-    return { kind: 'closed', label: `Closed · Opens at ${to12Hour(day.open)}` };
+    return { kind: 'closed', label: `Closed · Opens at ${to12Hour(day.open)}`, scheduleLabel };
   }
   if (nowMinutes >= closeMinutes) {
-    return { kind: 'closed', label: 'Closed for the day' };
+    return { kind: 'closed', label: 'Closed for the day', scheduleLabel };
   }
-  return { kind: 'open', label: `Open until ${to12Hour(day.close)}` };
+  return { kind: 'open', label: `Open until ${to12Hour(day.close)}`, scheduleLabel };
 }

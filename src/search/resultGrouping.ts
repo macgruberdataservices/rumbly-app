@@ -18,34 +18,16 @@
 import type { Restaurant } from '../data/types';
 import { distanceToRestaurant, type Coordinates } from '../location/proximity';
 import { resultKey, resultLabel, type SearchResult } from './rank';
-
-const PARK_ORDER = [
-  'Magic Kingdom Park',
-  'EPCOT',
-  "Disney's Hollywood Studios",
-  "Disney's Animal Kingdom Theme Park",
-];
-
-const DISNEY_SPRINGS_AREAS = new Set(['The Landing', 'West Side', 'Marketplace', 'Town Center']);
+import { locationHierarchy } from '../data/locationNames';
 
 // Priority tiers per owner direction: parks -> resorts -> Disney Springs
 // -> water parks -> other. Parks sub-order by PARK_ORDER; water parks
 // alphabetically (tiebreak via label below) since there's no equivalent
 // named order for them.
-const RESORT_PRIORITY = 20;
-const DISNEY_SPRINGS_PRIORITY = 30;
-const WATER_PARK_PRIORITY = 40;
 const OTHER_PRIORITY = 50;
 
-function bucketFor(r: Restaurant): { priority: number; label: string } {
-  if (r.park) {
-    const parkIndex = PARK_ORDER.indexOf(r.park);
-    if (parkIndex !== -1) return { priority: parkIndex, label: r.park };
-    return { priority: WATER_PARK_PRIORITY, label: r.park };
-  }
-  if (r.resort) return { priority: RESORT_PRIORITY, label: 'Disney Resorts' };
-  if (r.area && DISNEY_SPRINGS_AREAS.has(r.area)) return { priority: DISNEY_SPRINGS_PRIORITY, label: 'Disney Springs' };
-  return { priority: OTHER_PRIORITY, label: 'Other' };
+function bucketFor(r: Restaurant) {
+  return locationHierarchy(r);
 }
 
 export type ResultRow =
@@ -77,11 +59,12 @@ function buildLocationRows(
 
   const withLocation = results.map((r) => {
     const restaurant = restaurantOf(r);
-    const bucket = restaurant ? bucketFor(restaurant) : { priority: OTHER_PRIORITY, label: 'Other' };
+    const bucket = restaurant
+      ? bucketFor(restaurant)
+      : { topKey: 'Other', topLabel: 'Other', topOrder: OTHER_PRIORITY, subKey: null, subLabel: null };
     return {
       r,
       bucket,
-      area: restaurant?.area ?? null,
       distance: restaurant ? distanceToRestaurant(origin, restaurant) : null,
     };
   });
@@ -91,39 +74,39 @@ function buildLocationRows(
   if (origin) {
     for (const entry of withLocation) {
       if (entry.distance === null) continue;
-      const bucketKey = entry.bucket.label;
+      const bucketKey = entry.bucket.topKey;
       bucketDistances.set(
         bucketKey,
         Math.min(bucketDistances.get(bucketKey) ?? Number.POSITIVE_INFINITY, entry.distance)
       );
-      const areaKey = `${entry.bucket.label}:${entry.r.tier}:${entry.area ?? ''}`;
+      const areaKey = `${entry.bucket.topKey}:${entry.r.tier}:${entry.bucket.subKey ?? ''}`;
       areaDistances.set(areaKey, Math.min(areaDistances.get(areaKey) ?? Number.POSITIVE_INFINITY, entry.distance));
     }
   }
 
   withLocation.sort((a, b) => {
     if (origin) {
-      const bucketDistanceA = bucketDistances.get(a.bucket.label) ?? Number.POSITIVE_INFINITY;
-      const bucketDistanceB = bucketDistances.get(b.bucket.label) ?? Number.POSITIVE_INFINITY;
+      const bucketDistanceA = bucketDistances.get(a.bucket.topKey) ?? Number.POSITIVE_INFINITY;
+      const bucketDistanceB = bucketDistances.get(b.bucket.topKey) ?? Number.POSITIVE_INFINITY;
       if (bucketDistanceA !== bucketDistanceB) return bucketDistanceA - bucketDistanceB;
     }
-    if (a.bucket.priority !== b.bucket.priority) return a.bucket.priority - b.bucket.priority;
-    if (a.bucket.label !== b.bucket.label) return a.bucket.label.localeCompare(b.bucket.label);
+    if (a.bucket.topOrder !== b.bucket.topOrder) return a.bucket.topOrder - b.bucket.topOrder;
+    if (a.bucket.topLabel !== b.bucket.topLabel) return a.bucket.topLabel.localeCompare(b.bucket.topLabel);
     // Relevance beats sub-area ordering inside a park. A user typing the
     // beginning of a name expects "Cosmic..." to appear before "Pecos..."
     // for `Cos`, even though Frontierland sorts before Tomorrowland.
     if (a.r.tier !== b.r.tier) return a.r.tier - b.r.tier;
     if (origin) {
-      const areaKeyA = `${a.bucket.label}:${a.r.tier}:${a.area ?? ''}`;
-      const areaKeyB = `${b.bucket.label}:${b.r.tier}:${b.area ?? ''}`;
+      const areaKeyA = `${a.bucket.topKey}:${a.r.tier}:${a.bucket.subKey ?? ''}`;
+      const areaKeyB = `${b.bucket.topKey}:${b.r.tier}:${b.bucket.subKey ?? ''}`;
       const areaDistanceA = areaDistances.get(areaKeyA) ?? Number.POSITIVE_INFINITY;
       const areaDistanceB = areaDistances.get(areaKeyB) ?? Number.POSITIVE_INFINITY;
       if (areaDistanceA !== areaDistanceB) return areaDistanceA - areaDistanceB;
     }
     // No-area entries sort after named areas within the same bucket —
     // general/park-wide matches trail the specific-land clusters.
-    const areaA = a.area ?? '￿';
-    const areaB = b.area ?? '￿';
+    const areaA = a.bucket.subLabel ?? '￿';
+    const areaB = b.bucket.subLabel ?? '￿';
     if (areaA !== areaB) return areaA.localeCompare(areaB);
     if (origin) {
       const distanceA = a.distance ?? Number.POSITIVE_INFINITY;
@@ -136,16 +119,20 @@ function buildLocationRows(
   const rows: ResultRow[] = [];
   let currentGroupLabel: string | null = null;
   let currentArea: string | null = null;
-  for (const { r, bucket, area } of withLocation) {
-    if (bucket.label !== currentGroupLabel) {
-      rows.push({ type: 'group-header', key: `group:${pass}:${bucket.label}`, label: bucket.label });
-      currentGroupLabel = bucket.label;
+  for (const { r, bucket } of withLocation) {
+    if (bucket.topKey !== currentGroupLabel) {
+      rows.push({ type: 'group-header', key: `group:${pass}:${bucket.topKey}`, label: bucket.topLabel });
+      currentGroupLabel = bucket.topKey;
       currentArea = null; // force a fresh area header under the new group
     }
-    if (area && area !== currentArea) {
-      rows.push({ type: 'area-header', key: `area:${pass}:${bucket.label}:${r.tier}:${area}`, label: area });
+    if (bucket.subKey && bucket.subKey !== currentArea) {
+      rows.push({
+        type: 'area-header',
+        key: `area:${pass}:${bucket.topKey}:${r.tier}:${bucket.subKey}`,
+        label: bucket.subLabel ?? bucket.subKey,
+      });
     }
-    currentArea = area;
+    currentArea = bucket.subKey;
     rows.push({ type: 'result', key: resultKey(r), result: r });
   }
   return rows;

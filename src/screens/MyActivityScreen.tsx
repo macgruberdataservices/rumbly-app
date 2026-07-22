@@ -16,11 +16,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
 import type { PersonalActivityEvent } from '../data/activity';
 import type { Restaurant, SearchIndexEntry } from '../data/types';
+import { restaurantLocationLabel } from '../data/locationNames';
 import { loadSearchIndex } from '../search/searchIndexLoader';
 import { useActivity } from '../hooks/useActivity';
 import { useAuth } from '../hooks/useAuth';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { SyncStatusBar } from '../components/SyncStatusBar';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
@@ -39,11 +41,11 @@ function formatEventDate(value: string): string {
 
 function restaurantLocation(restaurant: Restaurant | undefined): string {
   if (!restaurant) return '';
-  return restaurant.resort ?? restaurant.area ?? restaurant.park ?? '';
+  return restaurantLocationLabel(restaurant);
 }
 
 export function MyActivityScreen({ navigation }: Props) {
-  const { restaurants } = useDataProvider();
+  const { restaurants, isLoading: dataLoading, lastSyncedAt, forceRefresh } = useDataProvider();
   const { user, initializing, signOut } = useAuth();
   const needItEnabled = useEntitlement('need_it');
   const { personalActivity, isActivityReady, reloadActivity } = useActivity();
@@ -177,6 +179,18 @@ export function MyActivityScreen({ navigation }: Props) {
           <Text style={[styles.collectionTitle, styles.accountSectionTitle]}>Account</Text>
           {user ? <SignedInPanel email={user.email ?? ''} onSignOut={signOut} /> : <AuthPanel />}
         </View>
+
+        <View style={styles.syncSection}>
+          <Text style={[styles.collectionTitle, styles.accountSectionTitle]}>Dining Data</Text>
+          <Text style={[text.bodyMuted, styles.accountHint]}>
+            Restaurant and menu data refreshes automatically once a day. Force a check now if something
+            looks out of date -- e.g. Explore's See Changes reports something you don't see on a menu yet.
+          </Text>
+        </View>
+        {/* Outside syncSection's padded View deliberately -- SyncStatusBar
+            already carries its own marginHorizontal, nesting it inside a
+            second horizontally-padded container would double the inset. */}
+        <SyncStatusBar lastSyncedAt={lastSyncedAt} isLoading={dataLoading} onRefresh={forceRefresh} />
       </ScrollView>
     </SafeAreaView>
   );
@@ -381,6 +395,7 @@ const styles = StyleSheet.create({
   rating: { fontFamily: FONT_FAMILY.interMedium, fontSize: 12, color: COLORS.gold, marginLeft: SPACING.sm },
   chevron: { fontFamily: FONT_FAMILY.interRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
   accountSection: { borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: SPACING.xl, paddingTop: SPACING.lg, paddingHorizontal: SPACING.lg },
+  syncSection: { borderTopWidth: 1, borderTopColor: COLORS.border, marginTop: SPACING.xl, paddingTop: SPACING.lg, paddingHorizontal: SPACING.lg },
   accountSectionTitle: { paddingHorizontal: 0 },
   accountHint: { marginBottom: SPACING.md },
   input: {

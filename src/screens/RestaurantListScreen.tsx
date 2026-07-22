@@ -9,6 +9,7 @@ import { RestaurantCard } from '../components/RestaurantCard';
 import { CategoryNavigator } from '../components/restaurant-detail/CategoryNavigator';
 import { distanceToRestaurant } from '../location/proximity';
 import type { Restaurant } from '../data/types';
+import { areaDisplayName, isWaterPark, parkDisplayName } from '../data/locationNames';
 import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -21,8 +22,8 @@ interface RestaurantSection {
 }
 
 const AREA_ORDER_BY_GROUP: Record<string, string[]> = {
-  'Magic Kingdom Park': ['Adventureland', 'Frontierland', 'Liberty Square', 'Fantasyland', 'Tomorrowland', 'Main Street, U.S.A.'],
-  EPCOT: ['World Celebration', 'World Discovery', 'World Nature', 'World Showcase'],
+  'Magic Kingdom Park': ['Adventureland', 'Frontierland', 'Liberty Square', 'Fantasyland', 'Tomorrowland', 'Main Street, U.S.A.', 'TTC'],
+  EPCOT: ['Epcot Park Entrance', 'World Celebration', 'World Discovery', 'World Nature', 'World Showcase'],
   "Disney's Hollywood Studios": [
     'Hollywood Boulevard',
     'Echo Lake',
@@ -46,7 +47,10 @@ const AREA_ORDER_BY_GROUP: Record<string, string[]> = {
 
 function sectionTitleForRestaurant(groupKey: string, restaurant: Restaurant): string {
   if (groupKey === 'Disney Resorts') return restaurant.resort ?? 'Other Resorts';
-  return restaurant.area ?? restaurant.resort ?? restaurant.park ?? 'Other';
+  if (isWaterPark(groupKey)) return parkDisplayName(groupKey);
+  if (restaurant.area) return areaDisplayName(restaurant.area);
+  if (restaurant.resort) return restaurant.resort;
+  return parkDisplayName(restaurant.park) || 'Other';
 }
 
 function sectionOrder(groupKey: string, title: string): number {

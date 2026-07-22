@@ -162,3 +162,33 @@ export interface DataManifest {
   menu_data: string;
   hours_data: string;
 }
+
+// Published separately from DataManifest (its own changes_manifest.json,
+// not nested inside data_manifest.json) -- ported from Disney Dining
+// Dev's See Changes feature. Same content-hash-per-month contract as the
+// rest of the pipeline's static files.
+export interface ChangesManifest {
+  generated: string;
+  months: Record<string, string>;
+}
+
+export type ChangeCategory =
+  | 'restaurant_added'
+  | 'restaurant_closed'
+  | 'menu_item_added'
+  | 'menu_item_removed'
+  | 'price_change';
+
+export interface ChangeEvent {
+  date: string;
+  category: ChangeCategory;
+  restaurant_id: string | null;
+  restaurant: string | null;
+  item: string | null;
+  menu_category: string | null;
+  dining_period: string | null;
+  price: string | null;
+  last_price: string | null;
+  old_price: number | null;
+  new_price: number | null;
+}

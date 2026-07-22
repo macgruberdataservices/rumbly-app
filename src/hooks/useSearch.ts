@@ -35,7 +35,19 @@ function countByCategory(results: SearchResult[]): CategoryCounts {
 
 export function useSearch(
   restaurants: Restaurant[],
-  initialState?: { query: string; activeRelated: RelatedTag | null; activeCategory: SearchCategory }
+  initialState?: { query: string; activeRelated: RelatedTag | null; activeCategory: SearchCategory },
+  // Passed as useDataProvider()'s lastSyncedAt. The search index load
+  // effect below only ran once on mount before this existed, so
+  // invalidateSearchIndexCache() (called by DataProvider.forceRefresh()
+  // after a real data change) had nothing left to re-trigger a reload --
+  // the stale in-memory index just sat in searchIndexRef until the whole
+  // app remounted. Including lastSyncedAt in that effect's deps makes a
+  // completed refresh (forced or the normal 24h check) re-call
+  // loadSearchIndex(), which picks up the fresh cache. Harmless no-op
+  // when a refresh found nothing new -- the module cache wasn't
+  // invalidated in that case, so loadSearchIndex() just resolves the
+  // same already-cached promise again.
+  lastSyncedAt?: number | null
 ) {
   const [query, setQuery] = useState(initialState?.query ?? '');
   const [activeRelated, setActiveRelated] = useState<RelatedTag | null>(initialState?.activeRelated ?? null);
@@ -49,9 +61,13 @@ export function useSearch(
 
   // Kicked off on first mount of whatever screen calls this hook — after
   // first paint, deliberately not joined to DataProvider's eager
-  // restaurant/hours load (see searchIndexLoader.ts).
+  // restaurant/hours load (see searchIndexLoader.ts). Also re-runs on a
+  // completed data refresh (lastSyncedAt change) -- see the lastSyncedAt
+  // param comment above for why that's required, not just a mount-time
+  // optimization.
   useEffect(() => {
     let cancelled = false;
+    setIsIndexReady(false);
     loadSearchIndex().then((index) => {
       if (cancelled) return;
       searchIndexRef.current = index;
@@ -60,7 +76,7 @@ export function useSearch(
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [lastSyncedAt]);
 
   useEffect(() => {
     if (debounceRef.current) clearTimeout(debounceRef.current);

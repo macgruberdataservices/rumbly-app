@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import type { Restaurant } from '../../data/types';
+import { restaurantLocationLabel } from '../../data/locationNames';
 import type { HoursStatus } from '../../data/hoursStatus';
 import type { CapabilityKind } from './CapabilityDetailSheet';
 import { useActivity } from '../../hooks/useActivity';
@@ -8,10 +9,6 @@ import { useEntitlement } from '../../hooks/useEntitlement';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
-
-function locationLine(r: Restaurant): string {
-  return r.resort ?? r.area ?? r.park ?? '';
-}
 
 function priceLabel(r: Restaurant): string {
   return r.price_tier_display || (r.price_tier ? '$'.repeat(r.price_tier) : '');
@@ -65,7 +62,7 @@ export function ExpandedHeader({
         <Text style={text.restaurantName} numberOfLines={2}>
           {restaurant.restaurant}
         </Text>
-        <Text style={text.bodyMuted}>{locationLine(restaurant)}</Text>
+        <Text style={text.bodyMuted}>{restaurantLocationLabel(restaurant)}</Text>
 
         <Text style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}>
           {hoursStatus.label}

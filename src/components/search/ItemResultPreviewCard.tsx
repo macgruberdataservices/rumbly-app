@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { Restaurant, SearchIndexEntry } from '../../data/types';
+import { restaurantLocationLabel } from '../../data/locationNames';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -9,12 +10,6 @@ interface Origin {
   y: number;
   width: number;
   height: number;
-}
-
-function locationLabel(r: Restaurant): string {
-  if (r.resort) return r.resort;
-  if (r.area) return r.area;
-  return r.park ?? '';
 }
 
 // Long-press preview for a search-result item row: purely visual, no
@@ -94,7 +89,7 @@ export function ItemResultPreviewCard({
                   <Text style={text.body}>{item.price_display}</Text>
                 </View>
                 <Text style={[text.body, styles.restaurant]}>{restaurant.restaurant}</Text>
-                <Text style={[text.bodyMuted, styles.location]}>{locationLabel(restaurant)}</Text>
+                <Text style={[text.bodyMuted, styles.location]}>{restaurantLocationLabel(restaurant)}</Text>
                 {statusLabels.length > 0 && (
                   <Text style={[text.bodyMuted, styles.status]}>{statusLabels.join(' · ')}</Text>
                 )}

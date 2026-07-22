@@ -25,13 +25,6 @@ const CARD_COLORS = [
   COLORS.dim,
 ];
 
-function cardTitle(group: RestaurantGroup): string {
-  if (group.label === "Disney's Hollywood Studios") return 'Hollywood Studios';
-  if (group.label === "Disney's Animal Kingdom Theme Park") return 'Animal Kingdom';
-  if (group.label === 'Magic Kingdom Park') return 'Magic Kingdom';
-  return group.label;
-}
-
 export function ExploreHomeScreen({ navigation }: Props) {
   const { restaurants, isLoading, error } = useDataProvider();
   const { personalActivity } = useActivity();
@@ -96,7 +89,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
                   minimumFontScale={0.72}
                   allowFontScaling={false}
                 >
-                  {cardTitle(group)}
+                  {group.label}
                 </Text>
                 <Text style={styles.cardCount} allowFontScaling={false}>
                   {group.restaurants.length} restaurants
@@ -116,6 +109,29 @@ export function ExploreHomeScreen({ navigation }: Props) {
               progress={quickFiveProgress}
               onPress={() => navigation.navigate('ChallengeDetail', { challengeId: QUICK_FIVE_CHALLENGE.id })}
             />
+          </View>
+        )}
+
+        {restaurants.length > 0 && (
+          <View style={styles.challengeSection}>
+            <Text style={[text.sectionToggle, styles.sectionLabel]}>SEE CHANGES</Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="See Changes: menu updates, prices, openings and closures"
+              style={({ pressed }) => [styles.changesCard, pressed && styles.changesCardPressed]}
+              onPress={() => navigation.navigate('ChangesHome')}
+            >
+              <View style={styles.changesIcon}>
+                <Text style={styles.changesIconText}>🔄</Text>
+              </View>
+              <View style={styles.changesCopy}>
+                <Text style={styles.changesTitle}>See Changes</Text>
+                <Text style={styles.changesDescription} numberOfLines={1}>
+                  Menu updates, prices, openings & closures
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
           </View>
         )}
       </ScrollView>
@@ -193,5 +209,54 @@ const styles = StyleSheet.create({
   },
   challengeSection: {
     marginTop: SPACING.xl,
+  },
+  // Matches ChallengeSummaryCard's bordered-card language (this app's
+  // convention for a top-level section entry point, distinct from the
+  // flat divider-row convention used for peer list items within a screen).
+  changesCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.sm,
+    padding: SPACING.md,
+    backgroundColor: COLORS.surface,
+  },
+  changesCardPressed: {
+    backgroundColor: COLORS.goldLight,
+  },
+  changesIcon: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.forest,
+    marginRight: SPACING.sm,
+  },
+  changesIconText: {
+    fontSize: 15,
+  },
+  changesCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  changesTitle: {
+    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontSize: 17,
+    color: COLORS.ink,
+  },
+  changesDescription: {
+    fontFamily: FONT_FAMILY.interRegular,
+    fontSize: 12,
+    lineHeight: 16,
+    color: COLORS.muted,
+    marginTop: 1,
+  },
+  chevron: {
+    fontFamily: FONT_FAMILY.interRegular,
+    fontSize: 25,
+    color: COLORS.dim,
+    marginLeft: SPACING.sm,
   },
 });
