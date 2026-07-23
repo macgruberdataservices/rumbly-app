@@ -35,6 +35,6 @@ test('card hours show the complete daily range while status keeps its contextual
   };
 
   const status = getTodayStatus(hoursData, 'restaurant');
-  assert.equal(status.scheduleLabel, '8:00 AM - 10:00 PM');
-  assert.match(status.label, /^(Open until|Closed)/);
+  assert.equal(status.todayLabel, 'Open today 8:00 AM - 10:00 PM');
+  assert.match(status.label, /^(Open till|Opens at|Closed)/);
 });

@@ -90,7 +90,7 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
     distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
     priceDots(restaurant.price_tier),
     restaurant.experience_type,
-    hoursStatus.scheduleLabel,
+    hoursStatus.label,
   ].filter(Boolean);
 
   return (
@@ -159,7 +159,7 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
 const styles = StyleSheet.create({
   card: {
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
+    marginHorizontal: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },
@@ -169,7 +169,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   searchTitle: {
-    fontSize: 15,
+    fontSize: 17,
   },
   activityDot: {
     width: 6,

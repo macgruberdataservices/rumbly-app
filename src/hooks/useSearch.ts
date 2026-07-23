@@ -53,6 +53,7 @@ export function useSearch(
   const [activeRelated, setActiveRelated] = useState<RelatedTag | null>(initialState?.activeRelated ?? null);
   const [activeCategory, setActiveCategory] = useState<SearchCategory>(initialState?.activeCategory ?? 'all');
   const [rawResults, setRawResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
   const [isIndexReady, setIsIndexReady] = useState(false);
   const searchIndexRef = useRef<SearchIndexEntry[]>([]);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -82,10 +83,13 @@ export function useSearch(
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (!isSearchActive) {
       setRawResults([]);
+      setIsSearching(false);
       return;
     }
+    setIsSearching(true);
     debounceRef.current = setTimeout(() => {
       setRawResults(runSearch(query, restaurants, searchIndexRef.current));
+      setIsSearching(false);
     }, DEBOUNCE_MS);
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -132,6 +136,7 @@ export function useSearch(
     results,
     counts,
     isSearchActive,
+    isSearching,
     activeRelated,
     toggleRelated,
     activeCategory,

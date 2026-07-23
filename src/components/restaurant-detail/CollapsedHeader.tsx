@@ -32,7 +32,9 @@ export function CollapsedHeader({
           <Text style={[text.restaurantName, styles.name]} numberOfLines={1}>
             {restaurantName}
           </Text>
-          <Text style={styles.status}>{hoursStatus.kind === 'open' ? 'Open' : 'Closed'}</Text>
+          <Text style={[styles.status, hoursStatus.kind === 'open' ? styles.statusOpen : styles.statusClosed]}>
+            {hoursStatus.kind === 'open' ? 'Open' : 'Closed'}
+          </Text>
         </Animated.View>
         {/* No overflow menu items exist yet (Report Inaccurate etc. are
             later milestones) — visual placeholder only, nothing behind it. */}
@@ -44,7 +46,9 @@ export function CollapsedHeader({
 
 const styles = StyleSheet.create({
   safeArea: {
-    backgroundColor: COLORS.forest,
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   container: {
     flexDirection: 'row',
@@ -56,7 +60,7 @@ const styles = StyleSheet.create({
     paddingRight: SPACING.sm,
   },
   backLabel: {
-    color: COLORS.goldLight,
+    color: COLORS.forest,
   },
   titleBlock: {
     flex: 1,
@@ -65,15 +69,16 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   name: {
-    color: COLORS.goldLight,
+    color: COLORS.ink,
     fontSize: 16,
   },
   status: {
-    color: COLORS.cream,
     fontSize: 12,
   },
+  statusOpen: { color: COLORS.pine },
+  statusClosed: { color: COLORS.muted },
   overflow: {
-    color: COLORS.goldLight,
+    color: COLORS.forest,
     fontSize: 16,
     paddingLeft: SPACING.sm,
   },

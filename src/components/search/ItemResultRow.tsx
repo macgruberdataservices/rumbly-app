@@ -1,4 +1,4 @@
-import { forwardRef, useRef, useState } from 'react';
+import { forwardRef, useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
@@ -10,6 +10,7 @@ import { useEntitlement } from '../../hooks/useEntitlement';
 import { HighlightedText } from '../HighlightedText';
 import { ItemResultPreviewCard } from './ItemResultPreviewCard';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
+import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../swipeableCoordinator';
 import { COLORS, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -98,6 +99,16 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
   const animateShadow = (toValue: number) => {
     Animated.timing(shadowAnim, { toValue, duration: 150, useNativeDriver: false }).start();
   };
+
+  // Guards against a swiped-open row unmounting mid-swipe (e.g. filtered
+  // out by a new search query without ever scrolling) -- otherwise the
+  // coordinator's singleton keeps pointing at a dead Swipeable.
+  useEffect(
+    () => () => {
+      if (swipeableRef.current) unregisterSwipeable(swipeableRef.current);
+    },
+    []
+  );
 
   const confirmThenClose = async (toggle: () => Promise<void>) => {
     await toggle();
@@ -190,15 +201,25 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
         renderRightActions={renderRightActions}
         overshootRight={false}
         onSwipeableOpenStartDrag={() => animateShadow(1)}
-        onSwipeableClose={() => animateShadow(0)}
+        onSwipeableWillOpen={() => {
+          if (swipeableRef.current) registerSwipeableOpen(swipeableRef.current);
+        }}
+        onSwipeableClose={() => {
+          animateShadow(0);
+          if (swipeableRef.current) unregisterSwipeable(swipeableRef.current);
+        }}
         containerStyle={styles.swipeableContainer}
       >
         <AnimatedPressable
           ref={setRefs}
-          onPress={onPress}
+          onPress={() => {
+            closeOpenSwipeable();
+            onPress();
+          }}
           onPressIn={() => animateShadow(1)}
           onPressOut={() => animateShadow(0)}
           onLongPress={() => {
+            closeOpenSwipeable();
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch((err) =>
               console.warn('haptics failed (native module may need a fresh build):', err)
             );
@@ -292,7 +313,7 @@ const styles = StyleSheet.create({
   },
   row: {
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
+    marginHorizontal: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
   },

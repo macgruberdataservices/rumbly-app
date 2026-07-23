@@ -17,6 +17,10 @@ export const FONT_FAMILY = {
   frauncesSemiBold: 'Fraunces_600SemiBold',
   frauncesBold: 'Fraunces_700Bold',
   yellowtail: 'Yellowtail_400Regular',
+  besleyBold: 'Besley_700Bold',
+  workSansRegular: 'WorkSans_400Regular',
+  workSansBold: 'WorkSans_700Bold',
+  workSansExtraBold: 'WorkSans_800ExtraBold',
 } as const;
 
 export const text = StyleSheet.create({
@@ -34,19 +38,19 @@ export const text = StyleSheet.create({
     color: COLORS.forest,
   },
   restaurantName: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 17,
     color: COLORS.ink,
   },
   sectionTitle: {
-    fontFamily: FONT_FAMILY.frauncesMedium,
+    fontFamily: FONT_FAMILY.besleyBold,
     fontSize: 22,
     color: COLORS.ink,
   },
   categoryHeader: {
-    fontFamily: FONT_FAMILY.frauncesItalic,
-    fontSize: 14,
-    color: COLORS.muted,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: COLORS.ink,
   },
   greeting: {
     fontFamily: FONT_FAMILY.frauncesItalic,
@@ -54,28 +58,28 @@ export const text = StyleSheet.create({
     color: COLORS.ink,
   },
   body: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 15,
     color: COLORS.ink,
   },
   bodyMuted: {
-    fontFamily: FONT_FAMILY.interRegular,
-    fontSize: 13,
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12.5,
     color: COLORS.muted,
   },
   chip: {
-    fontFamily: FONT_FAMILY.interMedium,
-    fontSize: 13,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
     color: COLORS.ink,
   },
   buttonLabel: {
-    fontFamily: FONT_FAMILY.interSemiBold,
-    fontSize: 13,
-    color: COLORS.forest,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: COLORS.ink,
   },
   sectionToggle: {
-    fontFamily: FONT_FAMILY.interBold,
-    fontSize: 11,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
     color: COLORS.muted,
   },
 });

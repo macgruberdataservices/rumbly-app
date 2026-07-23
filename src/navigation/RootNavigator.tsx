@@ -69,7 +69,7 @@ export function RootNavigator() {
       >
         <Tab.Screen name="Find" component={FindNavigator} />
         <Tab.Screen name="Explore" component={ExploreNavigator} />
-        <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Rumbly' }} />
+        <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Bites' }} />
       </Tab.Navigator>
     </NavigationContainer>
   );

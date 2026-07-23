@@ -44,7 +44,7 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
-            <Text style={styles.heading}>My Rumbly</Text>
+            <Text style={styles.heading}>My Bites</Text>
             <Text style={text.bodyMuted}>{user?.email ?? 'Saved on this device'}</Text>
           </View>
           <Pressable

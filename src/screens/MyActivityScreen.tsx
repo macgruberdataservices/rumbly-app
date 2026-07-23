@@ -113,7 +113,7 @@ export function MyActivityScreen({ navigation }: Props) {
         <View style={styles.headingRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back to My Rumbly"
+            accessibilityLabel="Back to My Bites"
             onPress={() => navigation.goBack()}
             style={styles.backButton}
           >

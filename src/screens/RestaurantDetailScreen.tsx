@@ -12,6 +12,7 @@ import { CollapsedHeader } from '../components/restaurant-detail/CollapsedHeader
 import { CategoryNavigator } from '../components/restaurant-detail/CategoryNavigator';
 import { CapabilityDetailSheet, type CapabilityKind } from '../components/restaurant-detail/CapabilityDetailSheet';
 import { MenuItemRow } from '../components/MenuItemRow';
+import { closeOpenSwipeable } from '../components/swipeableCoordinator';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -391,6 +392,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
           keyExtractor={(item) => item.item_id}
           stickySectionHeadersEnabled={false}
           onScroll={scrollHandler}
+          onScrollBeginDrag={closeOpenSwipeable}
           scrollEventThrottle={16}
           onViewableItemsChanged={onViewableItemsChanged}
           viewabilityConfig={viewabilityConfig}

@@ -25,16 +25,15 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useActivity } from '../hooks/useActivity';
-import { useAuth } from '../hooks/useAuth';
 import { useSearch } from '../hooks/useSearch';
 import { useNearMe } from '../hooks/useNearMe';
 import { useWalkingDistances } from '../hooks/useWalkingDistances';
-import { loadUserProfile } from '../data/profiles';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { ItemResultRow } from '../components/search/ItemResultRow';
+import { closeOpenSwipeable } from '../components/swipeableCoordinator';
 import { RelatedResultRow } from '../components/search/RelatedResultRow';
-import { FilterPanel } from '../components/search/FilterPanel';
+import { FilterPanel, PANEL_COLLAPSED_HEIGHT } from '../components/search/FilterPanel';
 import { groupResultsByLocation, type ResultRow } from '../search/resultGrouping';
 import {
   applyFilters,
@@ -110,8 +109,6 @@ function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; ar
 export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
   const { lovedIds } = useActivity();
-  const { user } = useAuth();
-  const [welcomeName, setWelcomeName] = useState('');
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
   const initialState = initialStateRef.current;
   const initialContentOffsetRef = useRef({ x: 0, y: initialState.resultListOffset });
@@ -155,28 +152,6 @@ export function FindHomeScreen({ navigation, route }: Props) {
     new Animated.Value(initialState.searchInputFocused || initialState.query.trim().length > 0 ? 0 : 1)
   ).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      if (!user) {
-        setWelcomeName('');
-        return undefined;
-      }
-
-      let active = true;
-      loadUserProfile(user.id)
-        .then((profile) => {
-          if (active) setWelcomeName(profile.nickname || profile.firstName);
-        })
-        .catch(() => {
-          if (active) setWelcomeName('');
-        });
-
-      return () => {
-        active = false;
-      };
-    }, [user])
-  );
-
   const locationDetailGroups = useMemo(
     () => collectQuickLocationDetailGroups(restaurants, quickLocations),
     [quickLocations, restaurants]
@@ -199,6 +174,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
     setQuery,
     results,
     isSearchActive,
+    isSearching,
     activeRelated,
     toggleRelated,
     activeCategory,
@@ -214,6 +190,18 @@ export function FindHomeScreen({ navigation, route }: Props) {
   );
 
   isSearchActiveRef.current = isSearchActive;
+
+  // Avoids flashing "No matches" during the debounce/index-load window --
+  // only commit to that message once the search has settled empty for a
+  // beat, so a quick real result isn't preceded by a misleading blip.
+  const [noResultsVisible, setNoResultsVisible] = useState(false);
+  useEffect(() => {
+    if (isSearchActive && !isSearching && results.length === 0) {
+      const timer = setTimeout(() => setNoResultsVisible(true), 400);
+      return () => clearTimeout(timer);
+    }
+    setNoResultsVisible(false);
+  }, [isSearchActive, isSearching, results.length]);
 
   useEffect(() => {
     let cancelled = false;
@@ -723,9 +711,6 @@ export function FindHomeScreen({ navigation, route }: Props) {
             accessibilityLabel="Park Bites"
           />
           <View style={styles.introCopy}>
-            <Text style={styles.introGreeting}>
-              {welcomeName ? `${welcomeName}, LET'S EAT!` : "LET'S EAT!"}
-            </Text>
             <Text style={styles.introText}>
               Search for restaurants and menu items, filter and sort by proximity, or just explore!
             </Text>
@@ -764,7 +749,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
             accessibilityLabel="Search food, drinks, or restaurants"
             returnKeyType="search"
           />
-          {query.trim().length > 0 && (
+          {(searchInputFocused || query.trim().length > 0) && (
             <Pressable onPress={handleClearSearch} accessibilityLabel="Clear search" style={styles.clearButton}>
               <Text style={styles.clearButtonText}>×</Text>
             </Pressable>
@@ -799,8 +784,14 @@ export function FindHomeScreen({ navigation, route }: Props) {
       {isSearchActive ? (
         results.length === 0 ? (
           <View style={styles.noResults}>
-            <Text style={text.body}>No matches for "{query}".</Text>
-            <Text style={[text.bodyMuted, styles.noResultsHint]}>Check spelling or try a broader term.</Text>
+            {noResultsVisible ? (
+              <>
+                <Text style={text.body}>No matches for "{query}".</Text>
+                <Text style={[text.bodyMuted, styles.noResultsHint]}>Check spelling or try a broader term.</Text>
+              </>
+            ) : (
+              <Text style={text.body}>Gathering results…</Text>
+            )}
           </View>
         ) : (
           <View style={styles.searchResults}>
@@ -815,6 +806,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
               automaticallyAdjustContentInsets={false}
               contentOffset={initialContentOffsetRef.current}
               onScroll={handleResultScroll}
+              onScrollBeginDrag={closeOpenSwipeable}
               onViewableItemsChanged={onSearchViewableItemsChanged}
               viewabilityConfig={searchViewabilityConfig}
               onScrollEndDrag={() => persistRestoreState()}
@@ -914,6 +906,8 @@ export function FindHomeScreen({ navigation, route }: Props) {
         onQuickLocationDetailToggle={handleQuickLocationDetailToggle}
         onClearLocationDetails={handleClearLocationDetails}
         onClearAll={handleClearAllFilters}
+        onCollapseToPeek={() => setFilterPanelState('peek')}
+        onExpand={() => setFilterPanelState('expanded')}
         onChange={handleFiltersChange}
       />
     </SafeAreaView>
@@ -943,12 +937,6 @@ const styles = StyleSheet.create({
   introCopy: {
     flex: 1,
     marginLeft: SPACING.lg,
-  },
-  introGreeting: {
-    fontFamily: text.sectionToggle.fontFamily,
-    fontSize: 12,
-    color: COLORS.ink,
-    marginBottom: 2,
   },
   introText: {
     fontFamily: text.bodyMuted.fontFamily,
@@ -1095,10 +1083,14 @@ const styles = StyleSheet.create({
   },
   content: {
     padding: SPACING.lg,
+    // Clears the floating filter dock's collapsed pillBar (see
+    // FilterPanel's dock comment) so the last row can scroll into reach
+    // instead of sitting permanently under it.
+    paddingBottom: SPACING.lg + PANEL_COLLAPSED_HEIGHT,
   },
   searchContent: {
     paddingHorizontal: 0,
-    paddingBottom: SPACING.lg,
+    paddingBottom: SPACING.lg + PANEL_COLLAPSED_HEIGHT,
   },
   seeAllButton: {
     minHeight: 44,

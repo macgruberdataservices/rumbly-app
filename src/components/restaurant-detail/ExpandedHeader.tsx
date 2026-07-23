@@ -65,7 +65,7 @@ export function ExpandedHeader({
         <Text style={text.bodyMuted}>{restaurantLocationLabel(restaurant)}</Text>
 
         <Text style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}>
-          {hoursStatus.label}
+          {hoursStatus.todayLabel}
         </Text>
         {!!serviceLine && <Text style={text.bodyMuted}>{serviceLine}</Text>}
 

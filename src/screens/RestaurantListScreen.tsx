@@ -10,8 +10,8 @@ import { CategoryNavigator } from '../components/restaurant-detail/CategoryNavig
 import { distanceToRestaurant } from '../location/proximity';
 import type { Restaurant } from '../data/types';
 import { areaDisplayName, isWaterPark, parkDisplayName } from '../data/locationNames';
-import { COLORS, SPACING } from '../theme/tokens';
-import { text } from '../theme/typography';
+import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<BrowseStackParamList, 'RestaurantList'>;
 
@@ -204,7 +204,9 @@ export function RestaurantListScreen({ route, navigation }: Props) {
           contentContainerStyle={{ paddingBottom: insets.bottom }}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
-              <Text style={text.categoryHeader}>{section.title.toUpperCase()}</Text>
+              <View style={styles.sectionHeaderPill}>
+                <Text style={[text.categoryHeader, styles.sectionHeaderText]}>{section.title.toUpperCase()}</Text>
+              </View>
             </View>
           )}
           renderItem={({ item }) => (
@@ -236,8 +238,8 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   title: {
-    fontFamily: text.sectionTitle.fontFamily,
-    fontSize: 26,
+    fontFamily: FONT_FAMILY.besleyBold,
+    fontSize: 30,
     color: COLORS.ink,
   },
   sectionList: {
@@ -246,9 +248,17 @@ const styles = StyleSheet.create({
   sectionHeader: {
     backgroundColor: COLORS.surface,
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
+    paddingTop: SPACING.sm,
     paddingBottom: SPACING.xs,
   },
+  sectionHeaderPill: {
+    justifyContent: 'center',
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.forest,
+    paddingHorizontal: 13,
+    paddingVertical: 6.5,
+  },
+  sectionHeaderText: { color: '#FFFFFF' },
   emptyState: {
     flex: 1,
     alignItems: 'center',

@@ -88,7 +88,7 @@ export function RestaurantPreviewCard({
                 <Text
                   style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}
                 >
-                  {hoursStatus.scheduleLabel}
+                  {hoursStatus.todayLabel}
                 </Text>
                 {!!description && (
                   <Text style={[text.bodyMuted, styles.description]} numberOfLines={6}>

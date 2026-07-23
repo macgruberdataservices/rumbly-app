@@ -10,6 +10,12 @@ import {
   Fraunces_700Bold,
 } from '@expo-google-fonts/fraunces';
 import { Yellowtail_400Regular } from '@expo-google-fonts/yellowtail';
+import { Besley_700Bold } from '@expo-google-fonts/besley';
+import {
+  WorkSans_400Regular,
+  WorkSans_700Bold,
+  WorkSans_800ExtraBold,
+} from '@expo-google-fonts/work-sans';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DataProvider } from './src/data/dataProvider';
@@ -32,6 +38,10 @@ export default function App() {
     Fraunces_600SemiBold,
     Fraunces_700Bold,
     Yellowtail_400Regular,
+    Besley_700Bold,
+    WorkSans_400Regular,
+    WorkSans_700Bold,
+    WorkSans_800ExtraBold,
   });
 
   const onLayoutRootView = useCallback(async () => {
@@ -60,7 +70,7 @@ export default function App() {
             </EntitlementsProvider>
           </AuthProvider>
         </DataProvider>
-        <StatusBar style="light" />
+        <StatusBar style="dark" />
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

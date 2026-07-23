@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -9,6 +9,7 @@ import { useActivity } from '../hooks/useActivity';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { MenuItemPreviewCard } from './MenuItemPreviewCard';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from './GotItRatingCard';
+import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from './swipeableCoordinator';
 import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -93,6 +94,16 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
   const animateShadow = (toValue: number) => {
     Animated.timing(shadowAnim, { toValue, duration: 150, useNativeDriver: false }).start();
   };
+
+  // Guards against a swiped-open row unmounting mid-swipe (e.g. filtered
+  // out by a new search query without ever scrolling) -- otherwise the
+  // coordinator's singleton keeps pointing at a dead Swipeable.
+  useEffect(
+    () => () => {
+      if (swipeableRef.current) unregisterSwipeable(swipeableRef.current);
+    },
+    []
+  );
 
   // Toggle, then let the button's own color change register (plus a
   // haptic) before sliding shut -- closing immediately on press hid the
@@ -182,7 +193,13 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
         renderRightActions={renderRightActions}
         overshootRight={false}
         onSwipeableOpenStartDrag={() => animateShadow(1)}
-        onSwipeableClose={() => animateShadow(0)}
+        onSwipeableWillOpen={() => {
+          if (swipeableRef.current) registerSwipeableOpen(swipeableRef.current);
+        }}
+        onSwipeableClose={() => {
+          animateShadow(0);
+          if (swipeableRef.current) unregisterSwipeable(swipeableRef.current);
+        }}
         // Swipeable's own container defaults to overflow: 'hidden' (to
         // clip the reveal panel pre-swipe) -- that also clips any shadow
         // on our row, since shadows render outside the element's own box.
@@ -205,6 +222,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
             onPressIn={() => animateShadow(1)}
             onPressOut={() => animateShadow(0)}
             onLongPress={() => {
+              closeOpenSwipeable();
               Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch((err) =>
                 console.warn('haptics failed (native module may need a fresh build):', err)
               );
@@ -279,6 +297,7 @@ const styles = StyleSheet.create({
   // four sides, matching the symmetric top/bottom lift in the reference
   // screenshot.
   shadowWrapper: {
+    marginHorizontal: SPACING.lg,
     backgroundColor: COLORS.surface,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 0 },
@@ -291,7 +310,6 @@ const styles = StyleSheet.create({
     height: ROW_HEIGHT,
     justifyContent: 'center',
     paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
     backgroundColor: COLORS.surface,

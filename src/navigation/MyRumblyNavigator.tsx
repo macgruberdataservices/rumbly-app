@@ -45,7 +45,7 @@ export function MyRumblyNavigator() {
       <Stack.Screen
         name="MyRumblyHome"
         component={MyRumblyHomeScreen}
-        options={{ headerShown: false, title: 'My Rumbly' }}
+        options={{ headerShown: false, title: 'My Bites' }}
       />
       <Stack.Screen name="MyActivity" component={MyActivityScreen} options={{ headerShown: false }} />
       <Stack.Screen
