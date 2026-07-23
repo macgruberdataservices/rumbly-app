@@ -31,8 +31,7 @@ function bucketFor(r: Restaurant) {
 }
 
 export type ResultRow =
-  | { type: 'group-header'; key: string; label: string }
-  | { type: 'area-header'; key: string; label: string }
+  | { type: 'location-header'; key: string; parkLabel: string; areaLabel: string | null }
   | { type: 'result'; key: string; result: SearchResult };
 
 function restaurantOf(r: SearchResult): Restaurant | null {
@@ -53,7 +52,8 @@ function restaurantOf(r: SearchResult): Restaurant | null {
 function buildLocationRows(
   results: SearchResult[],
   pass: 'restaurant' | 'item',
-  origin: Coordinates | null
+  origin: Coordinates | null,
+  walkingDistances: Map<string, number> | null
 ): ResultRow[] {
   if (results.length === 0) return [];
 
@@ -62,11 +62,16 @@ function buildLocationRows(
     const bucket = restaurant
       ? bucketFor(restaurant)
       : { topKey: 'Other', topLabel: 'Other', topOrder: OTHER_PRIORITY, subKey: null, subLabel: null };
-    return {
-      r,
-      bucket,
-      distance: restaurant ? distanceToRestaurant(origin, restaurant) : null,
-    };
+    // Walking distance (pgRouting over the WDW walking graph) wins when we
+    // have a routed value for this restaurant; straight-line is the
+    // fallback per the mapping Product Rule -- see
+    // Docs/MAPPING_DATA_NOTES.md -- for anything unrouted (offline, RPC
+    // error, outside the loaded park graph, or no path found).
+    const walkingMiles = restaurant ? walkingDistances?.get(restaurant.restaurant_id) : undefined;
+    const distance = restaurant
+      ? walkingMiles ?? distanceToRestaurant(origin, restaurant)
+      : null;
+    return { r, bucket, distance };
   });
 
   const bucketDistances = new Map<string, number>();
@@ -117,19 +122,20 @@ function buildLocationRows(
   });
 
   const rows: ResultRow[] = [];
-  let currentGroupLabel: string | null = null;
+  let currentGroupKey: string | null = null;
   let currentArea: string | null = null;
   for (const { r, bucket } of withLocation) {
-    if (bucket.topKey !== currentGroupLabel) {
-      rows.push({ type: 'group-header', key: `group:${pass}:${bucket.topKey}`, label: bucket.topLabel });
-      currentGroupLabel = bucket.topKey;
+    const groupChanged = bucket.topKey !== currentGroupKey;
+    if (groupChanged) {
+      currentGroupKey = bucket.topKey;
       currentArea = null; // force a fresh area header under the new group
     }
-    if (bucket.subKey && bucket.subKey !== currentArea) {
+    if (groupChanged || bucket.subKey !== currentArea) {
       rows.push({
-        type: 'area-header',
-        key: `area:${pass}:${bucket.topKey}:${r.tier}:${bucket.subKey}`,
-        label: bucket.subLabel ?? bucket.subKey,
+        type: 'location-header',
+        key: `location:${pass}:${bucket.topKey}:${r.tier}:${bucket.subKey ?? 'all'}`,
+        parkLabel: bucket.topLabel,
+        areaLabel: bucket.subLabel,
       });
     }
     currentArea = bucket.subKey;
@@ -138,14 +144,18 @@ function buildLocationRows(
   return rows;
 }
 
-export function groupResultsByLocation(results: SearchResult[], origin: Coordinates | null = null): ResultRow[] {
+export function groupResultsByLocation(
+  results: SearchResult[],
+  origin: Coordinates | null = null,
+  walkingDistances: Map<string, number> | null = null
+): ResultRow[] {
   const restaurantResults = results.filter((r) => r.kind === 'restaurant');
   const itemResults = results.filter((r) => r.kind === 'item');
   const relatedResults = results.filter((r) => r.kind === 'related');
 
   return [
-    ...buildLocationRows(restaurantResults, 'restaurant', origin),
-    ...buildLocationRows(itemResults, 'item', origin),
+    ...buildLocationRows(restaurantResults, 'restaurant', origin, walkingDistances),
+    ...buildLocationRows(itemResults, 'item', origin, walkingDistances),
     ...relatedResults.map((r) => ({ type: 'result' as const, key: resultKey(r), result: r })),
   ];
 }

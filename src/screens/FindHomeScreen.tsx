@@ -28,7 +28,7 @@ import { useActivity } from '../hooks/useActivity';
 import { useAuth } from '../hooks/useAuth';
 import { useSearch } from '../hooks/useSearch';
 import { useNearMe } from '../hooks/useNearMe';
-import { formatRelative } from '../components/SyncStatusBar';
+import { useWalkingDistances } from '../hooks/useWalkingDistances';
 import { loadUserProfile } from '../data/profiles';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { RestaurantCard } from '../components/RestaurantCard';
@@ -95,6 +95,18 @@ function NearMeIcon({ active }: { active: boolean }) {
   );
 }
 
+function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; areaLabel: string | null }) {
+  return (
+    <View style={styles.locationHeader}>
+      <View style={styles.locationHeaderBar}>
+        <Text style={styles.locationHeaderText} numberOfLines={1}>
+          {parkLabel.toUpperCase()}{areaLabel ? ` · ${areaLabel.toUpperCase()}` : ''}
+        </Text>
+      </View>
+    </View>
+  );
+}
+
 export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
   const { lovedIds } = useActivity();
@@ -117,6 +129,8 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const [focusedResultKey, setFocusedResultKey] = useState<string | null>(initialState.focusedResultKey);
   const [searchInputFocused, setSearchInputFocused] = useState(initialState.searchInputFocused);
   const [recentSearches, setRecentSearches] = useState<RecentSearch[]>([]);
+  const [stickyLocationVisible, setStickyLocationVisible] = useState(initialState.resultListOffset > 44);
+  const [activeLocation, setActiveLocation] = useState<{ parkLabel: string; areaLabel: string | null } | null>(null);
   const {
     origin: nearMeOrigin,
     status: nearMeStatus,
@@ -136,6 +150,9 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const latestRestoreStateRef = useRef<FindRestoreState>(initialState);
   const recentReveal = useRef(
     new Animated.Value(initialState.searchInputFocused && initialState.query.trim().length === 0 ? 1 : 0)
+  ).current;
+  const introReveal = useRef(
+    new Animated.Value(initialState.searchInputFocused || initialState.query.trim().length > 0 ? 0 : 1)
   ).current;
 
   useFocusEffect(
@@ -301,10 +318,34 @@ export function FindHomeScreen({ navigation, route }: Props) {
     () => showAllResults ? results : results.slice(0, INITIAL_RESULT_LIMIT),
     [results, showAllResults]
   );
+  // Milestone: walking-distance proximity (mapping side-quest). Only
+  // fetches for restaurants currently on screen, and only once Near Me is
+  // active -- results without a routed entry fall back to straight-line
+  // inside groupResultsByLocation/distanceToRestaurant, per the mapping
+  // Product Rule (Docs/MAPPING_DATA_NOTES.md).
+  const visibleRestaurantIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of visibleResults) {
+      if (r.kind === 'restaurant' || r.kind === 'item') ids.add(r.restaurant.restaurant_id);
+    }
+    return Array.from(ids);
+  }, [visibleResults]);
+  const walkingDistances = useWalkingDistances(nearMeOrigin, visibleRestaurantIds);
   const rows = useMemo(
-    () => groupResultsByLocation(visibleResults, nearMeOrigin),
-    [nearMeOrigin, visibleResults]
+    () => groupResultsByLocation(visibleResults, nearMeOrigin, walkingDistances),
+    [nearMeOrigin, visibleResults, walkingDistances]
   );
+  const rowsRef = useRef(rows);
+  rowsRef.current = rows;
+
+  useEffect(() => {
+    const firstLocation = rows.find((row) => row.type === 'location-header');
+    if (firstLocation?.type === 'location-header') {
+      setActiveLocation({ parkLabel: firstLocation.parkLabel, areaLabel: firstLocation.areaLabel });
+    } else {
+      setActiveLocation(null);
+    }
+  }, [rows]);
   const hasMoreResults = !showAllResults && results.length > INITIAL_RESULT_LIMIT;
   const showRecentSearches =
     searchInputFocused &&
@@ -320,6 +361,14 @@ export function FindHomeScreen({ navigation, route }: Props) {
       useNativeDriver: false,
     }).start();
   }, [recentReveal, showRecentSearches]);
+
+  useEffect(() => {
+    Animated.timing(introReveal, {
+      toValue: searchInputFocused || query.trim().length > 0 ? 0 : 1,
+      duration: searchInputFocused || query.trim().length > 0 ? 140 : 190,
+      useNativeDriver: false,
+    }).start();
+  }, [introReveal, query, searchInputFocused]);
 
   const resetListPosition = useCallback(() => {
     resultListOffsetRef.current = 0;
@@ -350,6 +399,8 @@ export function FindHomeScreen({ navigation, route }: Props) {
   );
 
   const handleClearSearch = useCallback(() => {
+    Keyboard.dismiss();
+    setSearchInputFocused(false);
     resetListPosition();
     clearFocusedResult();
     setShowAllResults(false);
@@ -547,6 +598,28 @@ export function FindHomeScreen({ navigation, route }: Props) {
     resultListOffsetRef.current = event.nativeEvent.contentOffset.y;
   }, []);
 
+  const handleResultScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
+    handleScroll(event);
+    setStickyLocationVisible(event.nativeEvent.contentOffset.y > 44);
+  }, [handleScroll]);
+
+  const onSearchViewableItemsChanged = useRef(
+    ({ viewableItems }: { viewableItems: Array<{ index: number | null; isViewable: boolean }> }) => {
+      const firstIndex = viewableItems
+        .filter((item) => item.isViewable && item.index !== null)
+        .reduce((lowest, item) => Math.min(lowest, item.index as number), Number.POSITIVE_INFINITY);
+      if (!Number.isFinite(firstIndex)) return;
+      for (let index = firstIndex; index >= 0; index -= 1) {
+        const row = rowsRef.current[index];
+        if (row?.type === 'location-header') {
+          setActiveLocation({ parkLabel: row.parkLabel, areaLabel: row.areaLabel });
+          return;
+        }
+      }
+    }
+  ).current;
+  const searchViewabilityConfig = useRef({ itemVisiblePercentThreshold: 1 }).current;
+
   const attachFocusedResultRef = useCallback(
     (resultKey: string, node: View | null) => {
       if (resultKey !== focusedResultKeyRef.current) return;
@@ -558,16 +631,11 @@ export function FindHomeScreen({ navigation, route }: Props) {
     [focusRestoredResult]
   );
 
-  const renderRow = ({ item: row, index }: { item: ResultRow; index: number }) => {
-    if (row.type === 'group-header') {
+  const renderRow = ({ item: row }: { item: ResultRow }) => {
+    if (row.type === 'location-header') {
       return (
-        <View style={[styles.groupHeader, index === 0 && styles.firstGroupHeader]}>
-          <Text style={text.sectionTitle}>{row.label}</Text>
-        </View>
+        <LocationContextHeader parkLabel={row.parkLabel} areaLabel={row.areaLabel} />
       );
-    }
-    if (row.type === 'area-header') {
-      return <Text style={[text.bodyMuted, styles.areaHeader]}>{row.label}</Text>;
     }
 
     const r = row.result;
@@ -577,7 +645,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
           ref={(node) => attachFocusedResultRef(row.key, node)}
           restaurant={r.restaurant}
           highlightQuery={query}
-          distanceMiles={distanceToRestaurant(nearMeOrigin, r.restaurant)}
+          distanceMiles={walkingDistances.get(r.restaurant.restaurant_id) ?? distanceToRestaurant(nearMeOrigin, r.restaurant)}
           onPress={() => {
             prepareResultNavigation(row.key);
             navigation.navigate('RestaurantDetail', { restaurantId: r.restaurant.restaurant_id });
@@ -592,7 +660,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
           item={r.item}
           restaurant={r.restaurant}
           highlightQuery={query}
-          distanceMiles={distanceToRestaurant(nearMeOrigin, r.restaurant)}
+          distanceMiles={walkingDistances.get(r.restaurant.restaurant_id) ?? distanceToRestaurant(nearMeOrigin, r.restaurant)}
           onPress={() => {
             prepareResultNavigation(row.key);
             navigation.navigate('RestaurantDetail', {
@@ -636,17 +704,34 @@ export function FindHomeScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      {!isSearchActive && (
+      <Animated.View
+        style={[
+          styles.headerClip,
+          {
+            height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 92] }),
+            opacity: introReveal,
+            transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+          },
+        ]}
+        pointerEvents="none"
+      >
         <View style={styles.header}>
           <Image
-            source={require('../../assets/rumbly-wordmark.png')}
+            source={require('../../assets/parkbites-wordmark.png')}
             style={styles.wordmark}
             resizeMode="contain"
-            accessibilityLabel="Rumbly"
+            accessibilityLabel="Park Bites"
           />
-          <Text style={text.bodyMuted}>Updated {formatRelative(lastSyncedAt)}</Text>
+          <View style={styles.introCopy}>
+            <Text style={styles.introGreeting}>
+              {welcomeName ? `${welcomeName}, LET'S EAT!` : "LET'S EAT!"}
+            </Text>
+            <Text style={styles.introText}>
+              Search for restaurants and menu items, filter and sort by proximity, or just explore!
+            </Text>
+          </View>
         </View>
-      )}
+      </Animated.View>
 
       <View style={styles.searchRow}>
         <Pressable
@@ -718,32 +803,44 @@ export function FindHomeScreen({ navigation, route }: Props) {
             <Text style={[text.bodyMuted, styles.noResultsHint]}>Check spelling or try a broader term.</Text>
           </View>
         ) : (
-          <FlatList
-            ref={resultListRef}
-            data={rows}
-            keyExtractor={(row) => row.key}
-            renderItem={renderRow}
-            style={styles.resultList}
-            contentContainerStyle={styles.searchContent}
-            contentInsetAdjustmentBehavior="never"
-            automaticallyAdjustContentInsets={false}
-            contentOffset={initialContentOffsetRef.current}
-            onScroll={handleScroll}
-            onScrollEndDrag={() => persistRestoreState()}
-            onMomentumScrollEnd={() => persistRestoreState()}
-            scrollEventThrottle={16}
-            keyboardShouldPersistTaps="handled"
-            ListFooterComponent={hasMoreResults ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`See all ${results.length} results`}
-                style={({ pressed }) => [styles.seeAllButton, pressed && styles.pillPressed]}
-                onPress={() => setShowAllResults(true)}
-              >
-                <Text style={styles.seeAllLabel}>See all {results.length} results</Text>
-              </Pressable>
-            ) : null}
-          />
+          <View style={styles.searchResults}>
+            <FlatList
+              ref={resultListRef}
+              data={rows}
+              keyExtractor={(row) => row.key}
+              renderItem={renderRow}
+              style={styles.resultList}
+              contentContainerStyle={styles.searchContent}
+              contentInsetAdjustmentBehavior="never"
+              automaticallyAdjustContentInsets={false}
+              contentOffset={initialContentOffsetRef.current}
+              onScroll={handleResultScroll}
+              onViewableItemsChanged={onSearchViewableItemsChanged}
+              viewabilityConfig={searchViewabilityConfig}
+              onScrollEndDrag={() => persistRestoreState()}
+              onMomentumScrollEnd={() => persistRestoreState()}
+              scrollEventThrottle={16}
+              keyboardShouldPersistTaps="handled"
+              ListFooterComponent={hasMoreResults ? (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`See all ${results.length} results`}
+                  style={({ pressed }) => [styles.seeAllButton, pressed && styles.pillPressed]}
+                  onPress={() => setShowAllResults(true)}
+                >
+                  <Text style={styles.seeAllLabel}>See all {results.length} results</Text>
+                </Pressable>
+              ) : null}
+            />
+            {stickyLocationVisible && activeLocation && (
+              <View style={styles.stickyLocationOverlay} pointerEvents="none">
+                <LocationContextHeader
+                  parkLabel={activeLocation.parkLabel}
+                  areaLabel={activeLocation.areaLabel}
+                />
+              </View>
+            )}
+          </View>
         )
       ) : (
         <ScrollView
@@ -799,16 +896,6 @@ export function FindHomeScreen({ navigation, route }: Props) {
               </View>
             </View>
           </Animated.View>
-          {!showRecentSearches && (
-            <View style={styles.welcomePanel}>
-              <Text style={styles.welcomeTitle}>
-                {welcomeName ? `${welcomeName}, LET'S EAT!` : "LET'S EAT!"}
-              </Text>
-              <Text style={[text.bodyMuted, styles.welcomeText]}>
-                Search for restaurants and menu items. Filter by location, cuisine or price. Sort by proximity. Or just Explore!
-              </Text>
-            </View>
-          )}
         </ScrollView>
       )}
 
@@ -844,12 +931,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
   },
-  // Source asset is 336x137 (~2.45:1) — height-constrained, width follows
-  // via resizeMode="contain" so it never distorts.
+  headerClip: { overflow: 'hidden' },
+  // Source asset is 233x151 (~1.54:1). Keep that ratio so the stacked
+  // wordmark does not compress to the previous logo's wider proportions.
   wordmark: {
-    width: 88,
-    height: 36,
+    width: 104,
+    height: 67,
+  },
+  introCopy: {
+    flex: 1,
+    marginLeft: SPACING.lg,
+  },
+  introGreeting: {
+    fontFamily: text.sectionToggle.fontFamily,
+    fontSize: 12,
+    color: COLORS.ink,
+    marginBottom: 2,
+  },
+  introText: {
+    fontFamily: text.bodyMuted.fontFamily,
+    fontSize: 12.5,
+    lineHeight: 16,
+    color: COLORS.muted,
   },
   searchRow: {
     flexDirection: 'row',
@@ -980,11 +1085,19 @@ const styles = StyleSheet.create({
   resultList: {
     flex: 1,
   },
+  searchResults: { flex: 1 },
+  stickyLocationOverlay: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    zIndex: 10,
+  },
   content: {
     padding: SPACING.lg,
   },
   searchContent: {
-    paddingHorizontal: SPACING.lg,
+    paddingHorizontal: 0,
     paddingBottom: SPACING.lg,
   },
   seeAllButton: {
@@ -1000,21 +1113,23 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: COLORS.forest,
   },
-  // "Restaurants first, then items, each grouped by park then area" —
-  // owner direction 2026-07-20. groupHeader is the primary divider (park/
-  // resort/Disney Springs/water-park/other); areaHeader is the lighter
-  // secondary heading nested under it (Fantasyland, West Side, etc.).
-  groupHeader: {
-    marginTop: SPACING.lg,
-    marginBottom: SPACING.sm,
-    paddingTop: SPACING.md,
-    borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+  locationHeader: {
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.xs,
   },
-  firstGroupHeader: {
-    marginTop: 0,
-    paddingTop: SPACING.xs,
-    borderTopWidth: 0,
+  locationHeaderBar: {
+    width: '100%',
+    justifyContent: 'center',
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.gold,
+    paddingHorizontal: 13,
+    paddingVertical: 6.5,
+  },
+  locationHeaderText: {
+    fontFamily: text.sectionToggle.fontFamily,
+    fontSize: 12,
+    color: '#FFFFFF',
   },
   recentReveal: {
     overflow: 'hidden',
