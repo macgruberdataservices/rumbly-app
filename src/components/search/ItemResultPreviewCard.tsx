@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react';
 import { Animated, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { Restaurant, SearchIndexEntry } from '../../data/types';
 import { restaurantLocationLabel } from '../../data/locationNames';
+import { isNewMenuItem } from '../../data/newItem';
+import { formatDateLabel } from '../../data/changes';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -88,6 +90,14 @@ export function ItemResultPreviewCard({
                   <Text style={[text.sectionTitle, styles.name]}>{item.item}</Text>
                   <Text style={text.body}>{item.price_display}</Text>
                 </View>
+                <View style={styles.addedRow}>
+                  {isNewMenuItem(item.first_seen) && (
+                    <View style={styles.newBadge}>
+                      <Text style={styles.newBadgeText}>NEW</Text>
+                    </View>
+                  )}
+                  <Text style={text.bodyMuted}>Added {formatDateLabel(item.first_seen)}</Text>
+                </View>
                 <Text style={[text.body, styles.restaurant]}>{restaurant.restaurant}</Text>
                 <Text style={[text.bodyMuted, styles.location]}>{restaurantLocationLabel(restaurant)}</Text>
                 {statusLabels.length > 0 && (
@@ -134,6 +144,24 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
+  },
+  newBadge: {
+    backgroundColor: COLORS.gold,
+    borderRadius: RADII.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 9,
+    lineHeight: 11,
+    color: COLORS.ink,
+  },
+  addedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
   },
   restaurant: {
     marginTop: SPACING.sm,

@@ -83,6 +83,21 @@ export interface ChangeRowLine {
   sub: string;
 }
 
+// dining_period + menu_category together ("Breakfast" + "Sides") read as
+// "the Sides section of the Breakfast menu" -- the same item can be
+// added to more than one section (e.g. a regular menu and an
+// Allergy-Friendly variant of the same meal period), which without this
+// looked like duplicate, indistinguishable "Added" rows for the same
+// item (found 2026-07-23: e.g. Ale and Compass's "Bacon" added to both
+// Breakfast/Sides and Breakfast/Allergy-Friendly Sides on different
+// days -- both rows read as plain "Added · $5.50" with no way to tell
+// them apart). Null when the feed doesn't carry one or both fields, in
+// which case the caller falls back to the old plain "Added" wording.
+function menuSectionPhrase(e: ChangeEvent): string | null {
+  const parts = [e.dining_period, e.menu_category].filter(Boolean);
+  return parts.length > 0 ? `Added to ${parts.join(' ')}` : null;
+}
+
 // hideRestaurant: drop the restaurant name from the sub-label when the
 // surrounding screen already names the restaurant once (a restaurant-
 // scoped category view) -- repeating it on every row is noise.
@@ -93,15 +108,16 @@ export function changeRowLine(e: ChangeEvent, opts: { hideRestaurant?: boolean }
       return { name: e.restaurant ?? '(unknown)', sub: 'New — tap to see the menu' };
     case 'restaurant_closed':
       return { name: e.restaurant ?? '(unknown)', sub: 'Appears to have closed' };
-    case 'menu_item_added':
-      return {
-        name: e.item ?? '(unnamed item)',
-        sub: hideR
-          ? e.price
-            ? `Added · ${e.price}`
-            : 'Added'
-          : `Added at ${e.restaurant ?? ''}${e.price ? ` · ${e.price}` : ''}`,
-      };
+    case 'menu_item_added': {
+      const section = menuSectionPhrase(e);
+      const pricePart = e.price ? ` · ${e.price}` : '';
+      const sub = hideR
+        ? `${section ?? 'Added'}${pricePart}`
+        : section
+          ? `${section} at ${e.restaurant ?? ''}${pricePart}`
+          : `Added at ${e.restaurant ?? ''}${pricePart}`;
+      return { name: e.item ?? '(unnamed item)', sub };
+    }
     case 'menu_item_removed':
       return {
         name: e.item ?? '(unnamed item)',

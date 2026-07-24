@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
+  Alert,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
 import type { PersonalActivityEvent } from '../data/activity';
@@ -19,6 +21,7 @@ import { useActivity } from '../hooks/useActivity';
 import { useAuth } from '../hooks/useAuth';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../components/swipeableCoordinator';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
@@ -44,7 +47,8 @@ export function MyActivityScreen({ navigation }: Props) {
   const { restaurants } = useDataProvider();
   const { user, initializing } = useAuth();
   const needItEnabled = useEntitlement('need_it');
-  const { personalActivity, isActivityReady, reloadActivity } = useActivity();
+  const { personalActivity, isActivityReady, reloadActivity, toggleLove, toggleItemLove, toggleItemNeedIt } =
+    useActivity();
   const [activeTab, setActiveTab] = useState<CollectionTab>('love');
   const [itemByKey, setItemByKey] = useState<Map<string, SearchIndexEntry>>(new Map());
 
@@ -89,6 +93,39 @@ export function MyActivityScreen({ navigation }: Props) {
   const loveCount = lovedEvents.length;
   const needCount = personalActivity.neededItems.length;
 
+  // Swipe-to-remove (owner request, 2026-07-23): Love It and Need It are
+  // both simple toggles at the data layer (activity.ts), so "remove" here
+  // is just re-toggling the event that's already known to be active --
+  // no separate delete path needed. Got It history is left alone; those
+  // are timestamped visit records, not a saved list to prune from here.
+  const removeFromCollection = useCallback(
+    (event: PersonalActivityEvent, collection: 'love' | 'need') => {
+      const title = event.itemId ? itemByKey.get(eventKey(event))?.item : restaurantById.get(event.restaurantId)?.restaurant;
+      Alert.alert(
+        collection === 'love' ? 'Remove from Love It?' : 'Remove from Need It?',
+        title ? `"${title}" will be removed from your ${collection === 'love' ? 'Love It' : 'Need It'} list.` : undefined,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Remove',
+            style: 'destructive',
+            onPress: async () => {
+              if (collection === 'need') {
+                await toggleItemNeedIt(event.restaurantId, event.itemId!);
+              } else if (event.itemId) {
+                await toggleItemLove(event.restaurantId, event.itemId);
+              } else {
+                await toggleLove(event.restaurantId);
+              }
+              reloadActivity().catch((error) => console.warn('My Rumbly refresh failed:', error));
+            },
+          },
+        ]
+      );
+    },
+    [itemByKey, reloadActivity, restaurantById, toggleItemLove, toggleItemNeedIt, toggleLove]
+  );
+
   const openEvent = (event: PersonalActivityEvent) => {
     const item = event.itemId ? itemByKey.get(eventKey(event)) : undefined;
     navigation.navigate('RestaurantDetail', {
@@ -109,7 +146,11 @@ export function MyActivityScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+      <ScrollView
+        contentContainerStyle={styles.content}
+        keyboardShouldPersistTaps="handled"
+        onScrollBeginDrag={closeOpenSwipeable}
+      >
         <View style={styles.headingRow}>
           <Pressable
             accessibilityRole="button"
@@ -166,6 +207,11 @@ export function MyActivityScreen({ navigation }: Props) {
                 item={event.itemId ? itemByKey.get(eventKey(event)) : undefined}
                 showDate={activeTab === 'history'}
                 onPress={() => openEvent(event)}
+                onRemove={
+                  activeTab === 'love' || activeTab === 'need'
+                    ? () => removeFromCollection(event, activeTab)
+                    : undefined
+                }
               />
             ))
           )}
@@ -204,17 +250,20 @@ function ActivityRow({
   item,
   showDate,
   onPress,
+  onRemove,
 }: {
   event: PersonalActivityEvent;
   restaurant: Restaurant | undefined;
   item: SearchIndexEntry | undefined;
   showDate: boolean;
   onPress: () => void;
+  onRemove: (() => void) | undefined;
 }) {
   const title = event.itemId ? item?.item ?? 'Menu item no longer listed' : restaurant?.restaurant ?? 'Restaurant';
   const meta = event.itemId ? restaurant?.restaurant ?? event.restaurantId : restaurantLocation(restaurant);
+  const swipeableRef = useRef<Swipeable>(null);
 
-  return (
+  const row = (
     <Pressable style={({ pressed }) => [styles.activityRow, pressed && styles.rowPressed]} onPress={onPress}>
       <View style={styles.rowCopy}>
         <Text style={text.restaurantName} numberOfLines={1}>{title}</Text>
@@ -229,6 +278,42 @@ function ActivityRow({
         <Text style={styles.chevron}>›</Text>
       )}
     </Pressable>
+  );
+
+  if (!onRemove) return row;
+
+  return (
+    <Swipeable
+      ref={swipeableRef}
+      // Left actions (reveal on a rightward drag), not right actions like
+      // MenuItemRow/ItemResultRow's Need It/Got It/Love It reveal -- a
+      // deliberately different gesture direction for a destructive,
+      // single-purpose action so it doesn't read as "the same swipe" as
+      // those.
+      renderLeftActions={() => (
+        <Pressable
+          style={styles.deleteAction}
+          accessibilityRole="button"
+          accessibilityLabel={`Remove ${title}`}
+          onPress={() => {
+            swipeableRef.current?.close();
+            onRemove();
+          }}
+        >
+          <Text style={styles.deleteActionIcon}>🗑</Text>
+        </Pressable>
+      )}
+      overshootLeft={false}
+      onSwipeableWillOpen={() => {
+        if (swipeableRef.current) registerSwipeableOpen(swipeableRef.current);
+      }}
+      onSwipeableClose={() => {
+        if (swipeableRef.current) unregisterSwipeable(swipeableRef.current);
+      }}
+      containerStyle={styles.swipeableContainer}
+    >
+      {row}
+    </Swipeable>
   );
 }
 
@@ -288,10 +373,27 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
     borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.surface,
   },
   rowPressed: { backgroundColor: COLORS.goldLight },
   rowCopy: { flex: 1, minWidth: 0 },
   eventDate: { fontFamily: FONT_FAMILY.interRegular, fontSize: 11, color: COLORS.dim, marginTop: 2 },
   rating: { fontFamily: FONT_FAMILY.interMedium, fontSize: 12, color: COLORS.gold, marginLeft: SPACING.sm },
   chevron: { fontFamily: FONT_FAMILY.interRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
+  swipeableContainer: {
+    overflow: 'visible',
+  },
+  // Literal red, not a token from COLORS -- this app's palette is
+  // deliberately blue/gold with nothing destructive-red in it, but a
+  // delete action reading as red is a near-universal convention worth
+  // keeping regardless of brand palette.
+  deleteAction: {
+    width: 76,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#E0524B',
+  },
+  deleteActionIcon: {
+    fontSize: 22,
+  },
 });

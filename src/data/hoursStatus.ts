@@ -7,7 +7,14 @@
 
 import type { HoursData } from './types';
 
-export type HoursStatusKind = 'open' | 'closed' | 'refurbishment' | 'unknown';
+// 'unknown' is a genuine offline/not-loaded-yet condition (hoursData
+// itself is missing). 'none' is different and permanent: hoursData
+// loaded fine, this restaurant just has no entry in it -- true for every
+// hand-coded venue (no real Disney facility id, so nothing ever fetches
+// hours for it). Kept distinct so callers can render nothing for 'none'
+// instead of an "unavailable offline" message that isn't accurate for a
+// restaurant that will never have published hours in the first place.
+export type HoursStatusKind = 'open' | 'closed' | 'refurbishment' | 'unknown' | 'none';
 
 export interface HoursStatus {
   kind: HoursStatusKind;
@@ -40,7 +47,7 @@ export function getTodayStatus(hoursData: HoursData | null, restaurantId: string
   const day = hoursData.restaurants[restaurantId]?.[today];
 
   if (!day) {
-    return { kind: 'unknown', label: 'Hours unavailable offline', todayLabel: 'Hours unavailable offline' };
+    return { kind: 'none', label: '', todayLabel: '' };
   }
 
   if ('refurbishment_flag' in day && day.refurbishment_flag) {
@@ -65,7 +72,12 @@ export function getTodayStatus(hoursData: HoursData | null, restaurantId: string
     return { kind: 'closed', label: `Opens at ${to12Hour(day.open)}`, todayLabel };
   }
   if (nowMinutes >= closeMinutes) {
-    return { kind: 'closed', label: 'Closed today', todayLabel };
+    // Distinct from the closed_flag case above ("Closed today" -- didn't
+    // open at all today) -- this restaurant DID have hours today, they've
+    // just already ended (found 2026-07-23: The Friars Nook read "Closed
+    // today" well after its actual closing time, reading like it never
+    // opened rather than like it just wrapped up for the day).
+    return { kind: 'closed', label: 'Now Closed', todayLabel };
   }
   return { kind: 'open', label: `Open till ${to12Hour(day.close)}`, todayLabel };
 }

@@ -31,6 +31,7 @@ import { useWalkingDistances } from '../hooks/useWalkingDistances';
 import { LoadingScreen } from '../components/LoadingScreen';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { ItemResultRow } from '../components/search/ItemResultRow';
+import { GroupedItemResultRow } from '../components/search/GroupedItemResultRow';
 import { closeOpenSwipeable } from '../components/swipeableCoordinator';
 import { RelatedResultRow } from '../components/search/RelatedResultRow';
 import { FilterPanel, PANEL_COLLAPSED_HEIGHT } from '../components/search/FilterPanel';
@@ -138,6 +139,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
   } = useNearMe(initialState.nearMeOrigin);
   const resultListRef = useRef<FlatList<ResultRow>>(null);
   const browseScrollRef = useRef<ScrollView>(null);
+  const searchInputRef = useRef<TextInput>(null);
   const focusedResultNodeRef = useRef<View | null>(null);
   const resultListOffsetRef = useRef(initialState.resultListOffset);
   const focusedResultKeyRef = useRef(initialState.focusedResultKey);
@@ -350,6 +352,27 @@ export function FindHomeScreen({ navigation, route }: Props) {
     }).start();
   }, [recentReveal, showRecentSearches]);
 
+  // The recent-searches panel lives inside the browse-mode ScrollView
+  // below, which unmounts the instant isSearchActive flips true (e.g.
+  // tapping a recent search sets a real query in the same render that
+  // computes showRecentSearches=false) -- the closing animation above
+  // starts, but the view it's animating is already gone, so recentReveal
+  // can get stranded mid-value with nothing left to finish the tween.
+  // Later, clearing back to an empty query remounts that ScrollView from
+  // scratch, and the Animated.View picks up whatever value recentReveal
+  // was left at -- visibly "open" (partway through its opacity/height
+  // range) despite pointerEvents already correctly reporting closed
+  // (found 2026-07-23: looked exactly like that -- visible but
+  // unresponsive until refocusing the search field). Snapping it
+  // synchronously to 0 the moment search goes active sidesteps the race
+  // entirely: there's no visual cost since the consuming view is being
+  // torn out of the tree in this same instant anyway.
+  useEffect(() => {
+    if (isSearchActive) {
+      recentReveal.setValue(0);
+    }
+  }, [isSearchActive, recentReveal]);
+
   useEffect(() => {
     Animated.timing(introReveal, {
       toValue: searchInputFocused || query.trim().length > 0 ? 0 : 1,
@@ -387,6 +410,14 @@ export function FindHomeScreen({ navigation, route }: Props) {
   );
 
   const handleClearSearch = useCallback(() => {
+    // Keyboard.dismiss() only hides the keyboard UI -- it doesn't blur the
+    // TextInput itself, so the native input can still be considered
+    // focused underneath. Without an explicit .blur() here, that stale
+    // native focus could silently re-fire onFocus later (e.g. after
+    // switching to Explore and back), re-showing recent searches with an
+    // empty query even though setSearchInputFocused(false) already ran
+    // once (found 2026-07-23).
+    searchInputRef.current?.blur();
     Keyboard.dismiss();
     setSearchInputFocused(false);
     resetListPosition();
@@ -482,6 +513,27 @@ export function FindHomeScreen({ navigation, route }: Props) {
     setQuickLocationDetails(new Set());
   }, [clearFocusedResult, resetListPosition]);
 
+  // Full reset to the pristine home state -- search, filters, and
+  // browse, not just one of them -- triggered by RootNavigator's Find
+  // tab listener sending a fresh resetToken param when the Find tab is
+  // pressed while already active (owner request, 2026-07-23).
+  const resetToHomeState = useCallback(() => {
+    handleClearSearch();
+    handleClearAllFilters();
+    setBrowseContext(null);
+  }, [handleClearAllFilters, handleClearSearch]);
+
+  useEffect(() => {
+    if (route.params?.resetToken !== undefined) {
+      resetToHomeState();
+    }
+    // Only ever react to resetToken actually changing -- resetToHomeState
+    // itself is excluded on purpose (it's recreated most renders via its
+    // own dependencies, and re-running the reset on those changes rather
+    // than on a fresh token would fight the very state it just set).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params?.resetToken]);
+
   const handleFilterPress = useCallback(() => {
     setFilterPanelState((state) => {
       if (state !== 'expanded') return 'expanded';
@@ -568,6 +620,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
 
   const prepareResultNavigation = useCallback(
     (resultKey: string) => {
+      searchInputRef.current?.blur();
       Keyboard.dismiss();
       resultListOffsetRef.current = Math.max(0, resultListOffsetRef.current);
       focusedResultKeyRef.current = resultKey;
@@ -642,13 +695,49 @@ export function FindHomeScreen({ navigation, route }: Props) {
       );
     }
     if (r.kind === 'item') {
+      const distanceMiles = walkingDistances.get(r.restaurant.restaurant_id) ?? distanceToRestaurant(nearMeOrigin, r.restaurant);
+
+      if (row.type === 'item-group') {
+        return (
+          <GroupedItemResultRow
+            ref={(node) => attachFocusedResultRef(row.key, node)}
+            item={r.item}
+            restaurant={r.restaurant}
+            extras={row.extras}
+            highlightQuery={query}
+            distanceMiles={distanceMiles}
+            getDistanceMiles={(restaurant) =>
+              walkingDistances.get(restaurant.restaurant_id) ?? distanceToRestaurant(nearMeOrigin, restaurant)
+            }
+            onPressPrimary={() => {
+              prepareResultNavigation(row.key);
+              navigation.navigate('RestaurantDetail', {
+                restaurantId: r.item.restaurant_id,
+                itemId: r.item.item_id,
+                period: r.item.dining_period,
+                category: r.item.category,
+              });
+            }}
+            onPressExtra={(extra) => {
+              prepareResultNavigation(row.key);
+              navigation.navigate('RestaurantDetail', {
+                restaurantId: extra.item.restaurant_id,
+                itemId: extra.item.item_id,
+                period: extra.item.dining_period,
+                category: extra.item.category,
+              });
+            }}
+          />
+        );
+      }
+
       return (
         <ItemResultRow
           ref={(node) => attachFocusedResultRef(row.key, node)}
           item={r.item}
           restaurant={r.restaurant}
           highlightQuery={query}
-          distanceMiles={walkingDistances.get(r.restaurant.restaurant_id) ?? distanceToRestaurant(nearMeOrigin, r.restaurant)}
+          distanceMiles={distanceMiles}
           onPress={() => {
             prepareResultNavigation(row.key);
             navigation.navigate('RestaurantDetail', {
@@ -736,6 +825,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
 
         <View style={styles.searchInputShell}>
           <TextInput
+            ref={searchInputRef}
             style={styles.searchInput}
             placeholder="find your next bite"
             placeholderTextColor={COLORS.muted}

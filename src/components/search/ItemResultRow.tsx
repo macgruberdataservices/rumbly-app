@@ -11,7 +11,8 @@ import { HighlightedText } from '../HighlightedText';
 import { ItemResultPreviewCard } from './ItemResultPreviewCard';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../swipeableCoordinator';
-import { COLORS, SPACING } from '../../theme/tokens';
+import { isNewMenuItem } from '../../data/newItem';
+import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
@@ -68,6 +69,7 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
   const isNeeded = needItItemKeys.has(key);
   const gotItCount = gotItItemCounts.get(key) ?? 0;
   const hasActivity = isLoved || (needItEnabled && isNeeded) || (gotItEnabled && gotItCount > 0);
+  const isNew = isNewMenuItem(item.first_seen);
 
   const swipeableRef = useRef<Swipeable>(null);
   const rowRef = useRef<View>(null);
@@ -231,6 +233,7 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
           accessibilityRole="button"
           accessibilityLabel={[
             item.item,
+            isNew && 'New',
             restaurant.restaurant,
             restaurantLocationLabel(restaurant),
             distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
@@ -258,6 +261,11 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
               style={[text.restaurantName, styles.name]}
               numberOfLines={1}
             />
+            {isNew && (
+              <View style={styles.newBadge}>
+                <Text style={styles.newBadgeText}>NEW</Text>
+              </View>
+            )}
             {hasActivity && <View style={styles.activityDot} />}
           </View>
           <Text style={[text.body, styles.restaurant]} numberOfLines={1}>
@@ -325,6 +333,18 @@ const styles = StyleSheet.create({
   name: {
     flex: 1,
     fontSize: 14,
+  },
+  newBadge: {
+    backgroundColor: COLORS.gold,
+    borderRadius: RADII.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 9,
+    lineHeight: 11,
+    color: COLORS.ink,
   },
   activityDot: {
     width: 6,

@@ -67,7 +67,23 @@ export function RootNavigator() {
           },
         })}
       >
-        <Tab.Screen name="Find" component={FindNavigator} />
+        <Tab.Screen
+          name="Find"
+          component={FindNavigator}
+          listeners={({ navigation }) => ({
+            // Pressing the Find tab while it's already active doesn't
+            // reset FindHomeScreen's own state (search text, filters,
+            // scroll position) by itself -- only a stack pop-to-top,
+            // which is a no-op if already at FindHome. Send a fresh
+            // resetToken param down so FindHomeScreen can do that part
+            // (owner request, 2026-07-23).
+            tabPress: () => {
+              if (navigation.isFocused()) {
+                navigation.navigate('Find', { screen: 'FindHome', params: { resetToken: Date.now() } });
+              }
+            },
+          })}
+        />
         <Tab.Screen name="Explore" component={ExploreNavigator} />
         <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Bites' }} />
       </Tab.Navigator>

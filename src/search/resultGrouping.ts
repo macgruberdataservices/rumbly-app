@@ -19,6 +19,7 @@ import type { Restaurant } from '../data/types';
 import { distanceToRestaurant, type Coordinates } from '../location/proximity';
 import { resultKey, resultLabel, type SearchResult } from './rank';
 import { locationHierarchy } from '../data/locationNames';
+import { itemGroupKey, type ItemMatch } from './itemGrouping';
 
 // Priority tiers per owner direction: parks -> resorts -> Disney Springs
 // -> water parks -> other. Parks sub-order by PARK_ORDER; water parks
@@ -32,7 +33,12 @@ function bucketFor(r: Restaurant) {
 
 export type ResultRow =
   | { type: 'location-header'; key: string; parkLabel: string; areaLabel: string | null }
-  | { type: 'result'; key: string; result: SearchResult };
+  | { type: 'result'; key: string; result: SearchResult }
+  // Same item (exact name + price + description match), same primary
+  // slot, but with 1+ other restaurants carrying the identical item
+  // folded in as `extras` instead of each getting its own row — see
+  // itemGrouping.ts.
+  | { type: 'item-group'; key: string; result: SearchResult; extras: ItemMatch[] };
 
 function restaurantOf(r: SearchResult): Restaurant | null {
   return r.kind === 'restaurant' || r.kind === 'item' ? r.restaurant : null;
@@ -121,10 +127,43 @@ function buildLocationRows(
     return resultLabel(a.r).localeCompare(resultLabel(b.r));
   });
 
+  // Fold identical items (same name+price+description, e.g. a snack-cart
+  // item sold at 10 different quick-service carts) down to one row —
+  // done here, after the sort above, so whichever match the sort already
+  // considers "best" (nearest with Near Me on, else highest-tier/
+  // alphabetical) is the one that keeps its own location-header slot;
+  // the rest attach as `extras` on that row instead of each getting a
+  // separate row and location header. Restaurant results never dedupe
+  // this way — every restaurant is its own distinct place.
+  const extrasByFirstOccurrence = new Map<(typeof withLocation)[number], ItemMatch[]>();
+  let entries = withLocation;
+  if (pass === 'item') {
+    const firstOccurrence = new Map<string, (typeof withLocation)[number]>();
+    const deduped: (typeof withLocation)[number][] = [];
+    for (const entry of withLocation) {
+      if (entry.r.kind !== 'item') {
+        deduped.push(entry);
+        continue;
+      }
+      const key = itemGroupKey(entry.r.item);
+      const primary = firstOccurrence.get(key);
+      if (!primary) {
+        firstOccurrence.set(key, entry);
+        deduped.push(entry);
+      } else {
+        const extras = extrasByFirstOccurrence.get(primary) ?? [];
+        extras.push({ item: entry.r.item, restaurant: entry.r.restaurant });
+        extrasByFirstOccurrence.set(primary, extras);
+      }
+    }
+    entries = deduped;
+  }
+
   const rows: ResultRow[] = [];
   let currentGroupKey: string | null = null;
   let currentArea: string | null = null;
-  for (const { r, bucket } of withLocation) {
+  for (const entry of entries) {
+    const { r, bucket } = entry;
     const groupChanged = bucket.topKey !== currentGroupKey;
     if (groupChanged) {
       currentGroupKey = bucket.topKey;
@@ -139,7 +178,12 @@ function buildLocationRows(
       });
     }
     currentArea = bucket.subKey;
-    rows.push({ type: 'result', key: resultKey(r), result: r });
+    const extras = extrasByFirstOccurrence.get(entry);
+    rows.push(
+      extras && extras.length > 0
+        ? { type: 'item-group', key: resultKey(r), result: r, extras }
+        : { type: 'result', key: resultKey(r), result: r }
+    );
   }
   return rows;
 }

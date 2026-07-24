@@ -114,6 +114,12 @@ export interface SearchIndexEntry {
   is_kids: boolean;
   is_allergy_friendly: boolean;
   has_allergy_option: boolean;
+  // Added for the "New" badge (owner request, 2026-07-23) — see
+  // data/newItem.ts for what counts as new.
+  first_seen: string;
+  // Added for identical-item grouping in search results (owner request,
+  // 2026-07-23) — see search/itemGrouping.ts.
+  description: string | null;
 }
 
 export interface HoursPeriod {
@@ -161,6 +167,12 @@ export interface DataManifest {
   restaurant_data: string;
   menu_data: string;
   hours_data: string;
+  // Optional -- absent entirely on a manifest published before Disney
+  // Dining Dev's hand-coded venue pipeline existed, or on any manifest
+  // cached locally from before that. importPipeline.ts treats a missing
+  // key as "nothing published yet," same as the source PWA.
+  hand_coded_data?: string;
+  hand_coded_menu_data?: string;
 }
 
 // Published separately from DataManifest (its own changes_manifest.json,

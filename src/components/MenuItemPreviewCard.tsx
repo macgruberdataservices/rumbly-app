@@ -1,6 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { Animated, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import type { MenuItem } from '../data/types';
+import { isNewMenuItem } from '../data/newItem';
+import { formatDateLabel } from '../data/changes';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -78,6 +80,14 @@ export function MenuItemPreviewCard({
                   <Text style={[text.sectionTitle, styles.name]}>{item.item}</Text>
                   <Text style={text.body}>{item.price_display}</Text>
                 </View>
+                <View style={styles.addedRow}>
+                  {isNewMenuItem(item.first_seen) && (
+                    <View style={styles.newBadge}>
+                      <Text style={styles.newBadgeText}>NEW</Text>
+                    </View>
+                  )}
+                  <Text style={text.bodyMuted}>Added {formatDateLabel(item.first_seen)}</Text>
+                </View>
                 {!!item.description && (
                   <Text style={[text.bodyMuted, styles.description]}>{item.description}</Text>
                 )}
@@ -122,6 +132,24 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
+  },
+  newBadge: {
+    backgroundColor: COLORS.gold,
+    borderRadius: RADII.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 9,
+    lineHeight: 11,
+    color: COLORS.ink,
+  },
+  addedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.xs,
   },
   description: {
     marginTop: SPACING.sm,

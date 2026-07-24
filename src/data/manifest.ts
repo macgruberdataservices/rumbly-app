@@ -9,9 +9,36 @@ import type { DataManifest } from './types';
 import { readJSON, writeJSON } from './fileStore';
 import { MANIFEST_URL, REFRESH_INTERVAL_MS, LOCAL_FILES } from './constants';
 
+// Bump whenever a change to importPipeline.ts's parsing/merge logic needs
+// every already-synced device to re-run a full import even though the
+// remote manifest's content hashes haven't changed. 2026-07-23's
+// hand-coded-data merge fix is exactly that case: the published files on
+// the server didn't change, only what runImport() does with them, so
+// manifest-equality alone would never trigger a re-import on a device
+// that synced before the fix shipped -- this is the missing piece that
+// makes that fix (or any future one shaped like it) actually take effect
+// without asking the user to reinstall the app or manually clear storage.
+// v3: hand-coded park/area/resort now backfills onto an already-graduated
+// main-feed record regardless of the hand-coded record's own
+// show_in_app, and hoursStatus gained a distinct 'none' kind (fixes
+// hand-coded venues grouping into "Other" and showing a misleading
+// "Hours unavailable offline" label).
+// v4: SearchIndexEntry gained first_seen (for the "New" item badge) --
+// a locally cached search_index.json from before this won't have it.
+// v5: hand-coded park/area/resort strings now get remapped to the
+// canonical Disney names before backfilling (fixes duplicate/stray
+// Explore-by-Location cards -- a hand-coded record's casual "Hollywood
+// Studios" was landing as its own group next to the real "Disney's
+// Hollywood Studios" one).
+// v6: SearchIndexEntry gained description (for identical-item grouping
+// in search results) -- a locally cached search_index.json from before
+// this won't have it.
+const LOCAL_DATA_SCHEMA_VERSION = 6;
+
 interface MetaBlob {
   manifest: DataManifest | null;
   lastCheckedAt: number | null;
+  schemaVersion?: number;
 }
 
 async function readMeta(): Promise<MetaBlob> {
@@ -28,7 +55,9 @@ function manifestsEqual(a: DataManifest | null, b: DataManifest): boolean {
   return (
     a.restaurant_data === b.restaurant_data &&
     a.menu_data === b.menu_data &&
-    a.hours_data === b.hours_data
+    a.hours_data === b.hours_data &&
+    a.hand_coded_data === b.hand_coded_data &&
+    a.hand_coded_menu_data === b.hand_coded_menu_data
   );
 }
 
@@ -53,7 +82,8 @@ export type DataCheckResult =
 // network, whether the caller needs to run the import pipeline.
 export async function checkForUpdate(): Promise<DataCheckResult> {
   const meta = await readMeta();
-  const haveCache = meta.manifest !== null;
+  const schemaStale = meta.schemaVersion !== LOCAL_DATA_SCHEMA_VERSION;
+  const haveCache = meta.manifest !== null && !schemaStale;
   const dueForCheck =
     !haveCache ||
     meta.lastCheckedAt === null ||
@@ -65,21 +95,24 @@ export async function checkForUpdate(): Promise<DataCheckResult> {
 
   const manifest = await fetchManifest(false);
 
-  if (manifestsEqual(meta.manifest, manifest)) {
-    await writeMeta({ manifest, lastCheckedAt: Date.now() });
+  if (!schemaStale && manifestsEqual(meta.manifest, manifest)) {
+    await writeMeta({ manifest, lastCheckedAt: Date.now(), schemaVersion: LOCAL_DATA_SCHEMA_VERSION });
     return { action: 'unchanged', manifest };
   }
 
   return { action: 'import', manifest };
 }
 
-// Port of forceRefreshData(): bypasses the 24h gate entirely.
+// Port of forceRefreshData(): bypasses the 24h gate entirely. Does NOT
+// bypass the schema-version gate above -- a stale local schema still
+// forces a real import here too, same as checkForUpdate.
 export async function forceCheckForUpdate(): Promise<DataCheckResult> {
   const meta = await readMeta();
+  const schemaStale = meta.schemaVersion !== LOCAL_DATA_SCHEMA_VERSION;
   const manifest = await fetchManifest(true);
 
-  if (manifestsEqual(meta.manifest, manifest)) {
-    await writeMeta({ manifest, lastCheckedAt: Date.now() });
+  if (!schemaStale && manifestsEqual(meta.manifest, manifest)) {
+    await writeMeta({ manifest, lastCheckedAt: Date.now(), schemaVersion: LOCAL_DATA_SCHEMA_VERSION });
     return { action: 'unchanged', manifest };
   }
 
@@ -87,7 +120,7 @@ export async function forceCheckForUpdate(): Promise<DataCheckResult> {
 }
 
 export async function markImported(manifest: DataManifest): Promise<void> {
-  await writeMeta({ manifest, lastCheckedAt: Date.now() });
+  await writeMeta({ manifest, lastCheckedAt: Date.now(), schemaVersion: LOCAL_DATA_SCHEMA_VERSION });
 }
 
 export async function getLastCheckedAt(): Promise<number | null> {

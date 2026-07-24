@@ -32,9 +32,11 @@ export function CollapsedHeader({
           <Text style={[text.restaurantName, styles.name]} numberOfLines={1}>
             {restaurantName}
           </Text>
-          <Text style={[styles.status, hoursStatus.kind === 'open' ? styles.statusOpen : styles.statusClosed]}>
-            {hoursStatus.kind === 'open' ? 'Open' : 'Closed'}
-          </Text>
+          {hoursStatus.kind !== 'none' && (
+            <Text style={[styles.status, hoursStatus.kind === 'open' ? styles.statusOpen : styles.statusClosed]}>
+              {hoursStatus.kind === 'open' ? 'Open' : 'Closed'}
+            </Text>
+          )}
         </Animated.View>
         {/* No overflow menu items exist yet (Report Inaccurate etc. are
             later milestones) — visual placeholder only, nothing behind it. */}

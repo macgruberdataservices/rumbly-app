@@ -85,11 +85,13 @@ export function RestaurantPreviewCard({
               <>
                 <Text style={text.sectionTitle}>{restaurant.restaurant}</Text>
                 <Text style={[text.bodyMuted, styles.location]}>{restaurantLocationLabel(restaurant)}</Text>
-                <Text
-                  style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}
-                >
-                  {hoursStatus.todayLabel}
-                </Text>
+                {!!hoursStatus.todayLabel && (
+                  <Text
+                    style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}
+                  >
+                    {hoursStatus.todayLabel}
+                  </Text>
+                )}
                 {!!description && (
                   <Text style={[text.bodyMuted, styles.description]} numberOfLines={6}>
                     {description}

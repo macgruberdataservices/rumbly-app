@@ -10,7 +10,8 @@ import { useEntitlement } from '../hooks/useEntitlement';
 import { MenuItemPreviewCard } from './MenuItemPreviewCard';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from './GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from './swipeableCoordinator';
-import { COLORS, SPACING } from '../theme/tokens';
+import { isNewMenuItem } from '../data/newItem';
+import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 // Fixed so every row lays out identically regardless of description
@@ -53,6 +54,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
     item.has_allergy_option && 'Allergy option available',
     item.is_alcoholic && '21+',
   ].filter(Boolean) as string[];
+  const isNew = isNewMenuItem(item.first_seen);
 
   const {
     lovedItemKeys,
@@ -235,7 +237,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
               });
             }}
             accessible
-            accessibilityLabel={[item.item, item.price_display, item.description, ...badges].filter(Boolean).join(', ')}
+            accessibilityLabel={[item.item, isNew && 'New', item.price_display, item.description, ...badges].filter(Boolean).join(', ')}
             accessibilityState={{ selected: highlighted }}
             style={[
               styles.row,
@@ -250,6 +252,11 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
               <Text style={[text.restaurantName, styles.name]} numberOfLines={1}>
                 {item.item}
               </Text>
+              {isNew && (
+                <View style={styles.newBadge}>
+                  <Text style={styles.newBadgeText}>NEW</Text>
+                </View>
+              )}
               <Text style={[text.body, styles.price]}>{item.price_display}</Text>
             </View>
             {!!item.description && (
@@ -331,6 +338,18 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: 14,
+  },
+  newBadge: {
+    backgroundColor: COLORS.gold,
+    borderRadius: RADII.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+  },
+  newBadgeText: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 9,
+    lineHeight: 11,
+    color: COLORS.ink,
   },
   description: {
     marginTop: 2,
