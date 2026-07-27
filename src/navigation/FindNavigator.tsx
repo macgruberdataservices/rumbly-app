@@ -7,11 +7,7 @@ import type { FindRestoreState } from '../search/findState';
 import type { RestaurantDetailRouteParams } from './browseTypes';
 
 export type FindStackParamList = {
-  // resetToken: set by RootNavigator's Find tab listener when the Find
-  // tab is pressed while it's already the active tab -- FindHomeScreen
-  // watches for it changing and resets to its pristine home state
-  // (cleared search, closed filters, scrolled to top).
-  FindHome: { state?: FindRestoreState; resetToken?: number } | undefined;
+  FindHome: { state?: FindRestoreState } | undefined;
   RestaurantDetail: RestaurantDetailRouteParams;
 };
 

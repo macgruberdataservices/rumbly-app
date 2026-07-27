@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
+import type { BottomTabNavigationProp } from '@react-navigation/bottom-tabs';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   AccessibilityInfo,
@@ -23,6 +24,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
+import type { RootTabParamList } from '../navigation/RootNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { useActivity } from '../hooks/useActivity';
@@ -149,6 +151,12 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const pendingAccessibilityFocusRef = useRef(false);
   const isSearchActiveRef = useRef(initialState.query.trim().length >= 2);
   const latestRestoreStateRef = useRef<FindRestoreState>(initialState);
+  // Keep the blur cleanup stable even if React Navigation replaces the
+  // navigation object while processing a nested-stack transition.
+  const navigationRef = useRef(navigation);
+  useEffect(() => {
+    navigationRef.current = navigation;
+  }, [navigation]);
   const recentReveal = useRef(
     new Animated.Value(initialState.searchInputFocused && initialState.query.trim().length === 0 ? 1 : 0)
   ).current;
@@ -268,12 +276,13 @@ export function FindHomeScreen({ navigation, route }: Props) {
   }, [buildRestoreState]);
 
   useFocusEffect(
-    useCallback(
-      () => () => {
-        navigation.setParams({ state: latestRestoreStateRef.current });
-      },
-      [navigation]
-    )
+    useCallback(() => {
+      return () => {
+        navigationRef.current.setParams({ state: latestRestoreStateRef.current });
+      };
+      // Stable empty deps -- see navigationRef's comment above for why
+      // this can no longer depend on `navigation` directly.
+    }, [])
   );
 
   const focusRestoredResult = useCallback(() => {
@@ -518,25 +527,29 @@ export function FindHomeScreen({ navigation, route }: Props) {
   }, [clearFocusedResult, resetListPosition]);
 
   // Full reset to the pristine home state -- search, filters, and
-  // browse, not just one of them -- triggered by RootNavigator's Find
-  // tab listener sending a fresh resetToken param when the Find tab is
-  // pressed while already active (owner request, 2026-07-23).
+  // browse, not just one of them.
   const resetToHomeState = useCallback(() => {
     handleClearSearch();
     handleClearAllFilters();
     setBrowseContext(null);
   }, [handleClearAllFilters, handleClearSearch]);
 
+  // A focused tab press already pops a nested stack to its first screen.
+  // Let React Navigation perform that default when RestaurantDetail is
+  // showing. Only reset search state when FindHome itself is focused;
+  // doing this locally avoids a competing nested navigate/reset action.
   useEffect(() => {
-    if (route.params?.resetToken !== undefined) {
+    const parentNavigation =
+      navigation.getParent<BottomTabNavigationProp<RootTabParamList, 'Find'>>();
+    if (!parentNavigation) return undefined;
+    return parentNavigation.addListener('tabPress', () => {
+      if (!navigation.isFocused()) return;
+      const homeState = defaultFindRestoreState();
+      latestRestoreStateRef.current = homeState;
+      navigation.setParams({ state: homeState });
       resetToHomeState();
-    }
-    // Only ever react to resetToken actually changing -- resetToHomeState
-    // itself is excluded on purpose (it's recreated most renders via its
-    // own dependencies, and re-running the reset on those changes rather
-    // than on a fresh token would fight the very state it just set).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [route.params?.resetToken]);
+    });
+  }, [navigation, resetToHomeState]);
 
   const handleFilterPress = useCallback(() => {
     setFilterPanelState((state) => {
