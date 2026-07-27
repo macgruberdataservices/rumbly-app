@@ -106,6 +106,64 @@ function normalizeHandCodedMenuItem(item: MenuItem): MenuItem {
   };
 }
 
+// Manually verified 2026-07-27 (owner + agent, one restaurant at a time
+// via disneyfoodblog.com's embedded official links, then each URL
+// confirmed live against disneyworld.disney.go.com itself before being
+// added here): the published restaurant_data.json's own disney_url is
+// null for these 37 restaurant_ids even though a real Disney dining page
+// exists. This is a Rumbly-local override, not a fix at the pipeline
+// source (Disney Dining Dev's backend, which also feeds the PWA) -- an
+// owner decision, so the PWA doesn't pick this up and a future upstream
+// fix wouldn't conflict with it (this only fills a null, never
+// overwrites a real published value). 11 restaurants remain genuinely
+// unresolved as of this date; see Docs/ROADMAP.md for the full list.
+const DISNEY_URL_OVERRIDES: Record<string, string> = {
+  'boardwalk-pizza-window': 'https://disneyworld.disney.go.com/dining/boardwalk/pizza-window/',
+  'stk-orlando': 'https://disneyworld.disney.go.com/dining/disney-springs/stk-steakhouse/',
+  'stargazers-bar': 'https://disneyworld.disney.go.com/dining/disney-springs/stargazers-bar/',
+  'boardwalk-ice-cream': 'https://disneyworld.disney.go.com/dining/boardwalk/boardwalk-ice-cream/',
+  'summer-house': 'https://disneyworld.disney.go.com/dining/disney-springs/summer-house-on-the-lake/',
+  'macguffins': 'https://disneyworld.disney.go.com/dining/disney-springs/macguffins/',
+  'six-ravens---coming-soon': 'https://disneyworld.disney.go.com/dining/disney-springs/six-ravens/',
+  'terralina': 'https://disneyworld.disney.go.com/dining/disney-springs/terralina-crafted-italian/',
+  'homecomin': 'https://disneyworld.disney.go.com/dining/disney-springs/chef-art-smiths-homecomin/',
+  'goofys-candy-company': 'https://disneyworld.disney.go.com/dining/disney-springs/goofys-candy-company/',
+  'the-ganachery': 'https://disneyworld.disney.go.com/dining/disney-springs/the-ganachery/',
+  'level99': 'https://disneyworld.disney.go.com/dining/disney-springs/level99/',
+  'morimoto-street-food': 'https://disneyworld.disney.go.com/dining/disney-springs/morimoto-asia-street-food/',
+  'tylers-coffee-bar': 'https://disneyworld.disney.go.com/dining/disney-springs/tylers-coffee-bar/',
+  'raglan-road': 'https://disneyworld.disney.go.com/dining/disney-springs/raglan-road-irish-pub-and-restaurant/',
+  'funnel-cake-cart---temporarily-unavailable': 'https://disneyworld.disney.go.com/dining/boardwalk/funnel-cake-cart/',
+  'boardwalk-joes': 'https://disneyworld.disney.go.com/dining/boardwalk/boardwalk-joes-marvelous-margaritas/',
+  'blaze-fast-fired-pizza': 'https://disneyworld.disney.go.com/dining/disney-springs/blaze-pizza/',
+  'the-cake-bake-shop-restaurant-by-gwendolyn-rogers': 'https://disneyworld.disney.go.com/dining/boardwalk/cake-bake-shop-restaurant/',
+  'house-of-blues': 'https://disneyworld.disney.go.com/dining/disney-springs/house-of-blues-restaurant/',
+  'haagen-dazs': 'https://disneyworld.disney.go.com/dining/disney-springs/haagen-dazs-west-side/',
+  'everglazed': 'https://disneyworld.disney.go.com/dining/disney-springs/everglazed-donuts/',
+  'wetzels-pretzels': 'https://disneyworld.disney.go.com/dining/disney-springs/wetzels-pretzels-west-side/',
+  'city-works-eatery-and-pour-house': 'https://disneyworld.disney.go.com/dining/disney-springs/city-works/',
+  'lava-lounge-at-rainforest-café': 'https://disneyworld.disney.go.com/dining/disney-springs/lava-lounge/',
+  'wolfgang-puck-bar-grill': 'https://disneyworld.disney.go.com/dining/disney-springs/wolfgang-puck-bar-and-grill/',
+  'sunshine-churros-marketplace': 'https://disneyworld.disney.go.com/dining/disney-springs/sunshine-churros-marketplace/',
+  'sunshine-churros-west-side': 'https://disneyworld.disney.go.com/dining/disney-springs/sunshine-churros-west-side/',
+  'paradiso-37': 'https://disneyworld.disney.go.com/dining/disney-springs/paradiso-37-taste-of-the-americas/',
+  'bbwolfs': 'https://disneyworld.disney.go.com/dining/disney-springs/bb-wolfs-sausage-co/',
+  'starbucks-marketplace': 'https://disneyworld.disney.go.com/dining/disney-springs/starbucks-at-marketplace/',
+  'ghirardelli-soda-fountain-and-chocolate-shop': 'https://disneyworld.disney.go.com/dining/disney-springs/ghirardelli-soda-fountain/',
+  'planet-hollywood': 'https://disneyworld.disney.go.com/dining/disney-springs/planet-hollywood-observatory/',
+  'the-front-porch-at-house-of-blues': 'https://disneyworld.disney.go.com/dining/disney-springs/front-porch-bar-at-house-of-blues-restaurant/',
+  'espn-wide-world-of-sports-grill': 'https://disneyworld.disney.go.com/dining/wide-world-of-sports/espn-wide-world-sports-grill/',
+  'the-edison': 'https://disneyworld.disney.go.com/dining/disney-springs/edison/',
+  'the-boathouse': 'https://disneyworld.disney.go.com/dining/disney-springs/boathouse-restaurant/',
+};
+
+function applyDisneyUrlOverrides(restaurants: Restaurant[]): Restaurant[] {
+  return restaurants.map((r) => {
+    const override = DISNEY_URL_OVERRIDES[r.restaurant_id];
+    return override && !r.disney_url ? { ...r, disney_url: override } : r;
+  });
+}
+
 function toSearchIndexEntry(item: MenuItem): SearchIndexEntry {
   return {
     restaurant_id: item.restaurant_id,
@@ -191,7 +249,7 @@ export async function runImport(manifest: DataManifest): Promise<ImportStats> {
       byId.set(r.restaurant_id, r);
     }
   }
-  const restaurants = Array.from(byId.values());
+  const restaurants = applyDisneyUrlOverrides(Array.from(byId.values()));
   await writeJSON(LOCAL_FILES.restaurantData, restaurants);
   await writeJSON(LOCAL_FILES.hoursData, hoursData);
 

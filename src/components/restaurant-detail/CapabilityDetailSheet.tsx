@@ -2,17 +2,15 @@ import { Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native'
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
-export type CapabilityKind = 'reservations' | 'walkup' | 'diningPlan';
+// Reservations and walk-up used to open this sheet too (an informational
+// modal + "View Official Page" browser link) -- both now deep-link
+// straight into the official app instead (see mdxDeepLink.ts), so this
+// sheet is Dining Plan-only. Kept as a union of one rather than a plain
+// boolean so a future capability with no deep link can slot back in the
+// same way.
+export type CapabilityKind = 'diningPlan';
 
 const COPY: Record<CapabilityKind, { title: string; body: string }> = {
-  reservations: {
-    title: 'Reservations accepted',
-    body: 'Check current times in the official Disney app or site.',
-  },
-  walkup: {
-    title: 'Walk-up list offered',
-    body: 'Current availability and estimated waits may change.',
-  },
   diningPlan: {
     title: 'Disney Dining Plan accepted',
     body: 'Specific credit eligibility may vary by menu item — confirm in the official Disney app or site.',

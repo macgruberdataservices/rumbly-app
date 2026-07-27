@@ -4,6 +4,7 @@ import type { Restaurant } from '../../data/types';
 import { restaurantLocationLabel } from '../../data/locationNames';
 import type { HoursStatus } from '../../data/hoursStatus';
 import type { CapabilityKind } from './CapabilityDetailSheet';
+import { hasMobileOrder, openMobileOrderInOfficialApp, openRestaurantInOfficialApp } from '../../data/mdxDeepLink';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
@@ -17,6 +18,79 @@ function priceLabel(r: Restaurant): string {
 function hasDiningPlan(r: Restaurant): boolean {
   return r.raw_facets.some((f) => f.group === 'diningPlan');
 }
+
+// Hand-drawn View-shape icons matching RootNavigator.tsx's tab-bar icon
+// technique (small fixed frame + 1-2 border-trick children, no icon
+// library) -- placeholder style for now, a real icon set can replace
+// these later without changing the pill row's layout/behavior.
+function ReservationsIcon({ color }: { color: string }) {
+  return (
+    <View style={pillIconStyles.frame}>
+      <View style={[pillIconStyles.clockFace, { borderColor: color }]} />
+      <View style={[pillIconStyles.clockHand, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+function WalkUpIcon({ color }: { color: string }) {
+  return (
+    <View style={pillIconStyles.frame}>
+      <View style={[pillIconStyles.listBar, { backgroundColor: color }]} />
+      <View style={[pillIconStyles.listBar, { backgroundColor: color, marginTop: 2 }]} />
+      <View style={[pillIconStyles.listBar, { backgroundColor: color, marginTop: 2 }]} />
+    </View>
+  );
+}
+
+function MobileOrderIcon({ color }: { color: string }) {
+  return (
+    <View style={pillIconStyles.frame}>
+      <View style={[pillIconStyles.phoneOutline, { borderColor: color }]} />
+      <View style={[pillIconStyles.phoneButton, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+const pillIconStyles = StyleSheet.create({
+  frame: {
+    width: 14,
+    height: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.xs,
+  },
+  clockFace: {
+    width: 11,
+    height: 11,
+    borderRadius: 6,
+    borderWidth: 1.5,
+  },
+  clockHand: {
+    position: 'absolute',
+    width: 1.5,
+    height: 4,
+    borderRadius: 1,
+    top: 2,
+  },
+  listBar: {
+    width: 10,
+    height: 1.5,
+    borderRadius: 1,
+  },
+  phoneOutline: {
+    width: 8,
+    height: 13,
+    borderRadius: 2,
+    borderWidth: 1.5,
+  },
+  phoneButton: {
+    position: 'absolute',
+    width: 1.5,
+    height: 1.5,
+    borderRadius: 1,
+    bottom: 2.5,
+  },
+});
 
 export function ExpandedHeader({
   restaurant,
@@ -73,13 +147,21 @@ export function ExpandedHeader({
 
         <View style={styles.pillRow}>
           {restaurant.accepts_reservations && (
-            <Pressable style={styles.pill} onPress={() => onCapabilityPress('reservations')}>
+            <Pressable style={styles.pill} onPress={() => openRestaurantInOfficialApp(restaurant)}>
+              <ReservationsIcon color={COLORS.ink} />
               <Text style={text.chip}>Reservations</Text>
             </Pressable>
           )}
           {restaurant.has_walkup_list && (
-            <Pressable style={styles.pill} onPress={() => onCapabilityPress('walkup')}>
+            <Pressable style={styles.pill} onPress={() => openRestaurantInOfficialApp(restaurant)}>
+              <WalkUpIcon color={COLORS.ink} />
               <Text style={text.chip}>Walk-up List</Text>
+            </Pressable>
+          )}
+          {hasMobileOrder(restaurant) && (
+            <Pressable style={styles.pill} onPress={() => openMobileOrderInOfficialApp(restaurant)}>
+              <MobileOrderIcon color={COLORS.ink} />
+              <Text style={text.chip}>Mobile Ordering</Text>
             </Pressable>
           )}
           {hasDiningPlan(restaurant) && (
@@ -157,6 +239,8 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   pill: {
+    flexDirection: 'row',
+    alignItems: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADII.xl,

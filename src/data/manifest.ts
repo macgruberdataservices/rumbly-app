@@ -38,7 +38,11 @@ import { MANIFEST_URL, REFRESH_INTERVAL_MS, LOCAL_FILES } from './constants';
 // from before this won't have them, and searchIndexLoader.ts's
 // prepareSearchIndex() stopped dropping show_in_menu:false rows outright,
 // so a stale index also wouldn't have Disney's allergy-labeled rows at all.
-const LOCAL_DATA_SCHEMA_VERSION = 7;
+// v8: importPipeline.ts's DISNEY_URL_OVERRIDES backfills disney_url on 37
+// restaurants missing it in the published data -- a code-level pipeline
+// change, not a manifest change, so it needs the schema bump to force a
+// reimport rather than waiting for the normal 24h cadence.
+const LOCAL_DATA_SCHEMA_VERSION = 8;
 
 interface MetaBlob {
   manifest: DataManifest | null;
