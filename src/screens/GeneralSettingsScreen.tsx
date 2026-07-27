@@ -16,7 +16,12 @@ const APP_VERSION = Constants.expoConfig?.version ?? '—';
 
 export function GeneralSettingsScreen({ navigation }: Props) {
   const { isLoading, lastSyncedAt, forceRefresh } = useDataProvider();
-  const { allAllergyInSearch, setAllAllergyInSearch } = useAppSettings();
+  const {
+    allAllergyInSearch,
+    setAllAllergyInSearch,
+    findFeedEnabled,
+    setFindFeedEnabled,
+  } = useAppSettings();
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -47,6 +52,23 @@ export function GeneralSettingsScreen({ navigation }: Props) {
           />
         </View>
 
+        <Text style={[styles.sectionLabel, styles.findSectionLabel]}>FIND</Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingRowText}>
+            <Text style={text.body}>Personalized Find Feed</Text>
+            <Text style={[text.bodyMuted, styles.settingRowSubtitle]}>
+              Use your Love It and highly rated Got It activity, plus lighter search and viewing
+              signals, to choose useful recommendations. Turning this off also stops passive
+              recommendation-event collection.
+            </Text>
+          </View>
+          <Switch
+            value={findFeedEnabled}
+            onValueChange={setFindFeedEnabled}
+            trackColor={{ true: COLORS.forest }}
+          />
+        </View>
+
         <Text style={styles.versionText}>App version {APP_VERSION}</Text>
       </ScrollView>
     </SafeAreaView>
@@ -65,6 +87,7 @@ const styles = StyleSheet.create({
   supportingText: { marginBottom: SPACING.md },
   syncWrapper: { marginHorizontal: -SPACING.lg },
   dietarySectionLabel: { marginTop: SPACING.xl },
+  findSectionLabel: { marginTop: SPACING.xl },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',

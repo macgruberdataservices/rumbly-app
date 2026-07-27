@@ -3,22 +3,35 @@
 // no account/auth dependency, so this can sit outside AuthProvider).
 
 import React, { createContext, useEffect, useState } from 'react';
-import { loadAllAllergyInSearch, saveAllAllergyInSearch } from './appSettings';
+import {
+  loadAllAllergyInSearch,
+  loadFindFeedEnabled,
+  saveAllAllergyInSearch,
+  saveFindFeedEnabled,
+} from './appSettings';
 
 interface AppSettingsContextValue {
   allAllergyInSearch: boolean;
   setAllAllergyInSearch: (value: boolean) => void;
+  findFeedEnabled: boolean;
+  setFindFeedEnabled: (value: boolean) => void;
+  isSettingsReady: boolean;
 }
 
 const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [allAllergyInSearch, setAllAllergyInSearchState] = useState(false);
+  const [findFeedEnabled, setFindFeedEnabledState] = useState(true);
+  const [isSettingsReady, setIsSettingsReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    loadAllAllergyInSearch().then((value) => {
-      if (!cancelled) setAllAllergyInSearchState(value);
+    Promise.all([loadAllAllergyInSearch(), loadFindFeedEnabled()]).then(([allergy, feed]) => {
+      if (cancelled) return;
+      setAllAllergyInSearchState(allergy);
+      setFindFeedEnabledState(feed);
+      setIsSettingsReady(true);
     });
     return () => {
       cancelled = true;
@@ -30,8 +43,21 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     saveAllAllergyInSearch(value).catch(() => {});
   };
 
+  const setFindFeedEnabled = (value: boolean) => {
+    setFindFeedEnabledState(value);
+    saveFindFeedEnabled(value).catch(() => {});
+  };
+
   return (
-    <AppSettingsContext.Provider value={{ allAllergyInSearch, setAllAllergyInSearch }}>
+    <AppSettingsContext.Provider
+      value={{
+        allAllergyInSearch,
+        setAllAllergyInSearch,
+        findFeedEnabled,
+        setFindFeedEnabled,
+        isSettingsReady,
+      }}
+    >
       {children}
     </AppSettingsContext.Provider>
   );

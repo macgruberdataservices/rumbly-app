@@ -5,6 +5,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ALL_ALLERGY_IN_SEARCH_KEY = 'rumbly.settings.allAllergyInSearch';
+const FIND_FEED_ENABLED_KEY = 'rumbly.settings.findFeedEnabled';
 
 // Default off (2026-07-27 owner decision): Disney's allergy-labeled rows
 // are ~22% of all published items and would otherwise overwhelm
@@ -17,4 +18,15 @@ export async function loadAllAllergyInSearch(): Promise<boolean> {
 
 export async function saveAllAllergyInSearch(value: boolean): Promise<void> {
   await AsyncStorage.setItem(ALL_ALLERGY_IN_SEARCH_KEY, value ? 'true' : 'false');
+}
+
+// The feed is a core Find experience, so it defaults on. Saving only an
+// explicit false keeps existing installs opted in without a migration.
+export async function loadFindFeedEnabled(): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(FIND_FEED_ENABLED_KEY);
+  return raw !== 'false';
+}
+
+export async function saveFindFeedEnabled(value: boolean): Promise<void> {
+  await AsyncStorage.setItem(FIND_FEED_ENABLED_KEY, value ? 'true' : 'false');
 }

@@ -3,6 +3,8 @@ import { AccessibilityInfo, Animated, Dimensions, SectionList, ScrollView, Style
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RestaurantDetailRouteParams } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
+import { useAppSettings } from '../hooks/useAppSettings';
+import { useAuth } from '../hooks/useAuth';
 import { getMenuItemsByRestaurant } from '../data/db';
 import { getTodayStatus } from '../data/hoursStatus';
 import { dropRedundantAllDay, sortPeriods, defaultPeriod } from '../data/period';
@@ -15,6 +17,7 @@ import { MenuItemRow } from '../components/MenuItemRow';
 import { closeOpenSwipeable } from '../components/swipeableCoordinator';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
+import { recordRecommendationEvent } from '../recommendations/remote';
 
 type Props = {
   route: { params: RestaurantDetailRouteParams };
@@ -33,6 +36,8 @@ interface Section {
 export function RestaurantDetailScreen({ route, navigation }: Props) {
   const { restaurantId, itemId: targetItemId, period: targetPeriod, category: targetCategory } = route.params;
   const { restaurants, hoursData } = useDataProvider();
+  const { findFeedEnabled } = useAppSettings();
+  const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const restaurant = useMemo(
     () => restaurants.find((r) => r.restaurant_id === restaurantId),
@@ -66,6 +71,21 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   // SectionList has completed any layout pass at all (a fresh navigation,
   // not a user tap on an already-settled list like onCategoryPress below).
   const lastScrollTargetRef = useRef<{ sectionIndex: number; itemIndex: number } | null>(null);
+  const recordedViewRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!findFeedEnabled || !user) return;
+    const viewKey = `${user.id}:${restaurantId}:${targetItemId ?? ''}`;
+    if (recordedViewRef.current === viewKey) return;
+    recordedViewRef.current = viewKey;
+    void recordRecommendationEvent(user.id, {
+      eventType: 'view',
+      targetType: targetItemId ? 'item' : 'restaurant',
+      restaurantId,
+      itemId: targetItemId ?? null,
+      context: { source: 'restaurant_detail' },
+    });
+  }, [findFeedEnabled, restaurantId, targetItemId, user]);
 
   useEffect(() => {
     let cancelled = false;

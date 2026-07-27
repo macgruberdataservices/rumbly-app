@@ -32,6 +32,7 @@ import { useSearch } from '../hooks/useSearch';
 import { useNearMe } from '../hooks/useNearMe';
 import { useWalkingDistances } from '../hooks/useWalkingDistances';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { FindFeed } from '../components/find/FindFeed';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { ItemResultRow } from '../components/search/ItemResultRow';
 import { GroupedItemResultRow } from '../components/search/GroupedItemResultRow';
@@ -65,6 +66,8 @@ import {
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { distanceToRestaurant } from '../location/proximity';
+import { recordRecommendationEvent } from '../recommendations/remote';
+import { useAuth } from '../hooks/useAuth';
 import {
   applyQuickLocationFilters,
   collectQuickLocationDetailGroups,
@@ -112,7 +115,8 @@ function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; ar
 
 export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
-  const { allAllergyInSearch } = useAppSettings();
+  const { allAllergyInSearch, findFeedEnabled, isSettingsReady } = useAppSettings();
+  const { user } = useAuth();
   const { lovedIds } = useActivity();
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
   const initialState = initialStateRef.current;
@@ -652,6 +656,20 @@ export function FindHomeScreen({ navigation, route }: Props) {
     [buildRestoreState, navigation, rememberQuery]
   );
 
+  const trackSearchOpen = useCallback(
+    (restaurantId: string, itemId: string | null) => {
+      if (!findFeedEnabled) return;
+      void recordRecommendationEvent(user?.id ?? null, {
+        eventType: 'search_open',
+        targetType: itemId ? 'item' : 'restaurant',
+        restaurantId,
+        itemId,
+        context: { source: 'find_search' },
+      });
+    },
+    [findFeedEnabled, user?.id]
+  );
+
   const handleScroll = useCallback((event: NativeSyntheticEvent<NativeScrollEvent>) => {
     resultListOffsetRef.current = event.nativeEvent.contentOffset.y;
   }, []);
@@ -706,6 +724,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
           distanceMiles={walkingDistances.get(r.restaurant.restaurant_id) ?? distanceToRestaurant(nearMeOrigin, r.restaurant)}
           onPress={() => {
             prepareResultNavigation(row.key);
+            trackSearchOpen(r.restaurant.restaurant_id, null);
             navigation.navigate('RestaurantDetail', { restaurantId: r.restaurant.restaurant_id });
           }}
         />
@@ -728,6 +747,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
             }
             onPressPrimary={() => {
               prepareResultNavigation(row.key);
+              trackSearchOpen(r.item.restaurant_id, r.item.item_id);
               navigation.navigate('RestaurantDetail', {
                 restaurantId: r.item.restaurant_id,
                 itemId: r.item.item_id,
@@ -737,6 +757,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
             }}
             onPressExtra={(extra) => {
               prepareResultNavigation(row.key);
+              trackSearchOpen(extra.item.restaurant_id, extra.item.item_id);
               navigation.navigate('RestaurantDetail', {
                 restaurantId: extra.item.restaurant_id,
                 itemId: extra.item.item_id,
@@ -757,6 +778,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
           distanceMiles={distanceMiles}
           onPress={() => {
             prepareResultNavigation(row.key);
+            trackSearchOpen(r.item.restaurant_id, r.item.item_id);
             navigation.navigate('RestaurantDetail', {
               restaurantId: r.item.restaurant_id,
               itemId: r.item.item_id,
@@ -946,6 +968,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
           ref={browseScrollRef}
           style={styles.resultList}
           contentContainerStyle={styles.content}
+          stickyHeaderIndices={showRecentSearches ? [0] : undefined}
           contentOffset={initialContentOffsetRef.current}
           onScroll={handleScroll}
           onScrollEndDrag={() => persistRestoreState()}
@@ -953,48 +976,83 @@ export function FindHomeScreen({ navigation, route }: Props) {
           scrollEventThrottle={16}
           keyboardShouldPersistTaps="handled"
         >
-          <Animated.View
-            pointerEvents={showRecentSearches ? 'auto' : 'none'}
-            style={[
-              styles.recentReveal,
-              {
-                opacity: recentReveal,
-                maxHeight: recentReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 286] }),
-              },
-            ]}
-          >
-            <View style={styles.recentSection}>
-              <View style={styles.recentHeader}>
-                <Text style={text.sectionToggle}>RECENT SEARCHES</Text>
-                <Pressable
-                  onPress={handleClearRecentSearches}
-                  accessibilityRole="button"
-                  accessibilityLabel="Clear recent searches"
-                  hitSlop={8}
-                >
-                  <Text style={text.buttonLabel}>Clear</Text>
-                </Pressable>
-              </View>
-              <View style={styles.recentList}>
-                {recentSearches.map((recent) => (
+          <View style={styles.recentStickyShell}>
+            <Animated.View
+              pointerEvents={showRecentSearches ? 'auto' : 'none'}
+              style={[
+                styles.recentReveal,
+                {
+                  opacity: recentReveal,
+                  maxHeight: recentReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 286] }),
+                },
+              ]}
+            >
+              <View style={styles.recentSection}>
+                <View style={styles.recentHeader}>
+                  <Text style={text.sectionToggle}>RECENT SEARCHES</Text>
                   <Pressable
-                    key={`${recent.query}:${recent.usedAt}`}
-                    onPress={() => handleRecentSearchPress(recent)}
+                    onPress={handleClearRecentSearches}
                     accessibilityRole="button"
-                    accessibilityLabel={`Search for ${recent.query}`}
-                    style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
+                    accessibilityLabel="Clear recent searches"
+                    hitSlop={8}
                   >
-                    <View style={styles.recentClock} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
-                      <View style={styles.recentClockHandVertical} />
-                      <View style={styles.recentClockHandHorizontal} />
-                    </View>
-                    <Text style={styles.recentQuery} numberOfLines={1}>{recent.query}</Text>
-                    <Text style={styles.recentChevron}>›</Text>
+                    <Text style={text.buttonLabel}>Clear</Text>
                   </Pressable>
-                ))}
+                </View>
+                <View style={styles.recentList}>
+                  {recentSearches.map((recent) => (
+                    <Pressable
+                      key={`${recent.query}:${recent.usedAt}`}
+                      onPress={() => handleRecentSearchPress(recent)}
+                      accessibilityRole="button"
+                      accessibilityLabel={`Search for ${recent.query}`}
+                      style={({ pressed }) => [styles.recentRow, pressed && styles.recentRowPressed]}
+                    >
+                      <View style={styles.recentClock} accessibilityElementsHidden importantForAccessibility="no-hide-descendants">
+                        <View style={styles.recentClockHandVertical} />
+                        <View style={styles.recentClockHandHorizontal} />
+                      </View>
+                      <Text style={styles.recentQuery} numberOfLines={1}>{recent.query}</Text>
+                      <Text style={styles.recentChevron}>›</Text>
+                    </Pressable>
+                  ))}
+                </View>
               </View>
-            </View>
-          </Animated.View>
+            </Animated.View>
+          </View>
+          {isSettingsReady && findFeedEnabled && (
+            <FindFeed
+              origin={nearMeOrigin}
+              onOpenItem={(item) => {
+                const key = `feed:item:${item.restaurant_id}:${item.item_id}`;
+                prepareResultNavigation(key);
+                navigation.navigate('RestaurantDetail', {
+                  restaurantId: item.restaurant_id,
+                  itemId: item.item_id,
+                  period: item.dining_period,
+                  category: item.category,
+                });
+              }}
+              onOpenRestaurant={(restaurantId) => {
+                const key = `feed:restaurant:${restaurantId}`;
+                prepareResultNavigation(key);
+                navigation.navigate('RestaurantDetail', { restaurantId });
+              }}
+              onOpenChallenge={(challengeId) => {
+                navigation
+                  .getParent<BottomTabNavigationProp<RootTabParamList>>()
+                  ?.navigate('Explore', {
+                    screen: 'ChallengeDetail',
+                    params: { challengeId },
+                  });
+              }}
+              onOpenExplore={() => {
+                navigation
+                  .getParent<BottomTabNavigationProp<RootTabParamList>>()
+                  ?.navigate('Explore', { screen: 'ExploreHome' });
+              }}
+            />
+          )}
         </ScrollView>
       )}
 
@@ -1055,6 +1113,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
     marginTop: SPACING.sm,
     gap: SPACING.sm,
   },
@@ -1230,11 +1289,19 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#FFFFFF',
   },
+  recentStickyShell: {
+    zIndex: 20,
+    elevation: 8,
+    marginHorizontal: -SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: COLORS.surface,
+  },
   recentReveal: {
     overflow: 'hidden',
   },
   recentSection: {
-    marginBottom: SPACING.md,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.md,
   },
   recentHeader: {
     flexDirection: 'row',
