@@ -41,22 +41,32 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [lastImportStats, setLastImportStats] = useState<ImportStats | null>(null);
 
   const runInitialCheck = useCallback(async () => {
-    setIsLoading(true);
     setError(null);
+
+    // Show whatever's already on disk immediately, before the manifest
+    // check (which may hit the network) has a chance to run -- a stale
+    // cached menu beats a loading spinner on a bad connection. A fresh
+    // install still has nothing here, so isLoading below keeps gating
+    // the loading screen for that case via `isLoading && restaurants.length === 0`.
+    try {
+      const cached = await loadFromCache();
+      setRestaurants(cached.restaurants);
+      setHoursData(cached.hoursData);
+    } catch {
+      // No usable cache yet -- fall through to the check below regardless.
+    }
+
+    setIsLoading(true);
     try {
       const result = await checkForUpdate();
-      if (result.action === 'cache-hit' || result.action === 'unchanged') {
-        const cached = await loadFromCache();
-        setRestaurants(cached.restaurants);
-        setHoursData(cached.hoursData);
-      } else {
+      if (result.action === 'import') {
         const stats = await runImport(result.manifest);
         invalidateSearchIndexCache();
         await markImported(result.manifest);
         setLastImportStats(stats);
-        const cached = await loadFromCache();
-        setRestaurants(cached.restaurants);
-        setHoursData(cached.hoursData);
+        const refreshed = await loadFromCache();
+        setRestaurants(refreshed.restaurants);
+        setHoursData(refreshed.hoursData);
       }
       setLastSyncedAt(await getLastCheckedAt());
     } catch (e) {
