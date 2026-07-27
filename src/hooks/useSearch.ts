@@ -47,7 +47,11 @@ export function useSearch(
   // when a refresh found nothing new -- the module cache wasn't
   // invalidated in that case, so loadSearchIndex() just resolves the
   // same already-cached promise again.
-  lastSyncedAt?: number | null
+  lastSyncedAt?: number | null,
+  // Allergy-filtering plan, Docs/ROADMAP.md 2026-07-27 -- both threaded
+  // straight through to rank.ts's search(), see its own doc comment.
+  dietary: Set<string> = new Set(),
+  allowAllergyByDefault: boolean = false
 ) {
   const [query, setQuery] = useState(initialState?.query ?? '');
   const [activeRelated, setActiveRelated] = useState<RelatedTag | null>(initialState?.activeRelated ?? null);
@@ -88,7 +92,7 @@ export function useSearch(
     }
     setIsSearching(true);
     debounceRef.current = setTimeout(() => {
-      setRawResults(runSearch(query, restaurants, searchIndexRef.current));
+      setRawResults(runSearch(query, restaurants, searchIndexRef.current, dietary, allowAllergyByDefault));
       setIsSearching(false);
     }, DEBOUNCE_MS);
     return () => {
@@ -98,7 +102,7 @@ export function useSearch(
     // a query typed before the index finishes loading needs to re-run
     // once it becomes available, or item results would silently stay
     // empty for that first search.
-  }, [query, restaurants, isIndexReady, isSearchActive]);
+  }, [query, restaurants, isIndexReady, isSearchActive, dietary, allowAllergyByDefault]);
 
   // Related-tag narrowing happens before category counts/filtering — a
   // count of "8 items" under an active Related tag should reflect the

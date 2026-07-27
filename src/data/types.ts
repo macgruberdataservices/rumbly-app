@@ -77,6 +77,19 @@ export interface MenuItem {
   is_kids: boolean;
   is_alcoholic: boolean;
   has_allergy_option: boolean;
+  // Disney's own allergen tags for this item, populated only when
+  // is_allergy_friendly is true — derived by normalize_menu.py parsing
+  // Disney's own published category_group label (e.g.
+  // "peanut-allergy-friendly" -> ['peanut']), never broadened/merged
+  // across allergens. See Docs/ROADMAP.md's allergy-filtering plan for
+  // why this field (not allergy_free_of) backs every filter chip.
+  allergens: string[];
+  // Inferred, not Disney-direct: populated on a *regular* item when its
+  // name matches an allergy-friendly variant elsewhere on the same
+  // restaurant's menu (mark_allergy_options() in normalize_menu.py).
+  // Informational only — never used for filtering, only for the
+  // "ask about an allergy-friendly option" badge on regular items.
+  allergy_free_of: string[];
   is_festival_item: boolean;
   show_in_menu: boolean;
   norm_categories: string[];
@@ -114,6 +127,11 @@ export interface SearchIndexEntry {
   is_kids: boolean;
   is_allergy_friendly: boolean;
   has_allergy_option: boolean;
+  // See the matching fields on MenuItem above for the Disney-direct vs.
+  // inferred distinction — allergens backs filter chips, allergy_free_of
+  // backs the informational badge only.
+  allergens: string[];
+  allergy_free_of: string[];
   // Added for the "New" badge (owner request, 2026-07-23) — see
   // data/newItem.ts for what counts as new.
   first_seen: string;

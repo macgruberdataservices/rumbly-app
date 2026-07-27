@@ -19,7 +19,7 @@
 // Filters combine additively: OR within a group, AND across groups
 // (resolved 2026-07-19, see Docs/ROADMAP.md open question #1).
 
-import type { HoursData, Restaurant } from '../data/types';
+import type { HoursData, MenuItem, Restaurant, SearchIndexEntry } from '../data/types';
 import { getTodayStatus } from '../data/hoursStatus';
 
 export interface SearchFilters {
@@ -31,6 +31,12 @@ export interface SearchFilters {
   serviceTypes: Set<string>;
   priceTiers: Set<number>;
   lovedOnly: boolean;
+  // Item-level, unlike every filter above -- see the header comment's
+  // dietary-attributes note. The first item-level filter group in the
+  // app; ported from Disney Dining Dev's already-shipped allergy
+  // filtering (Docs/ROADMAP.md, 2026-07-27 plan) rather than designed
+  // from scratch.
+  dietary: Set<string>;
 }
 
 export function emptyFilters(): SearchFilters {
@@ -43,6 +49,7 @@ export function emptyFilters(): SearchFilters {
     serviceTypes: new Set(),
     priceTiers: new Set(),
     lovedOnly: false,
+    dietary: new Set(),
   };
 }
 
@@ -55,8 +62,90 @@ export function countActiveFilters(f: SearchFilters): number {
     f.mealPeriods.size +
     f.serviceTypes.size +
     f.priceTiers.size +
-    (f.lovedOnly ? 1 : 0)
+    (f.lovedOnly ? 1 : 0) +
+    f.dietary.size
   );
+}
+
+// Ported from Disney Dining Dev's DIETARY_FILTERS/ALLERGEN_FILTER_KEYS
+// (Front_End/index.html) -- keys match ALLERGEN_LABEL_MAP in the
+// pipeline's normalize_menu.py exactly. Never merge these into a
+// combined chip; a narrow, un-merged mapping is what keeps a filter
+// selection trustworthy as an allergy claim.
+export const DIETARY_FILTERS: { key: string; label: string }[] = [
+  { key: 'kids', label: 'Kids menu' },
+  { key: 'allergy-friendly', label: 'Allergy-friendly' },
+  { key: 'gluten-wheat', label: 'Gluten/Wheat-friendly' },
+  { key: 'milk', label: 'Milk-friendly' },
+  { key: 'egg', label: 'Egg-friendly' },
+  { key: 'soy', label: 'Soy-friendly' },
+  { key: 'sesame', label: 'Sesame-friendly' },
+  { key: 'peanut', label: 'Peanut-friendly' },
+  { key: 'tree-nut', label: 'Tree Nut-friendly' },
+  { key: 'fish', label: 'Fish-friendly' },
+  { key: 'shellfish', label: 'Shellfish-friendly' },
+];
+
+export const ALLERGEN_FILTER_KEYS = [
+  'gluten-wheat', 'milk', 'egg', 'soy', 'sesame', 'peanut', 'tree-nut', 'fish', 'shellfish',
+] as const;
+
+export const ALLERGEN_LABELS: Record<string, string> = {
+  'gluten-wheat': 'Gluten/Wheat', milk: 'Milk', egg: 'Egg', soy: 'Soy',
+  sesame: 'Sesame', peanut: 'Peanut', 'tree-nut': 'Tree Nut', fish: 'Fish', shellfish: 'Shellfish',
+};
+
+// Item-level visibility, safety-critical (Docs/ROADMAP.md, 2026-07-27
+// plan): every allergy-related chip (general or allergen-specific) is
+// matched ONLY against is_allergy_friendly + the item's own `allergens`
+// field -- both directly reflect Disney's own published menu-section
+// labeling. `has_allergy_option`/`allergy_free_of` are a *different*,
+// inferred signal (a name-match against a sibling item) and must never
+// decide what a filter chip includes -- they only back the separate,
+// hedged informational badge on regular items (see MenuItemRow.tsx/
+// ItemResultRow.tsx).
+//
+// Dietary chips are OR-within-the-group like every other filter group in
+// this app (Docs/ROADMAP.md open question #1) -- selecting Kids menu and
+// Peanut-friendly together shows items matching either, not only items
+// that are both.
+export function itemMatchesDietary(item: Pick<MenuItem | SearchIndexEntry, 'is_kids' | 'is_allergy_friendly' | 'allergens'>, dietary: Set<string>): boolean {
+  if (dietary.has('kids') && item.is_kids) return true;
+  if (!item.is_allergy_friendly) return false;
+  if (dietary.has('allergy-friendly')) return true;
+  // item.allergens can be undefined on stale locally-cached data
+  // predating this field, despite the type -- see LOCAL_DATA_SCHEMA_VERSION
+  // 7's comment in manifest.ts. Fails closed (no allergen match) rather
+  // than crashing.
+  return ALLERGEN_FILTER_KEYS.some((a) => dietary.has(a) && (item.allergens ?? []).includes(a));
+}
+
+// The single item-visibility decision for search results (Find only --
+// this app's owner decision, 2026-07-27, was to leave a restaurant's own
+// menu display unfiltered/unsuppressed). When any dietary chip is
+// active, results narrow entirely to matches (Disney's own hidden
+// allergy-labeled rows included, bypassing show_in_menu) -- consistent
+// with every other filter group narrowing rather than adding. With no
+// dietary chip active, ordinary show_in_menu items show as before, with
+// allergy-labeled rows additionally suppressed unless
+// allowAllergyByDefault (the "All Allergy Friendly in Search" Settings
+// toggle, default off) is on -- Disney's allergy-variant rows are ~22% of
+// all items and would otherwise overwhelm unfiltered results.
+export function itemVisibleInSearch(
+  item: Pick<MenuItem | SearchIndexEntry, 'is_kids' | 'is_allergy_friendly' | 'allergens' | 'show_in_menu'>,
+  dietary: Set<string>,
+  allowAllergyByDefault: boolean
+): boolean {
+  if (dietary.size > 0) return itemMatchesDietary(item, dietary);
+  // Checked before show_in_menu, not after -- Disney's allergy-labeled
+  // rows are always show_in_menu:false (they're a separate, normally-
+  // suppressed published row), so a plain "!show_in_menu -> hide" check
+  // would block them even with the toggle on and silently make the
+  // toggle a no-op. allowAllergyByDefault is the deciding factor for
+  // these rows specifically; show_in_menu only governs everything else.
+  if (item.is_allergy_friendly) return allowAllergyByDefault;
+  if (!item.show_in_menu) return false;
+  return true;
 }
 
 export interface FilterOptions {

@@ -98,6 +98,11 @@ function normalizeHandCodedMenuItem(item: MenuItem): MenuItem {
   return {
     ...item,
     price_changed: typeof item.price_changed === 'string' ? item.price_changed : null,
+    // allergens/allergy_free_of predate hand-coded data's own schema and
+    // may simply be absent on these records -- default to empty rather
+    // than let `undefined` reach db.ts's json()/JSON.stringify.
+    allergens: item.allergens ?? [],
+    allergy_free_of: item.allergy_free_of ?? [],
   };
 }
 
@@ -118,6 +123,8 @@ function toSearchIndexEntry(item: MenuItem): SearchIndexEntry {
     is_kids: item.is_kids,
     is_allergy_friendly: item.is_allergy_friendly,
     has_allergy_option: item.has_allergy_option,
+    allergens: item.allergens,
+    allergy_free_of: item.allergy_free_of,
     first_seen: item.first_seen,
     description: item.description,
   };

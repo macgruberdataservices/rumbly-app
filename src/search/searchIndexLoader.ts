@@ -13,11 +13,16 @@ import { readJSON } from '../data/fileStore';
 
 let cached: Promise<SearchIndexEntry[]> | null = null;
 
+// Deliberately does NOT filter out show_in_menu:false rows anymore
+// (dropped 2026-07-27, allergy-filtering work) -- Disney's own hidden
+// allergy-labeled rows are also show_in_menu:false, and the allergy
+// filter chips need them to still be searchable. Visibility is now one
+// single decision made in rank.ts's search(), not split across this
+// loader and rank.ts's own (now-removed) redundant gate.
 function prepareSearchIndex(data: SearchIndexEntry[]): SearchIndexEntry[] {
   const seen = new Set<string>();
 
   return data.filter((item) => {
-    if (!item.show_in_menu) return false;
     const key = `${item.restaurant_id}:${item.item_id}`;
     if (seen.has(key)) return false;
     seen.add(key);

@@ -14,6 +14,7 @@ import { BlurView } from 'expo-blur';
 import {
   countActiveFilters,
   cuisineLabel,
+  DIETARY_FILTERS,
   type FilterOptions,
   type SearchFilters,
 } from '../../search/filters';
@@ -50,6 +51,7 @@ function groupCount(filters: SearchFilters, group: FilterGroupKey, locationDetai
   }
   if (group === 'food') return filters.cuisines.size;
   if (group === 'dining') return filters.mealPeriods.size + filters.serviceTypes.size;
+  if (group === 'dietary') return filters.dietary.size;
   return filters.priceTiers.size;
 }
 
@@ -59,7 +61,12 @@ function clearGroup(filters: SearchFilters, group: FilterGroupKey): SearchFilter
   }
   if (group === 'food') return { ...filters, cuisines: new Set() };
   if (group === 'dining') return { ...filters, mealPeriods: new Set(), serviceTypes: new Set() };
+  if (group === 'dietary') return { ...filters, dietary: new Set() };
   return { ...filters, priceTiers: new Set(), lovedOnly: false };
+}
+
+function toggleDietary(filters: SearchFilters, key: string): SearchFilters {
+  return { ...filters, dietary: toggleInSet(filters.dietary, key) };
 }
 
 function FilterChip({
@@ -166,6 +173,11 @@ export function FilterPanel({
   // collapsing to peek) since "tall" is just a bigger version of the same
   // 'expanded' state the parent already knows about.
   const [isTall, setIsTall] = useState(false);
+  // Drives whether expandedPane renders a live BlurView or a flat
+  // stand-in (see the render below) -- separate from isDraggingRef
+  // because this one needs to trigger a re-render, while isDraggingRef
+  // exists specifically to avoid one on every drag-update frame.
+  const [isDragging, setIsDragging] = useState(false);
   const isDraggingRef = useRef(false);
   const currentHeightRef = useRef(visible ? PANEL_COLLAPSED_HEIGHT + HANDLE_HEIGHT : 0);
   const dragStartHeightRef = useRef(0);
@@ -202,6 +214,7 @@ export function FilterPanel({
       Gesture.Pan()
         .onStart(() => {
           isDraggingRef.current = true;
+          setIsDragging(true);
           dragStartHeightRef.current = currentHeightRef.current;
           height.stopAnimation();
         })
@@ -250,6 +263,7 @@ export function FilterPanel({
         })
         .onFinalize(() => {
           isDraggingRef.current = false;
+          setIsDragging(false);
         }),
     [height]
   );
@@ -358,6 +372,28 @@ export function FilterPanel({
       );
     }
 
+    if (activeGroup === 'dietary') {
+      return (
+        <>
+          <Text style={[text.bodyMuted, styles.emptyGroupHint]}>
+            Allergy-friendly items are hidden from search results by
+            default -- select a chip below to see them (or turn on "All
+            Allergy Friendly in Search" in General settings).
+          </Text>
+          <OptionBlock title="Dietary">
+            {DIETARY_FILTERS.map((option) => (
+              <FilterChip
+                key={option.key}
+                label={option.label}
+                active={filters.dietary.has(option.key)}
+                onPress={() => onChange(toggleDietary(filters, option.key))}
+              />
+            ))}
+          </OptionBlock>
+        </>
+      );
+    }
+
     return (
       <OptionBlock title="Price">
         {[1, 2, 3, 4].map((tier) => (
@@ -385,7 +421,17 @@ export function FilterPanel({
         pointerEvents={expanded ? 'auto' : 'none'}
       >
         <View style={styles.expandedPane}>
-          <BlurView intensity={45} tint="light" style={StyleSheet.absoluteFill} />
+          {/* Owner-reported lag pulling the drag handle up (2026-07-27),
+              worst normal->tall: BlurView recomputing its blur every frame
+              while actively resizing is the single most expensive part of
+              this view during the drag. Swap it for a flat, roughly
+              equivalent stand-in for the drag's duration only -- the real
+              blur reappears the instant the gesture ends/settles. */}
+          {isDragging ? (
+            <View style={[StyleSheet.absoluteFill, styles.expandedPaneDragBacking]} />
+          ) : (
+            <BlurView intensity={45} tint="light" style={StyleSheet.absoluteFill} />
+          )}
           <View style={styles.expandedPaneTint} pointerEvents="none" />
           <View style={styles.groupActions}>
             <Text style={text.buttonLabel}>{resultCount} results</Text>
@@ -420,7 +466,7 @@ export function FilterPanel({
           </View>
 
           <View style={styles.detailGroups} accessibilityRole="tablist">
-            {(['location', 'food', 'dining', 'price'] as const).map((group) => {
+            {(['location', 'food', 'dining', 'price', 'dietary'] as const).map((group) => {
               const selected = activeGroup === group;
               const count = groupCount(filters, group, quickLocationDetails.size);
               const label = group === 'price' ? 'Price' : group.charAt(0).toUpperCase() + group.slice(1);
@@ -668,6 +714,12 @@ const styles = StyleSheet.create({
   expandedPaneTint: {
     ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(138, 199, 225, 0.28)',
+  },
+  // Cheap approximation of the blur+tint composite above, swapped in only
+  // while dragging (see the render above) -- opaque so it doesn't need its
+  // own blend cost either.
+  expandedPaneDragBacking: {
+    backgroundColor: '#E4EEF2',
   },
   optionsScroll: {
     flex: 1,

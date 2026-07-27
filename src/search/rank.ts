@@ -18,6 +18,7 @@
 import type { Restaurant, SearchIndexEntry } from '../data/types';
 import { normalizeForSearch } from '../data/diacritics';
 import { collectRelatedTags, type RelatedTag } from './relatedTaxonomy';
+import { itemVisibleInSearch } from './filters';
 
 export type SearchResult =
   | { kind: 'restaurant'; tier: number; restaurant: Restaurant }
@@ -129,7 +130,12 @@ export function resultKey(r: SearchResult): string {
 export function search(
   query: string,
   restaurants: Restaurant[],
-  searchIndex: SearchIndexEntry[]
+  searchIndex: SearchIndexEntry[],
+  // Allergy-filtering plan, Docs/ROADMAP.md 2026-07-27. Both default to
+  // "no dietary narrowing, allergy rows suppressed" so every existing
+  // call site keeps behaving exactly as before without passing these.
+  dietary: Set<string> = new Set(),
+  allowAllergyByDefault: boolean = false
 ): SearchResult[] {
   const q = normalizeForSearch(query).trim();
   if (!q) return [];
@@ -157,7 +163,7 @@ export function search(
   // carries, which is always a real period the item is actually served.
   const seenItemKeys = new Set<string>();
   for (const item of searchIndex) {
-    if (!item.show_in_menu) continue;
+    if (!itemVisibleInSearch(item, dietary, allowAllergyByDefault)) continue;
     // A menu item whose restaurant isn't in the passed-in restaurants
     // array is skipped outright, not shown with a null restaurant — this
     // is both a correctness fix (search_index.json can reference a
@@ -198,7 +204,7 @@ export function search(
 
   if (results.length < FUZZY_TRIGGER_RESULT_COUNT) {
     for (const item of searchIndex) {
-      if (!item.show_in_menu) continue;
+      if (!itemVisibleInSearch(item, dietary, allowAllergyByDefault)) continue;
       const restaurant = restaurantById.get(item.restaurant_id);
       if (!restaurant) continue;
       const itemKey = `${item.restaurant_id}:${item.item_id}`;

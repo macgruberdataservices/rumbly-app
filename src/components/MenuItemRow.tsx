@@ -8,6 +8,7 @@ import type { MenuItem } from '../data/types';
 import { useActivity } from '../hooks/useActivity';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { MenuItemPreviewCard } from './MenuItemPreviewCard';
+import { AllergyInfoSheet } from './AllergyInfoSheet';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from './GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from './swipeableCoordinator';
 import { isNewMenuItem } from '../data/newItem';
@@ -48,12 +49,17 @@ const ROW_HEIGHT = 68;
 // custom-written Expo Modules API native module (Swift, no dependency on
 // the broken chain) if this is worth real native-code investment later.
 export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; highlighted?: boolean }) {
+  // "Allergy option available" is deliberately NOT in this list -- it's
+  // rendered as its own tappable badge in MenuItemPreviewCard (opens
+  // AllergyInfoSheet's hedged copy + Disney link) rather than an inert
+  // string, since has_allergy_option/allergy_free_of are an inferred
+  // signal that needs the disclaimer, unlike the other badges here.
   const badges = [
     item.is_kids && 'Kids',
     item.is_allergy_friendly && 'Allergy-friendly',
-    item.has_allergy_option && 'Allergy option available',
     item.is_alcoholic && '21+',
   ].filter(Boolean) as string[];
+  const [allergyInfoVisible, setAllergyInfoVisible] = useState(false);
   const isNew = isNewMenuItem(item.first_seen);
 
   const {
@@ -275,6 +281,12 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
           setPreviewVisible(false);
           animateShadow(0);
         }}
+        onPressAllergyInfo={() => setAllergyInfoVisible(true)}
+      />
+      <AllergyInfoSheet
+        visible={allergyInfoVisible}
+        allergyFreeOf={item.allergy_free_of}
+        onClose={() => setAllergyInfoVisible(false)}
       />
       {gotItEvent && (
         <GotItRatingCard

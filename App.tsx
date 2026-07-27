@@ -22,6 +22,7 @@ import { DataProvider } from './src/data/dataProvider';
 import { AuthProvider } from './src/data/authProvider';
 import { EntitlementsProvider } from './src/data/entitlementsProvider';
 import { ActivityProvider } from './src/data/activityProvider';
+import { AppSettingsProvider } from './src/data/appSettingsProvider';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -61,15 +62,17 @@ export default function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <DataProvider>
-          <AuthProvider>
-            <EntitlementsProvider>
-              <ActivityProvider>
-                <RootNavigator />
-              </ActivityProvider>
-            </EntitlementsProvider>
-          </AuthProvider>
-        </DataProvider>
+        <AppSettingsProvider>
+          <DataProvider>
+            <AuthProvider>
+              <EntitlementsProvider>
+                <ActivityProvider>
+                  <RootNavigator />
+                </ActivityProvider>
+              </EntitlementsProvider>
+            </AuthProvider>
+          </DataProvider>
+        </AppSettingsProvider>
         <StatusBar style="dark" />
       </SafeAreaProvider>
     </GestureHandlerRootView>

@@ -35,6 +35,7 @@ export function ItemResultPreviewCard({
   origin,
   onOpen,
   onClose,
+  onPressAllergyInfo,
 }: {
   item: SearchIndexEntry | null;
   restaurant: Restaurant;
@@ -45,6 +46,7 @@ export function ItemResultPreviewCard({
   origin: Origin | null;
   onOpen: () => void;
   onClose: () => void;
+  onPressAllergyInfo: () => void;
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const growAnim = useRef(new Animated.Value(0)).current;
@@ -103,13 +105,23 @@ export function ItemResultPreviewCard({
                 {statusLabels.length > 0 && (
                   <Text style={[text.bodyMuted, styles.status]}>{statusLabels.join(' · ')}</Text>
                 )}
-                {badges.length > 0 && (
+                {(badges.length > 0 || item.has_allergy_option) && (
                   <View style={styles.badgeRow}>
                     {badges.map((b) => (
                       <View key={b} style={styles.badge}>
                         <Text style={text.sectionToggle}>{b}</Text>
                       </View>
                     ))}
+                    {item.has_allergy_option && (
+                      <Pressable
+                        onPress={onPressAllergyInfo}
+                        style={[styles.badge, styles.badgeTappable]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Allergy option available. View details."
+                      >
+                        <Text style={text.sectionToggle}>Allergy option available ⓘ</Text>
+                      </Pressable>
+                    )}
                   </View>
                 )}
               </>
@@ -185,5 +197,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
+  },
+  badgeTappable: {
+    borderColor: COLORS.forest,
+    backgroundColor: COLORS.goldLight,
   },
 });

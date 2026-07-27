@@ -33,7 +33,12 @@ import { MANIFEST_URL, REFRESH_INTERVAL_MS, LOCAL_FILES } from './constants';
 // v6: SearchIndexEntry gained description (for identical-item grouping
 // in search results) -- a locally cached search_index.json from before
 // this won't have it.
-const LOCAL_DATA_SCHEMA_VERSION = 6;
+// v7: MenuItem/SearchIndexEntry gained allergens/allergy_free_of (allergy
+// filtering) -- a locally cached search_index.json or menu_items table
+// from before this won't have them, and searchIndexLoader.ts's
+// prepareSearchIndex() stopped dropping show_in_menu:false rows outright,
+// so a stale index also wouldn't have Disney's allergy-labeled rows at all.
+const LOCAL_DATA_SCHEMA_VERSION = 7;
 
 interface MetaBlob {
   manifest: DataManifest | null;

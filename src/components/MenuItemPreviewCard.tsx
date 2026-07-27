@@ -36,11 +36,13 @@ export function MenuItemPreviewCard({
   badges,
   origin,
   onClose,
+  onPressAllergyInfo,
 }: {
   item: MenuItem | null;
   badges: string[];
   origin: Origin | null;
   onClose: () => void;
+  onPressAllergyInfo: () => void;
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const growAnim = useRef(new Animated.Value(0)).current;
@@ -91,13 +93,28 @@ export function MenuItemPreviewCard({
                 {!!item.description && (
                   <Text style={[text.bodyMuted, styles.description]}>{item.description}</Text>
                 )}
-                {badges.length > 0 && (
+                {(badges.length > 0 || item.has_allergy_option) && (
                   <View style={styles.badgeRow}>
                     {badges.map((b) => (
                       <View key={b} style={styles.badge}>
                         <Text style={text.sectionToggle}>{b}</Text>
                       </View>
                     ))}
+                    {/* Tappable, unlike the badges above -- has_allergy_option
+                        is an inferred signal (see filters.ts's header
+                        comment), so it needs the hedged disclaimer +
+                        Disney link that AllergyInfoSheet provides rather
+                        than asserting anything as inert text. */}
+                    {item.has_allergy_option && (
+                      <Pressable
+                        onPress={onPressAllergyInfo}
+                        style={[styles.badge, styles.badgeTappable]}
+                        accessibilityRole="button"
+                        accessibilityLabel="Allergy option available. View details."
+                      >
+                        <Text style={text.sectionToggle}>Allergy option available ⓘ</Text>
+                      </Pressable>
+                    )}
                   </View>
                 )}
               </>
@@ -166,5 +183,9 @@ const styles = StyleSheet.create({
     borderRadius: 6,
     paddingHorizontal: SPACING.xs,
     paddingVertical: 2,
+  },
+  badgeTappable: {
+    borderColor: COLORS.forest,
+    backgroundColor: COLORS.goldLight,
   },
 });

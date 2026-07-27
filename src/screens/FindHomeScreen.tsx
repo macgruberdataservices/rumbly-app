@@ -24,6 +24,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
+import { useAppSettings } from '../hooks/useAppSettings';
 import { useActivity } from '../hooks/useActivity';
 import { useSearch } from '../hooks/useSearch';
 import { useNearMe } from '../hooks/useNearMe';
@@ -109,6 +110,7 @@ function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; ar
 
 export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
+  const { allAllergyInSearch } = useAppSettings();
   const { lovedIds } = useActivity();
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
   const initialState = initialStateRef.current;
@@ -188,7 +190,9 @@ export function FindHomeScreen({ navigation, route }: Props) {
       activeRelated: initialState.activeRelated,
       activeCategory: initialState.activeCategory,
     },
-    lastSyncedAt
+    lastSyncedAt,
+    filters.dietary,
+    allAllergyInSearch
   );
 
   isSearchActiveRef.current = isSearchActive;

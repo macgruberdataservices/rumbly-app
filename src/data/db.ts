@@ -11,6 +11,32 @@ import { getDb as getSharedDb } from './sqlite';
 
 let readyPromise: Promise<SQLiteDatabase> | null = null;
 
+// CREATE TABLE IF NOT EXISTS is a no-op on any device that already has
+// this table from a prior session -- it does NOT retroactively add new
+// columns to an existing local file. Found 2026-07-27 while adding
+// allergens/allergy_free_of: without this, the next reimport on an
+// already-used device (triggered by LOCAL_DATA_SCHEMA_VERSION's bump)
+// would throw a real SQL error inserting into columns that don't exist,
+// not just serve stale data. Idempotent, cheap (one PRAGMA read), and
+// the pattern to follow for any future menu_items column addition --
+// add the column to both the CREATE TABLE above (for genuinely new
+// installs) and this list (for existing ones).
+const MIGRATION_COLUMNS: { name: string; ddl: string }[] = [
+  { name: 'allergens', ddl: 'ALTER TABLE menu_items ADD COLUMN allergens TEXT;' },
+  { name: 'allergy_free_of', ddl: 'ALTER TABLE menu_items ADD COLUMN allergy_free_of TEXT;' },
+];
+
+async function migrateColumns(db: SQLiteDatabase): Promise<void> {
+  const existing = new Set(
+    (await db.getAllAsync<{ name: string }>('PRAGMA table_info(menu_items);')).map((c) => c.name)
+  );
+  for (const column of MIGRATION_COLUMNS) {
+    if (!existing.has(column.name)) {
+      await db.execAsync(column.ddl);
+    }
+  }
+}
+
 function getDb(): Promise<SQLiteDatabase> {
   if (!readyPromise) {
     readyPromise = getSharedDb().then(async (db) => {
@@ -35,6 +61,8 @@ function getDb(): Promise<SQLiteDatabase> {
           is_kids INTEGER,
           is_alcoholic INTEGER,
           has_allergy_option INTEGER,
+          allergens TEXT,
+          allergy_free_of TEXT,
           is_festival_item INTEGER,
           show_in_menu INTEGER,
           norm_categories TEXT,
@@ -48,6 +76,7 @@ function getDb(): Promise<SQLiteDatabase> {
         );
         CREATE INDEX IF NOT EXISTS idx_menu_items_restaurant_id ON menu_items(restaurant_id);
       `);
+      await migrateColumns(db);
       return db;
     });
   }
@@ -74,6 +103,7 @@ export async function insertMenuItemsBatch(items: MenuItem[]): Promise<void> {
         group_display_order, dining_period, price_display, price_value,
         price_changed, previous_price, is_seasonal, is_limited_time,
         is_allergy_friendly, is_kids, is_alcoholic, has_allergy_option,
+        allergens, allergy_free_of,
         is_festival_item, show_in_menu, norm_categories, cuisine_tags,
         festival_name, festival_year, first_seen, last_seen,
         queried_facility_id, fetched_from_facility_id
@@ -82,6 +112,7 @@ export async function insertMenuItemsBatch(items: MenuItem[]): Promise<void> {
         $group_display_order, $dining_period, $price_display, $price_value,
         $price_changed, $previous_price, $is_seasonal, $is_limited_time,
         $is_allergy_friendly, $is_kids, $is_alcoholic, $has_allergy_option,
+        $allergens, $allergy_free_of,
         $is_festival_item, $show_in_menu, $norm_categories, $cuisine_tags,
         $festival_name, $festival_year, $first_seen, $last_seen,
         $queried_facility_id, $fetched_from_facility_id
@@ -108,6 +139,8 @@ export async function insertMenuItemsBatch(items: MenuItem[]): Promise<void> {
           $is_kids: bool(item.is_kids),
           $is_alcoholic: bool(item.is_alcoholic),
           $has_allergy_option: bool(item.has_allergy_option),
+          $allergens: json(item.allergens),
+          $allergy_free_of: json(item.allergy_free_of),
           $is_festival_item: bool(item.is_festival_item),
           $show_in_menu: bool(item.show_in_menu),
           $norm_categories: json(item.norm_categories),
@@ -145,6 +178,8 @@ interface MenuItemRow {
   is_kids: number;
   is_alcoholic: number;
   has_allergy_option: number;
+  allergens: string;
+  allergy_free_of: string;
   is_festival_item: number;
   show_in_menu: number;
   norm_categories: string;
@@ -166,6 +201,8 @@ function rowToMenuItem(row: MenuItemRow): MenuItem {
     is_kids: !!row.is_kids,
     is_alcoholic: !!row.is_alcoholic,
     has_allergy_option: !!row.has_allergy_option,
+    allergens: JSON.parse(row.allergens || '[]'),
+    allergy_free_of: JSON.parse(row.allergy_free_of || '[]'),
     is_festival_item: !!row.is_festival_item,
     show_in_menu: !!row.show_in_menu,
     norm_categories: JSON.parse(row.norm_categories || '[]'),

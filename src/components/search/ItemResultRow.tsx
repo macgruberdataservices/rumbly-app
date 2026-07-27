@@ -9,6 +9,7 @@ import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { HighlightedText } from '../HighlightedText';
 import { ItemResultPreviewCard } from './ItemResultPreviewCard';
+import { AllergyInfoSheet } from '../AllergyInfoSheet';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../swipeableCoordinator';
 import { isNewMenuItem } from '../../data/newItem';
@@ -45,11 +46,14 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
   { item, restaurant, highlightQuery, distanceMiles, onPress },
   ref
 ) {
+  // See MenuItemRow.tsx's matching comment -- has_allergy_option is
+  // rendered as its own tappable badge in ItemResultPreviewCard instead
+  // of an inert string here.
   const badges = [
     item.is_kids && 'Kids',
     item.is_allergy_friendly && 'Allergy-friendly',
-    item.has_allergy_option && 'Allergy option available',
   ].filter(Boolean) as string[];
+  const [allergyInfoVisible, setAllergyInfoVisible] = useState(false);
 
   const {
     lovedItemKeys,
@@ -296,6 +300,12 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
           setPreviewVisible(false);
           animateShadow(0);
         }}
+        onPressAllergyInfo={() => setAllergyInfoVisible(true)}
+      />
+      <AllergyInfoSheet
+        visible={allergyInfoVisible}
+        allergyFreeOf={item.allergy_free_of}
+        onClose={() => setAllergyInfoVisible(false)}
       />
       {gotItEvent && (
         <GotItRatingCard

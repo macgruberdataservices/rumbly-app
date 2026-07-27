@@ -5,7 +5,7 @@ import type { QuickLocationKey } from './quickLocations';
 
 export type SearchCategory = 'all' | 'items' | 'restaurants' | 'related';
 export type FilterPanelState = 'hidden' | 'peek' | 'expanded';
-export type FilterGroupKey = 'location' | 'food' | 'dining' | 'price';
+export type FilterGroupKey = 'location' | 'food' | 'dining' | 'price' | 'dietary';
 export type FindSort = 'best-match';
 
 export interface SerializedSearchFilters {
@@ -17,6 +17,7 @@ export interface SerializedSearchFilters {
   serviceTypes: string[];
   priceTiers: number[];
   lovedOnly: boolean;
+  dietary: string[];
 }
 
 export interface FindBrowseContext {
@@ -25,7 +26,7 @@ export interface FindBrowseContext {
 }
 
 export interface FindRestoreState {
-  version: 4;
+  version: 5;
   query: string;
   filters: SerializedSearchFilters;
   quickLocations: QuickLocationKey[];
@@ -53,6 +54,7 @@ export function serializeFilters(filters: SearchFilters): SerializedSearchFilter
     serviceTypes: [...filters.serviceTypes],
     priceTiers: [...filters.priceTiers],
     lovedOnly: filters.lovedOnly,
+    dietary: [...filters.dietary],
   };
 }
 
@@ -67,12 +69,13 @@ export function deserializeFilters(filters?: SerializedSearchFilters): SearchFil
     serviceTypes: new Set(filters.serviceTypes),
     priceTiers: new Set(filters.priceTiers),
     lovedOnly: filters.lovedOnly,
+    dietary: new Set(filters.dietary ?? []),
   };
 }
 
 export function defaultFindRestoreState(): FindRestoreState {
   return {
-    version: 4,
+    version: 5,
     query: '',
     filters: serializeFilters(emptyFilters()),
     quickLocations: [],
@@ -92,7 +95,7 @@ export function defaultFindRestoreState(): FindRestoreState {
 }
 
 export function resolveFindRestoreState(state?: FindRestoreState): FindRestoreState {
-  return state?.version === 4
+  return state?.version === 5
     ? { ...defaultFindRestoreState(), ...state, nearMeOrigin: state.nearMeOrigin ?? null }
     : defaultFindRestoreState();
 }
