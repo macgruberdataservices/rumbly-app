@@ -861,10 +861,10 @@ export function FindHomeScreen({ navigation, route }: Props) {
       >
         <View style={styles.header}>
           <Image
-            source={require('../../assets/parkbites-wordmark.png')}
+            source={require('../../assets/parkivore-wordmark.png')}
             style={styles.wordmark}
             resizeMode="contain"
-            accessibilityLabel="Park Bites"
+            accessibilityLabel="Parkivore"
           />
           <View style={styles.introCopy}>
             <Text style={styles.introText}>
@@ -1149,11 +1149,15 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
   },
   headerClip: { overflow: 'hidden' },
-  // Source asset is 233x151 (~1.54:1). Keep that ratio so the stacked
-  // wordmark does not compress to the previous logo's wider proportions.
+  // Source asset is 401x160 (~2.51:1, back to a wide wordmark shape
+  // like the original Rumbly logo -- Park Bites' was ~1.54:1, taller/
+  // squarer). Keep that ratio so resizeMode="contain" doesn't letterbox
+  // the new logo down inside a box sized for the old one's proportions.
+  // Sized 90% of the ratio-matched box (owner feedback, 2026-07-28: full
+  // size read as too big).
   wordmark: {
-    width: 104,
-    height: 67,
+    width: 151,
+    height: 60,
   },
   introCopy: {
     flex: 1,
