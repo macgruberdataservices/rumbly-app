@@ -4,6 +4,7 @@ import type { Restaurant, SearchIndexEntry } from '../../data/types';
 import { restaurantLocationLabel } from '../../data/locationNames';
 import { isNewMenuItem } from '../../data/newItem';
 import { formatDateLabel } from '../../data/changes';
+import { formatRatingAverage, type RatingAverage } from '../../data/ratingAverage';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -32,6 +33,7 @@ export function ItemResultPreviewCard({
   isLoved,
   isNeeded,
   gotItCount,
+  ratingAverage,
   origin,
   onOpen,
   onClose,
@@ -43,6 +45,7 @@ export function ItemResultPreviewCard({
   isLoved: boolean;
   isNeeded: boolean;
   gotItCount: number;
+  ratingAverage: RatingAverage | undefined;
   origin: Origin | null;
   onOpen: () => void;
   onClose: () => void;
@@ -104,6 +107,9 @@ export function ItemResultPreviewCard({
                 <Text style={[text.bodyMuted, styles.location]}>{restaurantLocationLabel(restaurant)}</Text>
                 {statusLabels.length > 0 && (
                   <Text style={[text.bodyMuted, styles.status]}>{statusLabels.join(' · ')}</Text>
+                )}
+                {!!formatRatingAverage(ratingAverage) && (
+                  <Text style={[text.bodyMuted, styles.ratingAverage]}>{formatRatingAverage(ratingAverage)}</Text>
                 )}
                 {(badges.length > 0 || item.has_allergy_option) && (
                   <View style={styles.badgeRow}>
@@ -184,6 +190,10 @@ const styles = StyleSheet.create({
   status: {
     marginTop: SPACING.xs,
     color: COLORS.pine,
+  },
+  ratingAverage: {
+    marginTop: SPACING.xs,
+    color: COLORS.gold,
   },
   badgeRow: {
     flexDirection: 'row',

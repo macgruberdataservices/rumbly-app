@@ -3,6 +3,7 @@ import { Animated, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions
 import type { MenuItem } from '../data/types';
 import { isNewMenuItem } from '../data/newItem';
 import { formatDateLabel } from '../data/changes';
+import { formatRatingAverage, type RatingAverage } from '../data/ratingAverage';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -34,12 +35,14 @@ interface Origin {
 export function MenuItemPreviewCard({
   item,
   badges,
+  ratingAverage,
   origin,
   onClose,
   onPressAllergyInfo,
 }: {
   item: MenuItem | null;
   badges: string[];
+  ratingAverage: RatingAverage | undefined;
   origin: Origin | null;
   onClose: () => void;
   onPressAllergyInfo: () => void;
@@ -90,6 +93,9 @@ export function MenuItemPreviewCard({
                   )}
                   <Text style={text.bodyMuted}>Added {formatDateLabel(item.first_seen)}</Text>
                 </View>
+                {!!formatRatingAverage(ratingAverage) && (
+                  <Text style={[text.bodyMuted, styles.ratingAverage]}>{formatRatingAverage(ratingAverage)}</Text>
+                )}
                 {!!item.description && (
                   <Text style={[text.bodyMuted, styles.description]}>{item.description}</Text>
                 )}
@@ -166,6 +172,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     gap: SPACING.xs,
+    marginTop: SPACING.xs,
+  },
+  ratingAverage: {
+    color: COLORS.gold,
     marginTop: SPACING.xs,
   },
   description: {

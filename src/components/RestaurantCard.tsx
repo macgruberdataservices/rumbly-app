@@ -12,6 +12,7 @@ import { RestaurantPreviewCard } from './RestaurantPreviewCard';
 import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { restaurantLocationLabel } from '../data/locationNames';
+import { formatRatingAverage } from '../data/ratingAverage';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -50,12 +51,15 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
   { restaurant, highlightQuery, distanceMiles, onPress },
   ref
 ) {
-  const { lovedIds, gotItRestaurantCounts } = useActivity();
+  const { lovedIds, gotItRestaurantCounts, restaurantRatingAverages } = useActivity();
   const gotItEnabled = useEntitlement('got_it');
+  const ratingAveragesEnabled = useEntitlement('rating_averages');
   const { hoursData } = useDataProvider();
   const isLoved = lovedIds.has(restaurant.restaurant_id);
   const gotItCount = gotItRestaurantCounts.get(restaurant.restaurant_id) ?? 0;
   const hasActivity = isLoved || (gotItEnabled && gotItCount > 0);
+  const ratingAverage = ratingAveragesEnabled ? restaurantRatingAverages.get(restaurant.restaurant_id) : undefined;
+  const ratingAverageLabel = formatRatingAverage(ratingAverage);
 
   const rowRef = useRef<View>(null);
   // Merges this component's own measurement ref with the ref the parent
@@ -91,6 +95,7 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
     priceDots(restaurant.price_tier),
     restaurant.experience_type,
     hoursStatus.label,
+    ratingAverageLabel,
   ].filter(Boolean);
 
   return (
@@ -141,6 +146,7 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
         hoursStatus={hoursStatus}
         isLoved={isLoved}
         gotItCount={gotItEnabled ? gotItCount : 0}
+        ratingAverage={ratingAverage}
         origin={previewOrigin}
         onOpen={() => {
           setPreviewVisible(false);

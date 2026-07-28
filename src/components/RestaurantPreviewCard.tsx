@@ -6,6 +6,7 @@ import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { sanitizeRestaurantDescription } from '../data/restaurantDescription';
 import { restaurantLocationLabel } from '../data/locationNames';
+import { formatRatingAverage, type RatingAverage } from '../data/ratingAverage';
 
 interface Origin {
   x: number;
@@ -28,6 +29,7 @@ export function RestaurantPreviewCard({
   hoursStatus,
   isLoved,
   gotItCount,
+  ratingAverage,
   origin,
   onOpen,
   onClose,
@@ -36,6 +38,7 @@ export function RestaurantPreviewCard({
   hoursStatus: HoursStatus;
   isLoved: boolean;
   gotItCount: number;
+  ratingAverage: RatingAverage | undefined;
   origin: Origin | null;
   onOpen: () => void;
   onClose: () => void;
@@ -101,6 +104,9 @@ export function RestaurantPreviewCard({
                 {gotItCount > 0 && (
                   <Text style={[text.bodyMuted, styles.gotIt]}>✓ Got It ×{gotItCount}</Text>
                 )}
+                {!!formatRatingAverage(ratingAverage) && (
+                  <Text style={[text.bodyMuted, styles.ratingAverage]}>{formatRatingAverage(ratingAverage)}</Text>
+                )}
                 {pills.length > 0 && (
                   <View style={styles.pillRow}>
                     {pills.map((p) => (
@@ -155,6 +161,10 @@ const styles = StyleSheet.create({
   },
   gotIt: {
     color: COLORS.barkBrown,
+    marginTop: SPACING.xs,
+  },
+  ratingAverage: {
+    color: COLORS.gold,
     marginTop: SPACING.xs,
   },
   pillRow: {

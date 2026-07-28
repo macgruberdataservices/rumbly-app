@@ -13,6 +13,7 @@ import { AllergyInfoSheet } from '../AllergyInfoSheet';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../swipeableCoordinator';
 import { isNewMenuItem } from '../../data/newItem';
+import { formatRatingAverage } from '../../data/ratingAverage';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -59,6 +60,7 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
     lovedItemKeys,
     needItItemKeys,
     gotItItemCounts,
+    itemRatingAverages,
     toggleItemLove,
     toggleItemNeedIt,
     addItemGotIt,
@@ -68,10 +70,13 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
   const needItEnabled = useEntitlement('need_it');
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
+  const ratingAveragesEnabled = useEntitlement('rating_averages');
   const key = `${item.restaurant_id}:${item.item_id}`;
   const isLoved = lovedItemKeys.has(key);
   const isNeeded = needItItemKeys.has(key);
   const gotItCount = gotItItemCounts.get(key) ?? 0;
+  const ratingAverage = ratingAveragesEnabled ? itemRatingAverages.get(key) : undefined;
+  const ratingAverageLabel = formatRatingAverage(ratingAverage);
   const hasActivity = isLoved || (needItEnabled && isNeeded) || (gotItEnabled && gotItCount > 0);
   const isNew = isNewMenuItem(item.first_seen);
 
@@ -280,6 +285,11 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
               {metaLabel}
             </Text>
             <Text style={[text.body, styles.price]}>{item.price_display}</Text>
+            {!!ratingAverageLabel && (
+              <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
+                {ratingAverageLabel}
+              </Text>
+            )}
           </View>
         </AnimatedPressable>
       </Swipeable>
@@ -290,6 +300,7 @@ export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemR
         isLoved={isLoved}
         isNeeded={needItEnabled && isNeeded}
         gotItCount={gotItEnabled ? gotItCount : 0}
+        ratingAverage={ratingAverage}
         origin={previewOrigin}
         onOpen={() => {
           setPreviewVisible(false);
@@ -377,6 +388,11 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: 13,
+  },
+  ratingAverage: {
+    fontSize: 12,
+    color: COLORS.gold,
+    marginLeft: SPACING.xs,
   },
   actionsRow: {
     flexDirection: 'row',

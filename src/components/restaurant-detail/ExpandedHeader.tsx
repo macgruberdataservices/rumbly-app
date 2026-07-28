@@ -5,6 +5,7 @@ import { restaurantLocationLabel } from '../../data/locationNames';
 import type { HoursStatus } from '../../data/hoursStatus';
 import type { CapabilityKind } from './CapabilityDetailSheet';
 import { hasMobileOrder, openMobileOrderInOfficialApp, openRestaurantInOfficialApp } from '../../data/mdxDeepLink';
+import { formatRatingAverage } from '../../data/ratingAverage';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
@@ -107,11 +108,20 @@ export function ExpandedHeader({
 
   const hasDirections = restaurant.lat !== null && restaurant.lng !== null;
 
-  const { lovedIds, gotItRestaurantCounts, toggleLove, addRestaurantGotIt, confirmGotIt, undoGotIt } = useActivity();
+  const { lovedIds, gotItRestaurantCounts, restaurantRatingAverages, toggleLove, addRestaurantGotIt, confirmGotIt, undoGotIt } =
+    useActivity();
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
+  // Independent of the 'ratings' entitlement above (which gates whether a
+  // user can *capture* a star rating on Got It) -- this gates whether the
+  // computed average gets *displayed* anywhere, so either can be toggled
+  // per user without touching the other (owner request, 2026-07-27).
+  const ratingAveragesEnabled = useEntitlement('rating_averages');
   const isLoved = lovedIds.has(restaurant.restaurant_id);
   const gotItCount = gotItRestaurantCounts.get(restaurant.restaurant_id) ?? 0;
+  const ratingAverageLabel = ratingAveragesEnabled
+    ? formatRatingAverage(restaurantRatingAverages.get(restaurant.restaurant_id))
+    : null;
   const gotItButtonRef = useRef<View>(null);
   const [gotItEvent, setGotItEvent] = useState<GotItCardEvent | null>(null);
 
@@ -144,6 +154,9 @@ export function ExpandedHeader({
           </Text>
         )}
         {!!serviceLine && <Text style={text.bodyMuted}>{serviceLine}</Text>}
+        {!!ratingAverageLabel && (
+          <Text style={[text.body, styles.ratingAverage]}>{ratingAverageLabel}</Text>
+        )}
 
         <View style={styles.pillRow}>
           {restaurant.accepts_reservations && (
@@ -230,6 +243,10 @@ const styles = StyleSheet.create({
   },
   closedLabel: {
     color: COLORS.muted,
+    marginTop: SPACING.xs,
+  },
+  ratingAverage: {
+    color: COLORS.gold,
     marginTop: SPACING.xs,
   },
   pillRow: {

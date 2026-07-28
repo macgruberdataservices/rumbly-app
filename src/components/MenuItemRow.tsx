@@ -12,6 +12,7 @@ import { AllergyInfoSheet } from './AllergyInfoSheet';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from './GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from './swipeableCoordinator';
 import { isNewMenuItem } from '../data/newItem';
+import { formatRatingAverage } from '../data/ratingAverage';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
@@ -66,6 +67,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
     lovedItemKeys,
     needItItemKeys,
     gotItItemCounts,
+    itemRatingAverages,
     toggleItemLove,
     toggleItemNeedIt,
     addItemGotIt,
@@ -75,10 +77,14 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
   const needItEnabled = useEntitlement('need_it');
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
+  const ratingAveragesEnabled = useEntitlement('rating_averages');
   const key = `${item.restaurant_id}:${item.item_id}`;
   const isLoved = lovedItemKeys.has(key);
   const isNeeded = needItItemKeys.has(key);
   const gotItCount = gotItItemCounts.get(key) ?? 0;
+  const ratingAverageLabel = ratingAveragesEnabled
+    ? formatRatingAverage(itemRatingAverages.get(key))
+    : null;
 
   const swipeableRef = useRef<Swipeable>(null);
   const rowRef = useRef<View>(null);
@@ -264,6 +270,11 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
                 </View>
               )}
               <Text style={[text.body, styles.price]}>{item.price_display}</Text>
+              {!!ratingAverageLabel && (
+                <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
+                  {ratingAverageLabel}
+                </Text>
+              )}
             </View>
             {!!item.description && (
               <Text style={[text.bodyMuted, styles.description]} numberOfLines={1}>
@@ -276,6 +287,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
       <MenuItemPreviewCard
         item={previewVisible ? item : null}
         badges={badges}
+        ratingAverage={ratingAveragesEnabled ? itemRatingAverages.get(key) : undefined}
         origin={previewOrigin}
         onClose={() => {
           setPreviewVisible(false);
@@ -350,6 +362,10 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: 14,
+  },
+  ratingAverage: {
+    fontSize: 12,
+    color: COLORS.gold,
   },
   newBadge: {
     backgroundColor: COLORS.gold,

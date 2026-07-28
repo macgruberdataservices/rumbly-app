@@ -44,6 +44,8 @@ interface ActivityContextValue {
   needItItemKeys: Set<string>;
   gotItItemCounts: Map<string, number>;
   gotItRestaurantCounts: Map<string, number>;
+  restaurantRatingAverages: PersonalActivityReadModel['restaurantRatingAverages'];
+  itemRatingAverages: PersonalActivityReadModel['itemRatingAverages'];
   personalActivity: PersonalActivityReadModel;
   isActivityReady: boolean;
   reloadActivity: () => Promise<void>;
@@ -251,6 +253,8 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         needItItemKeys,
         gotItItemCounts,
         gotItRestaurantCounts,
+        restaurantRatingAverages: personalActivity.restaurantRatingAverages,
+        itemRatingAverages: personalActivity.itemRatingAverages,
         personalActivity,
         isActivityReady,
         reloadActivity: reloadFromDb,

@@ -235,6 +235,16 @@ export interface PersonalActivityEvent {
   updatedAt: string;
 }
 
+// A user's own average rating for one restaurant or menu item, across
+// every rated Got It visit -- personal repeat-rating summary, not a
+// cross-user aggregate (locks the "how does My Rumbly summarize repeat
+// personal ratings" question from Docs/ROADMAP.md's product decisions:
+// a plain average, not latest-only or recency-weighted).
+export interface RatingAverage {
+  average: number;
+  count: number;
+}
+
 export interface PersonalActivityReadModel {
   lovedRestaurants: PersonalActivityEvent[];
   lovedItems: PersonalActivityEvent[];
@@ -242,6 +252,15 @@ export interface PersonalActivityReadModel {
   gotItHistory: PersonalActivityEvent[];
   totalGotItCount: number;
   ratedGotItCount: number;
+  // Keyed by restaurant_id (restaurant-level Got It only, itemId === null)
+  // and by `${restaurantId}:${itemId}` (item-level) respectively --
+  // restaurant-level and item-level Got It are independent activities
+  // (Milestone 13), so their ratings are never rolled up together.
+  // Precomputed here, once per activity refresh, specifically so no
+  // consumer (including search result rows) needs its own query or
+  // per-row computation -- a plain Map lookup either way.
+  restaurantRatingAverages: Map<string, RatingAverage>;
+  itemRatingAverages: Map<string, RatingAverage>;
 }
 
 const EMPTY_PERSONAL_ACTIVITY: PersonalActivityReadModel = {
@@ -251,7 +270,32 @@ const EMPTY_PERSONAL_ACTIVITY: PersonalActivityReadModel = {
   gotItHistory: [],
   totalGotItCount: 0,
   ratedGotItCount: 0,
+  restaurantRatingAverages: new Map(),
+  itemRatingAverages: new Map(),
 };
+
+function computeRatingAverages(gotItHistory: PersonalActivityEvent[]): {
+  restaurantRatingAverages: Map<string, RatingAverage>;
+  itemRatingAverages: Map<string, RatingAverage>;
+} {
+  const restaurantSums = new Map<string, { sum: number; count: number }>();
+  const itemSums = new Map<string, { sum: number; count: number }>();
+  for (const event of gotItHistory) {
+    if (event.rating === null) continue;
+    const target = event.itemId === null ? restaurantSums : itemSums;
+    const key = event.itemId === null ? event.restaurantId : `${event.restaurantId}:${event.itemId}`;
+    const entry = target.get(key) ?? { sum: 0, count: 0 };
+    entry.sum += event.rating;
+    entry.count += 1;
+    target.set(key, entry);
+  }
+  const toAverages = (sums: Map<string, { sum: number; count: number }>) =>
+    new Map(Array.from(sums, ([key, { sum, count }]) => [key, { average: sum / count, count }]));
+  return {
+    restaurantRatingAverages: toAverages(restaurantSums),
+    itemRatingAverages: toAverages(itemSums),
+  };
+}
 
 export function emptyPersonalActivityReadModel(): PersonalActivityReadModel {
   return EMPTY_PERSONAL_ACTIVITY;
@@ -297,6 +341,7 @@ export async function loadPersonalActivityReadModel(): Promise<PersonalActivityR
   const gotItHistory = events
     .filter((event) => event.activityType === 'got_it')
     .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt));
+  const { restaurantRatingAverages, itemRatingAverages } = computeRatingAverages(gotItHistory);
 
   return {
     lovedRestaurants: latestUniqueEvents(
@@ -311,6 +356,8 @@ export async function loadPersonalActivityReadModel(): Promise<PersonalActivityR
     gotItHistory,
     totalGotItCount: gotItHistory.length,
     ratedGotItCount: gotItHistory.filter((event) => event.rating !== null).length,
+    restaurantRatingAverages,
+    itemRatingAverages,
   };
 }
 
