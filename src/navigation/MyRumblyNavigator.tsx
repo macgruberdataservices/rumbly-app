@@ -10,11 +10,12 @@ import { ChangeEmailScreen } from '../screens/ChangeEmailScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import { GeneralSettingsScreen } from '../screens/GeneralSettingsScreen';
 import { NativeUiLabScreen } from '../screens/NativeUiLabScreen';
+import { NativeMenuPilotScreen } from '../screens/NativeMenuPilotScreen';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen';
 import { SettingsPlaceholderScreen } from '../screens/SettingsPlaceholderScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
-import type { RestaurantDetailRouteParams } from './browseTypes';
+import type { NativeMenuPilotRouteParams, RestaurantDetailRouteParams } from './browseTypes';
 
 export type MyRumblyStackParamList = {
   MyRumblyHome: undefined;
@@ -26,6 +27,7 @@ export type MyRumblyStackParamList = {
   ChangePassword: undefined;
   GeneralSettings: undefined;
   NativeUiLab: undefined;
+  NativeMenuPilot: NativeMenuPilotRouteParams;
   SettingsPlaceholder: { title: string };
   ChallengeList: undefined;
   ChallengeDetail: { challengeId: string };
@@ -83,6 +85,11 @@ export function MyRumblyNavigator() {
       <Stack.Screen
         name="NativeUiLab"
         component={NativeUiLabScreen}
+        options={{ headerShown: false, animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="NativeMenuPilot"
+        component={NativeMenuPilotScreen}
         options={{ headerShown: false, animation: 'slide_from_right' }}
       />
       <Stack.Screen

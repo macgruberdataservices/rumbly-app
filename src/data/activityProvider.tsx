@@ -9,13 +9,14 @@
 // stay local-only in that case, per the decision that
 // account sign-in is never required to use them.
 //
-// Love exists at restaurant and item level; Need It is item-only. Got It
-// is a repeatable event at both levels, with count Maps derived from those
-// rows for compact UI state.
+// Love and Need It exist at restaurant and item level. Got It is a
+// repeatable event at both levels, with count Maps derived from those rows
+// for compact UI state.
 
 import React, { createContext, useCallback, useEffect, useState } from 'react';
 import {
   toggleLove as toggleLoveDb,
+  toggleRestaurantNeedIt as toggleRestaurantNeedItDb,
   toggleItemLove as toggleItemLoveDb,
   toggleItemNeedIt as toggleItemNeedItDb,
   addRestaurantGotIt as addRestaurantGotItDb,
@@ -23,6 +24,7 @@ import {
   setGotItRating as setGotItRatingDb,
   undoGotIt as undoGotItDb,
   loadLovedIds,
+  loadNeedItRestaurantIds,
   loadLovedItemKeys,
   loadNeedItItemKeys,
   loadGotItItemCounts,
@@ -40,6 +42,7 @@ function itemKey(restaurantId: string, itemId: string): string {
 
 interface ActivityContextValue {
   lovedIds: Set<string>;
+  needItRestaurantIds: Set<string>;
   lovedItemKeys: Set<string>;
   needItItemKeys: Set<string>;
   gotItItemCounts: Map<string, number>;
@@ -50,6 +53,7 @@ interface ActivityContextValue {
   isActivityReady: boolean;
   reloadActivity: () => Promise<void>;
   toggleLove: (restaurantId: string) => Promise<void>;
+  toggleRestaurantNeedIt: (restaurantId: string) => Promise<void>;
   toggleItemLove: (restaurantId: string, itemId: string) => Promise<void>;
   toggleItemNeedIt: (restaurantId: string, itemId: string) => Promise<void>;
   addRestaurantGotIt: (restaurantId: string) => Promise<string>;
@@ -63,6 +67,7 @@ const ActivityContext = createContext<ActivityContextValue | null>(null);
 export function ActivityProvider({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [lovedIds, setLovedIds] = useState<Set<string>>(new Set());
+  const [needItRestaurantIds, setNeedItRestaurantIds] = useState<Set<string>>(new Set());
   const [lovedItemKeys, setLovedItemKeys] = useState<Set<string>>(new Set());
   const [needItItemKeys, setNeedItItemKeys] = useState<Set<string>>(new Set());
   const [gotItItemCounts, setGotItItemCounts] = useState<Map<string, number>>(new Map());
@@ -79,8 +84,9 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const reloadFromDb = useCallback(async () => {
-    const [loved, lovedItems, needItItems, gotItItems, gotItRestaurants, readModel] = await Promise.all([
+    const [loved, neededRestaurants, lovedItems, needItItems, gotItItems, gotItRestaurants, readModel] = await Promise.all([
       loadLovedIds(),
+      loadNeedItRestaurantIds(),
       loadLovedItemKeys(),
       loadNeedItItemKeys(),
       loadGotItItemCounts(),
@@ -88,6 +94,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       loadPersonalActivityReadModel(),
     ]);
     setLovedIds(loved);
+    setNeedItRestaurantIds(neededRestaurants);
     setLovedItemKeys(lovedItems);
     setNeedItItemKeys(needItItems);
     setGotItItemCounts(gotItItems);
@@ -151,6 +158,26 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       refreshPersonalActivity();
     },
     [user]
+  );
+
+  const toggleRestaurantNeedIt = useCallback(
+    async (restaurantId: string) => {
+      const nowNeeded = await toggleRestaurantNeedItDb(restaurantId);
+      setNeedItRestaurantIds((prev) => {
+        const next = new Set(prev);
+        if (nowNeeded) {
+          next.add(restaurantId);
+        } else {
+          next.delete(restaurantId);
+        }
+        return next;
+      });
+      if (user) {
+        syncActivity(user.id).catch((err) => console.warn('sync after restaurant Need It failed:', err));
+      }
+      refreshPersonalActivity();
+    },
+    [user, refreshPersonalActivity]
   );
 
   const toggleItemNeedIt = useCallback(
@@ -249,6 +276,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
     <ActivityContext.Provider
       value={{
         lovedIds,
+        needItRestaurantIds,
         lovedItemKeys,
         needItItemKeys,
         gotItItemCounts,
@@ -259,6 +287,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
         isActivityReady,
         reloadActivity: reloadFromDb,
         toggleLove,
+        toggleRestaurantNeedIt,
         toggleItemLove,
         toggleItemNeedIt,
         addRestaurantGotIt,

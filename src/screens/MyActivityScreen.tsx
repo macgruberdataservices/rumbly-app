@@ -47,8 +47,15 @@ export function MyActivityScreen({ navigation }: Props) {
   const { restaurants } = useDataProvider();
   const { user, initializing } = useAuth();
   const needItEnabled = useEntitlement('need_it');
-  const { personalActivity, isActivityReady, reloadActivity, toggleLove, toggleItemLove, toggleItemNeedIt } =
-    useActivity();
+  const {
+    personalActivity,
+    isActivityReady,
+    reloadActivity,
+    toggleLove,
+    toggleRestaurantNeedIt,
+    toggleItemLove,
+    toggleItemNeedIt,
+  } = useActivity();
   const [activeTab, setActiveTab] = useState<CollectionTab>('love');
   const [itemByKey, setItemByKey] = useState<Map<string, SearchIndexEntry>>(new Map());
 
@@ -84,14 +91,21 @@ export function MyActivityScreen({ navigation }: Props) {
       ),
     [personalActivity]
   );
+  const neededEvents = useMemo(
+    () =>
+      [...personalActivity.neededRestaurants, ...personalActivity.neededItems].sort((a, b) =>
+        b.updatedAt.localeCompare(a.updatedAt)
+      ),
+    [personalActivity]
+  );
   const visibleEvents =
     activeTab === 'love'
       ? lovedEvents
       : activeTab === 'need'
-        ? personalActivity.neededItems
+        ? neededEvents
         : personalActivity.gotItHistory;
   const loveCount = lovedEvents.length;
-  const needCount = personalActivity.neededItems.length;
+  const needCount = neededEvents.length;
 
   // Swipe-to-remove (owner request, 2026-07-23): Love It and Need It are
   // both simple toggles at the data layer (activity.ts), so "remove" here
@@ -111,7 +125,11 @@ export function MyActivityScreen({ navigation }: Props) {
             style: 'destructive',
             onPress: async () => {
               if (collection === 'need') {
-                await toggleItemNeedIt(event.restaurantId, event.itemId!);
+                if (event.itemId) {
+                  await toggleItemNeedIt(event.restaurantId, event.itemId);
+                } else {
+                  await toggleRestaurantNeedIt(event.restaurantId);
+                }
               } else if (event.itemId) {
                 await toggleItemLove(event.restaurantId, event.itemId);
               } else {
@@ -123,7 +141,15 @@ export function MyActivityScreen({ navigation }: Props) {
         ]
       );
     },
-    [itemByKey, reloadActivity, restaurantById, toggleItemLove, toggleItemNeedIt, toggleLove]
+    [
+      itemByKey,
+      reloadActivity,
+      restaurantById,
+      toggleItemLove,
+      toggleItemNeedIt,
+      toggleLove,
+      toggleRestaurantNeedIt,
+    ]
   );
 
   const openEvent = (event: PersonalActivityEvent) => {

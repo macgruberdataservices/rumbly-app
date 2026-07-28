@@ -24,6 +24,8 @@ export function GeneralSettingsScreen({ navigation }: Props) {
     setFindFeedEnabled,
     findFeedContentMode,
     setFindFeedContentMode,
+    nativeInteractionsEnabled,
+    setNativeInteractionsEnabled,
   } = useAppSettings();
   const { isEnabled: isEntitled } = useEntitlements();
   const isContentAdmin = isEntitled('content_admin');
@@ -92,6 +94,20 @@ export function GeneralSettingsScreen({ navigation }: Props) {
         )}
 
         <Text style={[styles.sectionLabel, styles.experimentsSectionLabel]}>EXPERIMENTS</Text>
+        <View style={styles.settingRow}>
+          <View style={styles.settingRowText}>
+            <Text style={text.body}>Use Native Interactions</Text>
+            <Text style={[text.bodyMuted, styles.settingRowSubtitle]}>
+              Opt into converted Expo UI surfaces as they are staged. Turn this off at any
+              time to return immediately to the preserved classic implementation.
+            </Text>
+          </View>
+          <Switch
+            value={nativeInteractionsEnabled}
+            onValueChange={setNativeInteractionsEnabled}
+            trackColor={{ true: COLORS.forest }}
+          />
+        </View>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open Native UI Lab"
@@ -151,6 +167,7 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     borderRadius: 12,
     backgroundColor: COLORS.cream,
+    marginTop: SPACING.lg,
   },
   labRowPressed: { backgroundColor: COLORS.goldLight },
   chevron: {

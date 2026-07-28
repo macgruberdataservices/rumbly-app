@@ -521,6 +521,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     marginBottom: SPACING.md,
+    marginHorizontal: SPACING.lg,
   },
   previewBannerTitle: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
@@ -548,6 +549,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-end',
     justifyContent: 'space-between',
     gap: SPACING.md,
+    paddingHorizontal: SPACING.lg,
   },
   sectionHeadingCopy: { flex: 1, minWidth: 0 },
   sectionTitle: {
@@ -563,9 +565,12 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.xs,
-    paddingRight: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
   },
-  featureBody: { marginTop: SPACING.md },
+  featureBody: {
+    marginTop: SPACING.md,
+    marginHorizontal: SPACING.lg,
+  },
   itemCard: {
     width: 214,
     minHeight: 262,

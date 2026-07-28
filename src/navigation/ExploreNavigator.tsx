@@ -2,6 +2,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { ExploreHomeScreen } from '../screens/ExploreHomeScreen';
 import { ParkListScreen } from '../screens/ParkListScreen';
 import { RestaurantDetailScreen } from '../screens/RestaurantDetailScreen';
+import { NativeMenuPilotScreen } from '../screens/NativeMenuPilotScreen';
 import { RestaurantListScreen } from '../screens/RestaurantListScreen';
 import { ChallengeDetailScreen } from '../screens/ChallengeDetailScreen';
 import { ChangesHomeScreen } from '../screens/ChangesHomeScreen';
@@ -49,6 +50,11 @@ export function ExploreNavigator() {
       <Stack.Screen
         name="RestaurantDetail"
         component={RestaurantDetailScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="NativeMenuPilot"
+        component={NativeMenuPilotScreen}
         options={{ headerShown: false }}
       />
       <Stack.Screen name="ChallengeDetail" component={ChallengeDetailScreen} options={{ headerShown: false }} />

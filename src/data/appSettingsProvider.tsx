@@ -7,9 +7,11 @@ import {
   loadAllAllergyInSearch,
   loadFindFeedContentMode,
   loadFindFeedEnabled,
+  loadNativeInteractionsEnabled,
   saveAllAllergyInSearch,
   saveFindFeedContentMode,
   saveFindFeedEnabled,
+  saveNativeInteractionsEnabled,
   type FindFeedContentMode,
 } from './appSettings';
 
@@ -20,6 +22,8 @@ interface AppSettingsContextValue {
   setFindFeedEnabled: (value: boolean) => void;
   findFeedContentMode: FindFeedContentMode;
   setFindFeedContentMode: (value: FindFeedContentMode) => void;
+  nativeInteractionsEnabled: boolean;
+  setNativeInteractionsEnabled: (value: boolean) => void;
   isSettingsReady: boolean;
 }
 
@@ -30,6 +34,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const [findFeedEnabled, setFindFeedEnabledState] = useState(true);
   const [findFeedContentMode, setFindFeedContentModeState] =
     useState<FindFeedContentMode>('live');
+  const [nativeInteractionsEnabled, setNativeInteractionsEnabledState] = useState(false);
   const [isSettingsReady, setIsSettingsReady] = useState(false);
 
   useEffect(() => {
@@ -38,11 +43,13 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       loadAllAllergyInSearch(),
       loadFindFeedEnabled(),
       loadFindFeedContentMode(),
-    ]).then(([allergy, feed, contentMode]) => {
+      loadNativeInteractionsEnabled(),
+    ]).then(([allergy, feed, contentMode, nativeInteractions]) => {
       if (cancelled) return;
       setAllAllergyInSearchState(allergy);
       setFindFeedEnabledState(feed);
       setFindFeedContentModeState(contentMode);
+      setNativeInteractionsEnabledState(nativeInteractions);
       setIsSettingsReady(true);
     });
     return () => {
@@ -65,6 +72,11 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     saveFindFeedContentMode(value).catch(() => {});
   };
 
+  const setNativeInteractionsEnabled = (value: boolean) => {
+    setNativeInteractionsEnabledState(value);
+    saveNativeInteractionsEnabled(value).catch(() => {});
+  };
+
   return (
     <AppSettingsContext.Provider
       value={{
@@ -74,6 +86,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         setFindFeedEnabled,
         findFeedContentMode,
         setFindFeedContentMode,
+        nativeInteractionsEnabled,
+        setNativeInteractionsEnabled,
         isSettingsReady,
       }}
     >

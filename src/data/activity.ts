@@ -100,6 +100,10 @@ export function toggleLove(restaurantId: string): Promise<boolean> {
   return toggleActivity(restaurantId, 'love_it', null);
 }
 
+export function toggleRestaurantNeedIt(restaurantId: string): Promise<boolean> {
+  return toggleActivity(restaurantId, 'need_it', null);
+}
+
 export function toggleItemLove(restaurantId: string, itemId: string): Promise<boolean> {
   return toggleActivity(restaurantId, 'love_it', itemId);
 }
@@ -161,6 +165,14 @@ export async function loadLovedIds(): Promise<Set<string>> {
   const db = await getDb();
   const rows = await db.getAllAsync<{ restaurant_id: string }>(
     "SELECT DISTINCT restaurant_id FROM activity WHERE activity_type = 'love_it' AND item_id IS NULL AND deleted = 0;"
+  );
+  return new Set(rows.map((r) => r.restaurant_id));
+}
+
+export async function loadNeedItRestaurantIds(): Promise<Set<string>> {
+  const db = await getDb();
+  const rows = await db.getAllAsync<{ restaurant_id: string }>(
+    "SELECT DISTINCT restaurant_id FROM activity WHERE activity_type = 'need_it' AND item_id IS NULL AND deleted = 0;"
   );
   return new Set(rows.map((r) => r.restaurant_id));
 }
@@ -248,6 +260,7 @@ export interface RatingAverage {
 export interface PersonalActivityReadModel {
   lovedRestaurants: PersonalActivityEvent[];
   lovedItems: PersonalActivityEvent[];
+  neededRestaurants: PersonalActivityEvent[];
   neededItems: PersonalActivityEvent[];
   gotItHistory: PersonalActivityEvent[];
   totalGotItCount: number;
@@ -266,6 +279,7 @@ export interface PersonalActivityReadModel {
 const EMPTY_PERSONAL_ACTIVITY: PersonalActivityReadModel = {
   lovedRestaurants: [],
   lovedItems: [],
+  neededRestaurants: [],
   neededItems: [],
   gotItHistory: [],
   totalGotItCount: 0,
@@ -349,6 +363,9 @@ export async function loadPersonalActivityReadModel(): Promise<PersonalActivityR
     ),
     lovedItems: latestUniqueEvents(
       events.filter((event) => event.activityType === 'love_it' && event.itemId !== null)
+    ),
+    neededRestaurants: latestUniqueEvents(
+      events.filter((event) => event.activityType === 'need_it' && event.itemId === null)
     ),
     neededItems: latestUniqueEvents(
       events.filter((event) => event.activityType === 'need_it' && event.itemId !== null)

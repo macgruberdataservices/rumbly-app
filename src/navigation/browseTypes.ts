@@ -7,8 +7,16 @@ export type RestaurantDetailRouteParams = {
   category?: string;
 };
 
+export type NativeMenuPilotRouteParams = {
+  restaurantId: string;
+  initialPeriod?: string;
+  initialCategory?: string;
+  initialItemId?: string;
+};
+
 export type BrowseStackParamList = {
   LocationList: { parentGroupKey?: string; parentGroupLabel?: string } | undefined;
   RestaurantList: { groupKey: string; groupLabel: string; nearMeOrigin?: Coordinates };
   RestaurantDetail: RestaurantDetailRouteParams;
+  NativeMenuPilot: NativeMenuPilotRouteParams;
 };

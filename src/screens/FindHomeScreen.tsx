@@ -852,7 +852,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
         style={[
           styles.headerClip,
           {
-            height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 92] }),
+            height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 78] }),
             opacity: introReveal,
             transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
           },
@@ -1361,6 +1361,7 @@ const styles = StyleSheet.create({
     position: 'relative',
     zIndex: 0,
     overflow: 'hidden',
+    marginHorizontal: -SPACING.lg,
   },
   feedDimOverlay: {
     position: 'absolute',

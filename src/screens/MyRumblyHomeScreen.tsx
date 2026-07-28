@@ -74,7 +74,10 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
           </View>
           <View style={styles.statsRow}>
             <Stat value={loveCount} label="Love It" />
-            <Stat value={personalActivity.neededItems.length} label="Need It" />
+            <Stat
+              value={personalActivity.neededRestaurants.length + personalActivity.neededItems.length}
+              label="Need It"
+            />
             <Stat value={personalActivity.totalGotItCount} label="Got It" />
           </View>
         </Pressable>

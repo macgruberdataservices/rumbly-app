@@ -1,4 +1,11 @@
 import { Linking, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  BottomSheet,
+  Button as NativeButton,
+  Column,
+  Text as NativeText,
+} from '@expo/ui';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
@@ -31,6 +38,38 @@ export function CapabilityDetailSheet({
   onClose: () => void;
 }) {
   const copy = kind ? COPY[kind] : null;
+  const { nativeInteractionsEnabled } = useAppSettings();
+
+  if (nativeInteractionsEnabled) {
+    return (
+      <BottomSheet
+        isPresented={kind !== null}
+        onDismiss={onClose}
+        showDragIndicator
+      >
+        {copy && (
+          <Column spacing={16} style={{ paddingBottom: 24 }}>
+            <NativeText
+              textStyle={{ fontSize: 22, fontWeight: '700', color: COLORS.ink }}
+            >
+              {copy.title}
+            </NativeText>
+            <NativeText
+              textStyle={{ fontSize: 15, lineHeight: 21, color: COLORS.muted }}
+            >
+              {copy.body}
+            </NativeText>
+            {officialUrl && (
+              <NativeButton
+                label="View Official Page"
+                onPress={() => Linking.openURL(officialUrl)}
+              />
+            )}
+          </Column>
+        )}
+      </BottomSheet>
+    );
+  }
 
   return (
     <Modal visible={kind !== null} transparent animationType="fade" onRequestClose={onClose}>

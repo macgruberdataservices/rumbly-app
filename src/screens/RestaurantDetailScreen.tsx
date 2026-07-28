@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Dimensions, SectionList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AccessibilityInfo, Animated, Dimensions, Platform, SectionList, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RestaurantDetailRouteParams } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
@@ -13,6 +13,10 @@ import { ExpandedHeader } from '../components/restaurant-detail/ExpandedHeader';
 import { CollapsedHeader } from '../components/restaurant-detail/CollapsedHeader';
 import { CategoryNavigator } from '../components/restaurant-detail/CategoryNavigator';
 import { CapabilityDetailSheet, type CapabilityKind } from '../components/restaurant-detail/CapabilityDetailSheet';
+import {
+  NativeRestaurantMenu,
+  type NativeRestaurantMenuRef,
+} from '../components/restaurant-detail/NativeRestaurantMenu';
 import { MenuItemRow } from '../components/MenuItemRow';
 import { closeOpenSwipeable } from '../components/swipeableCoordinator';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
@@ -21,7 +25,18 @@ import { recordRecommendationEvent } from '../recommendations/remote';
 
 type Props = {
   route: { params: RestaurantDetailRouteParams };
-  navigation: { goBack: () => void };
+  navigation: {
+    goBack: () => void;
+    navigate: (
+      screen: 'NativeMenuPilot',
+      params: {
+        restaurantId: string;
+        initialPeriod?: string;
+        initialCategory?: string;
+        initialItemId?: string;
+      }
+    ) => void;
+  };
 };
 
 const COLLAPSED_HEADER_HEIGHT = 52;
@@ -36,7 +51,8 @@ interface Section {
 export function RestaurantDetailScreen({ route, navigation }: Props) {
   const { restaurantId, itemId: targetItemId, period: targetPeriod, category: targetCategory } = route.params;
   const { restaurants, hoursData } = useDataProvider();
-  const { findFeedEnabled } = useAppSettings();
+  const { findFeedEnabled, nativeInteractionsEnabled } = useAppSettings();
+  const useNativeMenu = nativeInteractionsEnabled && Platform.OS === 'ios';
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
   const restaurant = useMemo(
@@ -55,6 +71,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const sectionListRef = useRef<SectionList<MenuItem, Section>>(null);
+  const nativeMenuRef = useRef<NativeRestaurantMenuRef>(null);
   const horizontalScrollRef = useRef<ScrollView>(null);
   const categoryChipLayoutsRef = useRef<{ x: number; width: number }[]>([]);
   const isProgrammaticScrollRef = useRef(false);
@@ -230,7 +247,14 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
       activeIndexRef.current = index;
       setActiveCategoryIndex(index);
       scrollChipIntoView(index);
-      scrollToSectionItem(index, 0, !reducedMotionRef.current);
+      if (useNativeMenu) {
+        const category = sections[index]?.title;
+        if (category) {
+          void nativeMenuRef.current?.scrollToCategory(category);
+        }
+      } else {
+        scrollToSectionItem(index, 0, !reducedMotionRef.current);
+      }
       // scrollToLocation's animated scroll doesn't reliably fire
       // onMomentumScrollEnd at the right moment — confirmed: jumping to
       // an earlier section (scrolling back "up") can visibly overshoot
@@ -251,8 +275,29 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
         reducedMotionRef.current ? 0 : 600
       );
     },
-    [scrollChipIntoView, scrollToSectionItem]
+    [scrollChipIntoView, scrollToSectionItem, sections, useNativeMenu]
   );
+
+  const onNativeActiveCategoryChange = useCallback(
+    (category: string) => {
+      if (isProgrammaticScrollRef.current) return;
+      const index = sections.findIndex((section) => section.title === category);
+      if (index === -1 || index === activeIndexRef.current) return;
+      activeIndexRef.current = index;
+      setActiveCategoryIndex(index);
+      scrollChipIntoView(index);
+    },
+    [scrollChipIntoView, sections]
+  );
+
+  useEffect(() => {
+    if (!useNativeMenu || sections.length === 0) return;
+    scrollY.setValue(0);
+    const frame = requestAnimationFrame(() => {
+      void nativeMenuRef.current?.scrollToCategory(sections[0].title);
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [scrollY, sections, selectedPeriod, useNativeMenu]);
 
   // Milestone 5 search tap-through: once this restaurant's sections are
   // built for the (possibly search-requested) period, find the exact
@@ -294,7 +339,11 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     // net for whatever's still not ready by then (slower devices, longer
     // menus).
     const scrollTimeout = setTimeout(() => {
-      scrollToSectionItem(sectionIndex, itemIndex, !reducedMotionRef.current);
+      if (useNativeMenu) {
+        void nativeMenuRef.current?.scrollToItem(targetItemId);
+      } else {
+        scrollToSectionItem(sectionIndex, itemIndex, !reducedMotionRef.current);
+      }
     }, 150);
     setHighlightedItemId(targetItemId);
     AccessibilityInfo.announceForAccessibility(`${targetItem.item}, selected search result`);
@@ -314,7 +363,18 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
       clearTimeout(scrollTimeout);
       clearTimeout(highlightTimeout);
     };
-  }, [sections, targetItemId, targetCategory, scrollChipIntoView, scrollToSectionItem]);
+  }, [
+    sections,
+    targetItemId,
+    targetCategory,
+    scrollChipIntoView,
+    scrollToSectionItem,
+    useNativeMenu,
+  ]);
+
+  useEffect(() => {
+    scrollY.setValue(0);
+  }, [scrollY, useNativeMenu]);
 
   // headerClip only holds ExpandedHeader now — the collapsed name/status
   // content lives in the always-rendered CollapsedHeader bar above it, so
@@ -404,6 +464,17 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
         <View style={styles.centered}>
           <Text style={text.bodyMuted}>No menu available for this location.</Text>
         </View>
+      ) : useNativeMenu ? (
+        <NativeRestaurantMenu
+          ref={nativeMenuRef}
+          sections={sections}
+          highlightedItemId={highlightedItemId}
+          bottomInset={insets.bottom}
+          onActiveCategoryChange={onNativeActiveCategoryChange}
+          onScrollOffsetChange={(offsetY) => {
+            scrollY.setValue(offsetY);
+          }}
+        />
       ) : (
         <SectionList
           ref={sectionListRef}

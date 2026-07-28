@@ -7,6 +7,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 const ALL_ALLERGY_IN_SEARCH_KEY = 'rumbly.settings.allAllergyInSearch';
 const FIND_FEED_ENABLED_KEY = 'rumbly.settings.findFeedEnabled';
 const FIND_FEED_CONTENT_MODE_KEY = 'rumbly.settings.findFeedContentMode';
+const NATIVE_INTERACTIONS_ENABLED_KEY = 'rumbly.settings.nativeInteractionsEnabled';
 
 export type FindFeedContentMode = 'live' | 'preview';
 
@@ -44,4 +45,16 @@ export async function loadFindFeedContentMode(): Promise<FindFeedContentMode> {
 
 export async function saveFindFeedContentMode(value: FindFeedContentMode): Promise<void> {
   await AsyncStorage.setItem(FIND_FEED_CONTENT_MODE_KEY, value);
+}
+
+// Expo UI migration safety switch. Classic stays the default until each
+// native surface has passed device QA; every converted component must retain
+// its classic implementation while this pilot is active.
+export async function loadNativeInteractionsEnabled(): Promise<boolean> {
+  const raw = await AsyncStorage.getItem(NATIVE_INTERACTIONS_ENABLED_KEY);
+  return raw === 'true';
+}
+
+export async function saveNativeInteractionsEnabled(value: boolean): Promise<void> {
+  await AsyncStorage.setItem(NATIVE_INTERACTIONS_ENABLED_KEY, value ? 'true' : 'false');
 }

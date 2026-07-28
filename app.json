@@ -12,7 +12,15 @@
       "infoPlist": {
         "LSApplicationQueriesSchemes": [
           "mdx"
-        ]
+        ],
+        "NSAppTransportSecurity": {
+          "NSExceptionDomains": {
+            "tailabf79a.ts.net": {
+              "NSExceptionAllowsInsecureHTTPLoads": true,
+              "NSIncludesSubdomains": true
+            }
+          }
+        }
       }
     },
     "android": {

@@ -32,7 +32,9 @@ export const CategoryNavigator = forwardRef<
               accessibilityRole="tab"
               accessibilityState={{ selected: active }}
             >
-              <Text style={[text.chip, active && styles.chipTextActive]}>{category}</Text>
+              <Text style={[text.chip, styles.chipText, active && styles.chipTextActive]}>
+                {category.toUpperCase()}
+              </Text>
             </Pressable>
           );
         })}
@@ -53,6 +55,8 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   chip: {
+    minHeight: 36,
+    justifyContent: 'center',
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADII.xl,
@@ -62,6 +66,10 @@ const styles = StyleSheet.create({
   chipActive: {
     backgroundColor: COLORS.forest,
     borderColor: COLORS.forest,
+  },
+  chipText: {
+    fontSize: 13,
+    letterSpacing: 0.45,
   },
   chipTextActive: {
     color: COLORS.goldLight,

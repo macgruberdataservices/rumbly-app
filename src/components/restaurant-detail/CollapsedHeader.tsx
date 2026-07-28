@@ -59,6 +59,7 @@ const styles = StyleSheet.create({
     height: 52,
   },
   backButton: {
+    width: 76,
     paddingRight: SPACING.sm,
   },
   backLabel: {
@@ -68,9 +69,12 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'baseline',
+    justifyContent: 'center',
     gap: SPACING.sm,
   },
   name: {
+    flexShrink: 1,
+    textAlign: 'center',
     color: COLORS.ink,
     fontSize: 16,
   },
@@ -80,6 +84,8 @@ const styles = StyleSheet.create({
   statusOpen: { color: COLORS.pine },
   statusClosed: { color: COLORS.muted },
   overflow: {
+    width: 76,
+    textAlign: 'right',
     color: COLORS.forest,
     fontSize: 16,
     paddingLeft: SPACING.sm,
