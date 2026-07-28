@@ -15,6 +15,8 @@ import { useActivity } from '../../hooks/useActivity';
 import { useAuth } from '../../hooks/useAuth';
 import { useDataProvider } from '../../hooks/useDataProvider';
 import { useEntitlements } from '../../hooks/useEntitlements';
+import { useAppSettings } from '../../hooks/useAppSettings';
+import { daysAgoStr, loadChangesForRange, todayStr } from '../../data/changes';
 import type { Coordinates } from '../../location/proximity';
 import { formatProximityDistance } from '../../location/proximity';
 import { loadSearchIndex } from '../../search/searchIndexLoader';
@@ -30,7 +32,7 @@ import type {
   FeedItemRecommendation,
   FeedModule,
 } from '../../recommendations/types';
-import type { SearchIndexEntry } from '../../data/types';
+import type { ChangeEvent, SearchIndexEntry } from '../../data/types';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
@@ -43,18 +45,75 @@ interface Props {
 }
 
 const EMPTY_REMOTE: RemoteFeedData = { configs: [], content: [], events: [] };
+const DEFAULT_FEED_REFRESH_MINUTES = 60;
+
+interface CachedFeedData {
+  searchIndex: SearchIndexEntry[];
+  remote: RemoteFeedData;
+  changes: ChangeEvent[];
+  loadedAt: number;
+  dataVersion: number | null;
+}
+
+const feedDataCache = new Map<string, CachedFeedData>();
+
+function feedRefreshIntervalMs(remote: RemoteFeedData): number {
+  const configured = remote.configs
+    .find((config) => config.moduleKey === 'find_feed')
+    ?.settings.refresh_interval_minutes;
+  const minutes =
+    typeof configured === 'number' && Number.isFinite(configured)
+      ? Math.max(15, Math.min(configured, 24 * 60))
+      : DEFAULT_FEED_REFRESH_MINUTES;
+  return minutes * 60_000;
+}
+
+function itemArtworkPresentation(
+  category: string | null | undefined,
+  itemName: string
+): {
+  label: string;
+  mark: string;
+  backgroundColor: string;
+  accentColor: string;
+} {
+  const normalized = `${category ?? ''} ${itemName}`.toLocaleLowerCase();
+  if (/(drink|beverage|cocktail|wine|beer|coffee|tea)/.test(normalized)) {
+    return { label: 'Drinks', mark: 'SIP', backgroundColor: '#DCECF3', accentColor: '#397D98' };
+  }
+  if (/(dessert|sweet|bakery|pastry|ice cream)/.test(normalized)) {
+    return { label: 'Something sweet', mark: 'TREAT', backgroundColor: '#F5DFE5', accentColor: '#A85472' };
+  }
+  if (/(breakfast|brunch)/.test(normalized)) {
+    return { label: 'Breakfast', mark: 'AM', backgroundColor: '#F8E5B9', accentColor: '#9A6A1D' };
+  }
+  if (/(snack|appetizer|starter|shareable|side)/.test(normalized)) {
+    return { label: 'Snacks & shares', mark: 'BITE', backgroundColor: '#E7E2F2', accentColor: '#6C5A91' };
+  }
+  if (/(kids|children)/.test(normalized)) {
+    return { label: 'For kids', mark: 'KIDS', backgroundColor: '#E0EEDC', accentColor: '#4F7A45' };
+  }
+  return {
+    label: category?.trim() || 'Menu pick',
+    mark: 'BITE',
+    backgroundColor: COLORS.pineLight,
+    accentColor: COLORS.forest,
+  };
+}
 
 function FeedItemCard({
   recommendation,
-  moduleKey,
   onPress,
 }: {
   recommendation: FeedItemRecommendation;
-  moduleKey: string;
   onPress: () => void;
 }) {
-  const imageUrl = recommendation.restaurant.detail_image_url
+  const venueImageUrl = recommendation.restaurant.detail_image_url
     ?? recommendation.restaurant.list_image_url;
+  const artwork = itemArtworkPresentation(
+    recommendation.item.category,
+    recommendation.item.item
+  );
   const meta = [
     recommendation.item.category,
     recommendation.item.price_display,
@@ -76,21 +135,33 @@ function FeedItemCard({
     >
       <View style={[
         styles.itemArtwork,
-        moduleKey === 'new_at_loved' && styles.itemArtworkGold,
-        moduleKey === 'seasonal' && styles.itemArtworkSeasonal,
+        { backgroundColor: artwork.backgroundColor },
       ]}>
-        {imageUrl ? (
-          <Image source={{ uri: imageUrl }} style={styles.itemImage} resizeMode="cover" />
-        ) : (
-          <View style={styles.itemPlaceholder}>
-            <Text style={styles.placeholderMark}>
-              {recommendation.restaurant.restaurant.slice(0, 1).toLocaleUpperCase()}
-            </Text>
-            <Text style={styles.placeholderCategory} numberOfLines={1}>
-              {recommendation.item.category}
-            </Text>
-          </View>
-        )}
+        <View style={[styles.artworkCircle, styles.artworkCircleLarge, { borderColor: artwork.accentColor }]} />
+        <View style={[styles.artworkCircle, styles.artworkCircleSmall, { backgroundColor: artwork.accentColor }]} />
+        <View style={styles.itemPlaceholder}>
+          <Text style={[styles.placeholderMark, { color: artwork.accentColor }]}>
+            {artwork.mark}
+          </Text>
+          <Text
+            style={[styles.placeholderCategory, { color: artwork.accentColor }]}
+            numberOfLines={1}
+          >
+            {artwork.label}
+          </Text>
+        </View>
+        <View style={styles.venueMarker}>
+          <Text style={styles.venueMarkerLabel}>VENUE</Text>
+          {venueImageUrl ? (
+            <Image source={{ uri: venueImageUrl }} style={styles.venueImage} resizeMode="cover" />
+          ) : (
+            <View style={[styles.venueImage, styles.venueInitial]}>
+              <Text style={styles.venueInitialText}>
+                {recommendation.restaurant.restaurant.slice(0, 1).toLocaleUpperCase()}
+              </Text>
+            </View>
+          )}
+        </View>
         {distance && (
           <View style={styles.distancePill}>
             <Text style={styles.distanceLabel}>{distance}</Text>
@@ -114,12 +185,26 @@ function FeedItemCard({
 
 function ContentCard({
   recommendation,
+  previewMode,
   onPress,
 }: {
   recommendation: FeedContentRecommendation;
+  previewMode: boolean;
   onPress: () => void;
 }) {
   const { content } = recommendation;
+  const now = Date.now();
+  const startsAt = Date.parse(content.startsAt);
+  const endsAt = content.endsAt ? Date.parse(content.endsAt) : null;
+  const previewStatus = !content.active
+    ? 'INACTIVE'
+    : content.editorialStatus !== 'published'
+      ? content.editorialStatus.toLocaleUpperCase()
+      : startsAt > now
+        ? 'SCHEDULED'
+        : endsAt !== null && endsAt <= now
+          ? 'EXPIRED'
+          : 'LIVE';
   return (
     <Pressable
       accessibilityRole={content.destinationType === 'external_url' ? 'link' : 'button'}
@@ -133,6 +218,14 @@ function ContentCard({
       {!content.imageUrl && (
         <View style={styles.contentPlaceholder}>
           <Text style={styles.contentPlaceholderMark}>✦</Text>
+        </View>
+      )}
+      {previewMode && (
+        <View style={[
+          styles.previewStatusPill,
+          previewStatus === 'LIVE' && styles.previewStatusPillLive,
+        ]}>
+          <Text style={styles.previewStatusText}>{previewStatus}</Text>
         </View>
       )}
       <View style={styles.contentCopy}>
@@ -157,34 +250,87 @@ export function FindFeed({
   onOpenChallenge,
   onOpenExplore,
 }: Props) {
-  const { restaurants } = useDataProvider();
+  const { restaurants, lastSyncedAt } = useDataProvider();
   const { personalActivity, isActivityReady } = useActivity();
   const { user } = useAuth();
   const { isEnabled: isEntitled } = useEntitlements();
-  const [searchIndex, setSearchIndex] = useState<SearchIndexEntry[]>([]);
-  const [remote, setRemote] = useState<RemoteFeedData>(EMPTY_REMOTE);
-  const [loading, setLoading] = useState(true);
+  const { findFeedContentMode } = useAppSettings();
+  const isContentAdmin = isEntitled('content_admin');
+  const previewMode = isContentAdmin && findFeedContentMode === 'preview';
+  const cacheKey = `${user?.id ?? 'anonymous'}:${previewMode ? 'preview' : 'live'}`;
+  const initialCached = feedDataCache.get(cacheKey);
+  const [searchIndex, setSearchIndex] = useState<SearchIndexEntry[]>(
+    () => initialCached?.searchIndex ?? []
+  );
+  const [remote, setRemote] = useState<RemoteFeedData>(
+    () => initialCached?.remote ?? EMPTY_REMOTE
+  );
+  const [changes, setChanges] = useState<ChangeEvent[]>(
+    () => initialCached?.changes ?? []
+  );
+  const [loading, setLoading] = useState(!initialCached);
 
   useFocusEffect(
     useCallback(() => {
       let cancelled = false;
-      setLoading(true);
+      const cached = feedDataCache.get(cacheKey);
+      if (cached) {
+        setSearchIndex(cached.searchIndex);
+        setRemote(cached.remote);
+        setChanges(cached.changes);
+        setLoading(false);
+      }
+      const cacheIsFresh =
+        cached
+        && cached.dataVersion === lastSyncedAt
+        && Date.now() - cached.loadedAt < feedRefreshIntervalMs(cached.remote);
+      if (cacheIsFresh) {
+        return () => {
+          cancelled = true;
+        };
+      }
+      setLoading(!cached);
       Promise.all([
         loadSearchIndex(),
-        loadRemoteFeedData(user?.id ?? null).catch((error) => {
-          console.warn('Find feed remote data failed:', error);
-          return EMPTY_REMOTE;
+        loadRemoteFeedData(user?.id ?? null, previewMode ? 'preview' : 'live'),
+        loadChangesForRange(daysAgoStr(30), todayStr()).catch((error) => {
+          console.warn('Find feed change log failed:', error);
+          return [] as ChangeEvent[];
         }),
-      ]).then(([index, nextRemote]) => {
-        if (cancelled) return;
-        setSearchIndex(index);
-        setRemote(nextRemote);
-        setLoading(false);
-      });
+      ])
+        .then(([index, nextRemote, nextChanges]) => {
+          if (cancelled) return;
+          const nextCached: CachedFeedData = {
+            searchIndex: index,
+            remote: nextRemote,
+            changes: nextChanges,
+            loadedAt: Date.now(),
+            dataVersion: lastSyncedAt,
+          };
+          feedDataCache.set(cacheKey, nextCached);
+          setSearchIndex(index);
+          setRemote(nextRemote);
+          setChanges(nextChanges);
+          setLoading(false);
+        })
+        .catch((error) => {
+          if (cancelled) return;
+          console.warn('Find feed data refresh failed:', error);
+          setLoading(false);
+        });
       return () => {
         cancelled = true;
       };
-    }, [user?.id])
+    }, [cacheKey, lastSyncedAt, previewMode, user?.id])
+  );
+
+  const visibleContent = useMemo(
+    () => previewMode
+      ? remote.content
+      : remote.content.filter(
+        (content) => !content.requiredEntitlement || isEntitled(content.requiredEntitlement)
+      ),
+    [isEntitled, previewMode, remote.content]
   );
 
   const modules = useMemo(
@@ -193,20 +339,22 @@ export function FindFeed({
       searchIndex,
       activity: personalActivity,
       events: remote.events,
-      content: remote.content,
+      changes,
+      content: visibleContent,
       configs: remote.configs,
       origin,
       isEntitled,
     }),
     [
+      changes,
       isEntitled,
       origin,
       personalActivity,
       remote.configs,
-      remote.content,
       remote.events,
       restaurants,
       searchIndex,
+      visibleContent,
     ]
   );
 
@@ -266,6 +414,14 @@ export function FindFeed({
 
   return (
     <View style={styles.feed}>
+      {previewMode && (
+        <View style={styles.previewBanner} accessibilityRole="alert">
+          <Text style={styles.previewBannerTitle}>CONTENT PREVIEW</Text>
+          <Text style={styles.previewBannerCopy}>
+            Unpublished and inactive cards are visible on this device.
+          </Text>
+        </View>
+      )}
       {modules.map((module: FeedModule, moduleIndex) => (
         <View
           key={module.key}
@@ -322,7 +478,6 @@ export function FindFeed({
                     <FeedItemCard
                       key={recommendation.key}
                       recommendation={recommendation}
-                      moduleKey={module.key}
                       onPress={() => {
                         trackOpen({
                           eventType: 'feed_open',
@@ -341,6 +496,7 @@ export function FindFeed({
                     <ContentCard
                       key={recommendation.key}
                       recommendation={recommendation}
+                      previewMode={previewMode}
                       onPress={() => openContent(recommendation.content)}
                     />
                   );
@@ -357,6 +513,28 @@ export function FindFeed({
 
 const styles = StyleSheet.create({
   feed: { paddingTop: SPACING.sm, paddingBottom: SPACING.xxl },
+  previewBanner: {
+    borderWidth: 1,
+    borderColor: '#D09B2D',
+    borderRadius: RADII.md,
+    backgroundColor: '#FFF4D6',
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    marginBottom: SPACING.md,
+  },
+  previewBannerTitle: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 11,
+    letterSpacing: 0.6,
+    color: '#76500D',
+  },
+  previewBannerCopy: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 11,
+    lineHeight: 15,
+    color: '#76500D',
+    marginTop: 2,
+  },
   loading: {
     minHeight: 100,
     alignItems: 'center',
@@ -407,34 +585,82 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     backgroundColor: COLORS.pineLight,
   },
-  itemArtworkGold: { backgroundColor: '#F7DCA6' },
-  itemArtworkSeasonal: { backgroundColor: '#DDEDE3' },
-  itemImage: { width: '100%', height: '100%' },
+  artworkCircle: {
+    position: 'absolute',
+    borderRadius: 999,
+    opacity: 0.14,
+  },
+  artworkCircleLarge: {
+    width: 132,
+    height: 132,
+    borderWidth: 22,
+    left: -34,
+    top: -58,
+  },
+  artworkCircleSmall: {
+    width: 66,
+    height: 66,
+    right: 34,
+    bottom: -26,
+  },
   itemPlaceholder: {
     flex: 1,
-    alignItems: 'center',
     justifyContent: 'center',
-    padding: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingRight: 76,
   },
   placeholderMark: {
-    fontFamily: FONT_FAMILY.besleyBold,
-    fontSize: 42,
-    color: COLORS.ink,
-    opacity: 0.72,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 25,
+    letterSpacing: -0.7,
   },
   placeholderCategory: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
-    fontSize: 10,
+    fontSize: 9,
     letterSpacing: 0.5,
-    color: COLORS.ink,
-    opacity: 0.72,
-    marginTop: -4,
+    opacity: 0.78,
+    marginTop: 1,
     textTransform: 'uppercase',
+  },
+  venueMarker: {
+    position: 'absolute',
+    right: SPACING.sm,
+    bottom: SPACING.sm,
+    alignItems: 'center',
+  },
+  venueMarkerLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 7,
+    letterSpacing: 0.7,
+    color: COLORS.ink,
+    backgroundColor: 'rgba(255,255,255,0.88)',
+    paddingHorizontal: 4,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginBottom: -3,
+    zIndex: 1,
+  },
+  venueImage: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: COLORS.surface,
+  },
+  venueInitial: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.cream,
+  },
+  venueInitialText: {
+    fontFamily: FONT_FAMILY.besleyBold,
+    fontSize: 20,
+    color: COLORS.ink,
   },
   distancePill: {
     position: 'absolute',
     right: SPACING.sm,
-    bottom: SPACING.sm,
+    top: SPACING.sm,
     borderRadius: RADII.sm,
     backgroundColor: 'rgba(32, 42, 46, 0.86)',
     paddingHorizontal: SPACING.sm,
@@ -518,6 +744,24 @@ const styles = StyleSheet.create({
     fontSize: 44,
     color: COLORS.ink,
     opacity: 0.68,
+  },
+  previewStatusPill: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.sm,
+    borderRadius: RADII.sm,
+    backgroundColor: '#7D5310',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 4,
+  },
+  previewStatusPillLive: {
+    backgroundColor: COLORS.forest,
+  },
+  previewStatusText: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    letterSpacing: 0.5,
+    color: COLORS.surface,
   },
   contentCopy: { flex: 1, padding: SPACING.md },
   eyebrow: {

@@ -6,6 +6,7 @@ import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeade
 import { SyncStatusBar } from '../components/SyncStatusBar';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useAppSettings } from '../hooks/useAppSettings';
+import { useEntitlements } from '../hooks/useEntitlements';
 import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
 import { COLORS, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
@@ -21,7 +22,11 @@ export function GeneralSettingsScreen({ navigation }: Props) {
     setAllAllergyInSearch,
     findFeedEnabled,
     setFindFeedEnabled,
+    findFeedContentMode,
+    setFindFeedContentMode,
   } = useAppSettings();
+  const { isEnabled: isEntitled } = useEntitlements();
+  const isContentAdmin = isEntitled('content_admin');
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -69,6 +74,23 @@ export function GeneralSettingsScreen({ navigation }: Props) {
           />
         </View>
 
+        {isContentAdmin && (
+          <View style={[styles.settingRow, styles.previewSettingRow]}>
+            <View style={styles.settingRowText}>
+              <Text style={text.body}>Preview Unpublished Content</Text>
+              <Text style={[text.bodyMuted, styles.settingRowSubtitle]}>
+                Show draft, review, inactive, scheduled, and archived cards with clear preview
+                labels. Leave this off to experience the feed exactly as a normal user.
+              </Text>
+            </View>
+            <Switch
+              value={findFeedContentMode === 'preview'}
+              onValueChange={(enabled) => setFindFeedContentMode(enabled ? 'preview' : 'live')}
+              trackColor={{ true: COLORS.gold }}
+            />
+          </View>
+        )}
+
         <Text style={styles.versionText}>App version {APP_VERSION}</Text>
       </ScrollView>
     </SafeAreaView>
@@ -95,6 +117,12 @@ const styles = StyleSheet.create({
   },
   settingRowText: { flex: 1 },
   settingRowSubtitle: { marginTop: SPACING.xs },
+  previewSettingRow: {
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.lg,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
   versionText: {
     ...text.bodyMuted,
     textAlign: 'center',

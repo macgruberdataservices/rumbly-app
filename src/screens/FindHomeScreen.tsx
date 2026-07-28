@@ -22,6 +22,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
 import type { RootTabParamList } from '../navigation/RootNavigator';
@@ -167,6 +168,9 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const introReveal = useRef(
     new Animated.Value(initialState.searchInputFocused || initialState.query.trim().length > 0 ? 0 : 1)
   ).current;
+  const feedDimReveal = useRef(
+    new Animated.Value(initialState.searchInputFocused ? 1 : 0)
+  ).current;
 
   const locationDetailGroups = useMemo(
     () => collectQuickLocationDetailGroups(restaurants, quickLocations),
@@ -282,7 +286,16 @@ export function FindHomeScreen({ navigation, route }: Props) {
   useFocusEffect(
     useCallback(() => {
       return () => {
-        navigationRef.current.setParams({ state: latestRestoreStateRef.current });
+        searchInputRef.current?.blur();
+        feedDimReveal.stopAnimation();
+        feedDimReveal.setValue(0);
+        setSearchInputFocused(false);
+        const blurredState = {
+          ...latestRestoreStateRef.current,
+          searchInputFocused: false,
+        };
+        latestRestoreStateRef.current = blurredState;
+        navigationRef.current.setParams({ state: blurredState });
       };
       // Stable empty deps -- see navigationRef's comment above for why
       // this can no longer depend on `navigation` directly.
@@ -397,6 +410,16 @@ export function FindHomeScreen({ navigation, route }: Props) {
       useNativeDriver: false,
     }).start();
   }, [introReveal, query, searchInputFocused]);
+
+  const feedDimmed = searchInputFocused && !isSearchActive;
+
+  useEffect(() => {
+    Animated.timing(feedDimReveal, {
+      toValue: feedDimmed ? 1 : 0,
+      duration: feedDimmed ? 150 : 120,
+      useNativeDriver: true,
+    }).start();
+  }, [feedDimReveal, feedDimmed]);
 
   const resetListPosition = useCallback(() => {
     resultListOffsetRef.current = 0;
@@ -643,17 +666,22 @@ export function FindHomeScreen({ navigation, route }: Props) {
     (resultKey: string) => {
       searchInputRef.current?.blur();
       Keyboard.dismiss();
+      feedDimReveal.stopAnimation();
+      feedDimReveal.setValue(0);
       resultListOffsetRef.current = Math.max(0, resultListOffsetRef.current);
       focusedResultKeyRef.current = resultKey;
       shouldRestoreFocusRef.current = true;
       setFocusedResultKey(resultKey);
       setSearchInputFocused(false);
-      navigation.setParams({
-        state: buildRestoreState({ focusedResultKey: resultKey, searchInputFocused: false }),
+      const nextRestoreState = buildRestoreState({
+        focusedResultKey: resultKey,
+        searchInputFocused: false,
       });
+      latestRestoreStateRef.current = nextRestoreState;
+      navigation.setParams({ state: nextRestoreState });
       rememberQuery();
     },
-    [buildRestoreState, navigation, rememberQuery]
+    [buildRestoreState, feedDimReveal, navigation, rememberQuery]
   );
 
   const trackSearchOpen = useCallback(
@@ -1021,37 +1049,65 @@ export function FindHomeScreen({ navigation, route }: Props) {
             </Animated.View>
           </View>
           {isSettingsReady && findFeedEnabled && (
-            <FindFeed
-              origin={nearMeOrigin}
-              onOpenItem={(item) => {
-                const key = `feed:item:${item.restaurant_id}:${item.item_id}`;
-                prepareResultNavigation(key);
-                navigation.navigate('RestaurantDetail', {
-                  restaurantId: item.restaurant_id,
-                  itemId: item.item_id,
-                  period: item.dining_period,
-                  category: item.category,
-                });
-              }}
-              onOpenRestaurant={(restaurantId) => {
-                const key = `feed:restaurant:${restaurantId}`;
-                prepareResultNavigation(key);
-                navigation.navigate('RestaurantDetail', { restaurantId });
-              }}
-              onOpenChallenge={(challengeId) => {
-                navigation
-                  .getParent<BottomTabNavigationProp<RootTabParamList>>()
-                  ?.navigate('Explore', {
-                    screen: 'ChallengeDetail',
-                    params: { challengeId },
+            <View style={styles.feedDimShell}>
+              <FindFeed
+                origin={nearMeActive ? nearMeOrigin : null}
+                onOpenItem={(item) => {
+                  const key = `feed:item:${item.restaurant_id}:${item.item_id}`;
+                  prepareResultNavigation(key);
+                  navigation.navigate('RestaurantDetail', {
+                    restaurantId: item.restaurant_id,
+                    itemId: item.item_id,
+                    period: item.dining_period,
+                    category: item.category,
                   });
-              }}
-              onOpenExplore={() => {
-                navigation
-                  .getParent<BottomTabNavigationProp<RootTabParamList>>()
-                  ?.navigate('Explore', { screen: 'ExploreHome' });
-              }}
-            />
+                }}
+                onOpenRestaurant={(restaurantId) => {
+                  const key = `feed:restaurant:${restaurantId}`;
+                  prepareResultNavigation(key);
+                  navigation.navigate('RestaurantDetail', { restaurantId });
+                }}
+                onOpenChallenge={(challengeId) => {
+                  navigation
+                    .getParent<BottomTabNavigationProp<RootTabParamList>>()
+                    ?.navigate('Explore', {
+                      screen: 'ChallengeDetail',
+                      params: { challengeId },
+                    });
+                }}
+                onOpenExplore={() => {
+                  navigation
+                    .getParent<BottomTabNavigationProp<RootTabParamList>>()
+                    ?.navigate('Explore', { screen: 'ExploreHome' });
+                }}
+              />
+              <Animated.View
+                pointerEvents={feedDimmed ? 'auto' : 'none'}
+                style={[
+                  styles.feedDimOverlay,
+                  {
+                    opacity: feedDimReveal,
+                  },
+                ]}
+              >
+                <BlurView
+                  intensity={18}
+                  tint="light"
+                  blurMethod="dimezisBlurViewSdk31Plus"
+                  style={StyleSheet.absoluteFill}
+                />
+                <View pointerEvents="none" style={styles.feedDimTint} />
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="Dismiss search"
+                  style={StyleSheet.absoluteFill}
+                  onPress={() => {
+                    searchInputRef.current?.blur();
+                    Keyboard.dismiss();
+                  }}
+                />
+              </Animated.View>
+            </View>
           )}
         </ScrollView>
       )}
@@ -1290,11 +1346,29 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
   },
   recentStickyShell: {
+    position: 'relative',
     zIndex: 20,
-    elevation: 8,
+    elevation: 20,
     marginHorizontal: -SPACING.lg,
     paddingHorizontal: SPACING.lg,
     backgroundColor: COLORS.surface,
+  },
+  feedDimShell: {
+    position: 'relative',
+    zIndex: 0,
+    overflow: 'hidden',
+  },
+  feedDimOverlay: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    zIndex: 1,
+  },
+  feedDimTint: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(32, 42, 46, 0.08)',
   },
   recentReveal: {
     overflow: 'hidden',

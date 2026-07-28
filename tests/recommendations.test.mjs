@@ -28,6 +28,7 @@ function item(restaurantId, itemId, category, overrides = {}) {
     price_display: '$10.00',
     show_in_menu: true,
     is_festival_item: false,
+    is_allergy_friendly: false,
     first_seen: '2026-07-01',
     ...overrides,
   };
@@ -250,38 +251,137 @@ test('equal recommendation scores use stable rotating order instead of item-name
   assert.notDeepEqual(firstNames, [...firstNames].sort());
 });
 
-test('new-at-loved rotates across restaurants before showing a second item', () => {
+test('New Bites uses the change log, rejects low-value and irrelevant allergy items, and does not fill', () => {
   const restaurants = [
-    restaurant('favorite-a'),
-    restaurant('favorite-b'),
-    restaurant('favorite-c'),
+    restaurant('rated'),
+    restaurant('new-place'),
   ];
-  const lovedRestaurants = restaurants.map((candidate) => event({
-    restaurantId: candidate.restaurant_id,
-    activityType: 'love_it',
-  }));
   const modules = buildFindFeed({
     ...base,
     restaurants,
     searchIndex: [
-      item('favorite-a', 'a-one', 'Entrées', { item: 'A One' }),
-      item('favorite-a', 'a-two', 'Entrées', { item: 'A Two' }),
-      item('favorite-a', 'a-three', 'Entrées', { item: 'A Three' }),
-      item('favorite-b', 'b-one', 'Entrées', { item: 'B One' }),
-      item('favorite-b', 'b-two', 'Entrées', { item: 'B Two' }),
-      item('favorite-c', 'c-one', 'Entrées', { item: 'C One' }),
+      item('rated', 'rated-burger', 'Burgers'),
+      item('new-place', 'great-burger', 'Burgers', { item: 'Great Burger' }),
+      item('new-place', 'fruit-cup', 'Sides', { item: 'Fresh Fruit Cup' }),
+      item('new-place', 'allergy-burger', 'Burgers', {
+        item: 'Allergy Burger',
+        is_allergy_friendly: true,
+      }),
     ],
-    activity: activity({ lovedRestaurants }),
+    changes: [
+      {
+        date: '2026-07-25',
+        category: 'menu_item_added',
+        restaurant_id: 'new-place',
+        item: 'Great Burger',
+        menu_category: 'Burgers',
+        dining_period: 'Lunch',
+      },
+      {
+        date: '2026-07-25',
+        category: 'menu_item_added',
+        restaurant_id: 'new-place',
+        item: 'Fresh Fruit Cup',
+        menu_category: 'Sides',
+        dining_period: 'Lunch',
+      },
+      {
+        date: '2026-07-25',
+        category: 'menu_item_added',
+        restaurant_id: 'new-place',
+        item: 'Allergy Burger',
+        menu_category: 'Allergy-Friendly',
+        dining_period: 'Lunch',
+      },
+    ],
+    activity: activity({
+      gotItHistory: [event({
+        restaurantId: 'rated',
+        itemId: 'rated-burger',
+        activityType: 'got_it',
+        rating: 5,
+      })],
+    }),
   });
-  const newAtLoved = modules.find((module) => module.key === 'new_at_loved');
-  assert.ok(newAtLoved);
-  const restaurantIds = newAtLoved.items
-    .filter((recommendation) => recommendation.kind === 'item')
-    .map((recommendation) => recommendation.restaurant.restaurant_id);
-  assert.equal(new Set(restaurantIds.slice(0, 3)).size, 3);
-  assert.ok(
-    [...new Set(restaurantIds)].every((restaurantId) =>
-      restaurantIds.filter((candidate) => candidate === restaurantId).length <= 2
-    )
-  );
+  const newBites = modules.find((module) => module.key === 'new_bites');
+  assert.ok(newBites);
+  assert.equal(newBites.items.length, 1);
+  assert.equal(newBites.items[0].kind, 'item');
+  assert.equal(newBites.items[0].item.item, 'Great Burger');
+});
+
+test('What’s nearby requires taste relevance and the current meal period', () => {
+  const modules = buildFindFeed({
+    ...base,
+    now: new Date(2026, 6, 27, 12, 0, 0),
+    origin: { latitude: 28.4, longitude: -81.5 },
+    restaurants: [
+      restaurant('rated'),
+      restaurant('lunch-near', { lat: 28.4005 }),
+      restaurant('dinner-near', { lat: 28.4006 }),
+    ],
+    searchIndex: [
+      item('rated', 'rated-burger', 'Burgers'),
+      item('lunch-near', 'lunch-burger', 'Burgers', { dining_period: 'Lunch' }),
+      item('dinner-near', 'dinner-burger', 'Burgers', { dining_period: 'Dinner' }),
+    ],
+    activity: activity({
+      gotItHistory: [event({
+        restaurantId: 'rated',
+        itemId: 'rated-burger',
+        activityType: 'got_it',
+        rating: 5,
+      })],
+    }),
+  });
+  const nearby = modules.find((module) => module.key === 'nearby_for_you');
+  assert.ok(nearby);
+  assert.equal(nearby.items.length, 1);
+  assert.equal(nearby.items[0].kind, 'item');
+  assert.equal(nearby.items[0].item.item_id, 'lunch-burger');
+});
+
+test('What’s nearby is hidden without an enabled location origin', () => {
+  const modules = buildFindFeed({
+    ...base,
+    origin: null,
+    restaurants: [
+      restaurant('rated'),
+      restaurant('candidate'),
+    ],
+    searchIndex: [
+      item('rated', 'rated-burger', 'Burgers'),
+      item('candidate', 'candidate-burger', 'Burgers', { dining_period: 'Lunch' }),
+    ],
+    activity: activity({
+      gotItHistory: [event({
+        restaurantId: 'rated',
+        itemId: 'rated-burger',
+        activityType: 'got_it',
+        rating: 5,
+      })],
+    }),
+  });
+  assert.equal(modules.some((module) => module.key === 'nearby_for_you'), false);
+});
+
+test('weak passive signals do not force a For You rail', () => {
+  const modules = buildFindFeed({
+    ...base,
+    restaurants: [restaurant('viewed'), restaurant('candidate')],
+    searchIndex: [
+      item('viewed', 'viewed-dessert', 'Desserts'),
+      item('candidate', 'candidate-dessert', 'Desserts'),
+    ],
+    events: [{
+      eventType: 'view',
+      targetType: 'item',
+      restaurantId: 'viewed',
+      itemId: 'viewed-dessert',
+      contentId: null,
+      occurredAt: '2026-07-27T11:00:00.000Z',
+    }],
+    activity: activity(),
+  });
+  assert.equal(modules.some((module) => module.key === 'for_you'), false);
 });

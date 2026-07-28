@@ -6,6 +6,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const ALL_ALLERGY_IN_SEARCH_KEY = 'rumbly.settings.allAllergyInSearch';
 const FIND_FEED_ENABLED_KEY = 'rumbly.settings.findFeedEnabled';
+const FIND_FEED_CONTENT_MODE_KEY = 'rumbly.settings.findFeedContentMode';
+
+export type FindFeedContentMode = 'live' | 'preview';
 
 // Default off (2026-07-27 owner decision): Disney's allergy-labeled rows
 // are ~22% of all published items and would otherwise overwhelm
@@ -29,4 +32,16 @@ export async function loadFindFeedEnabled(): Promise<boolean> {
 
 export async function saveFindFeedEnabled(value: boolean): Promise<void> {
   await AsyncStorage.setItem(FIND_FEED_ENABLED_KEY, value ? 'true' : 'false');
+}
+
+// Administrator preview is intentionally device-local. It defaults to the
+// production view so an administrator sees normal-user behavior unless they
+// explicitly opt into reviewing unpublished content on this device.
+export async function loadFindFeedContentMode(): Promise<FindFeedContentMode> {
+  const raw = await AsyncStorage.getItem(FIND_FEED_CONTENT_MODE_KEY);
+  return raw === 'preview' ? 'preview' : 'live';
+}
+
+export async function saveFindFeedContentMode(value: FindFeedContentMode): Promise<void> {
+  await AsyncStorage.setItem(FIND_FEED_CONTENT_MODE_KEY, value);
 }

@@ -5,9 +5,12 @@
 import React, { createContext, useEffect, useState } from 'react';
 import {
   loadAllAllergyInSearch,
+  loadFindFeedContentMode,
   loadFindFeedEnabled,
   saveAllAllergyInSearch,
+  saveFindFeedContentMode,
   saveFindFeedEnabled,
+  type FindFeedContentMode,
 } from './appSettings';
 
 interface AppSettingsContextValue {
@@ -15,6 +18,8 @@ interface AppSettingsContextValue {
   setAllAllergyInSearch: (value: boolean) => void;
   findFeedEnabled: boolean;
   setFindFeedEnabled: (value: boolean) => void;
+  findFeedContentMode: FindFeedContentMode;
+  setFindFeedContentMode: (value: FindFeedContentMode) => void;
   isSettingsReady: boolean;
 }
 
@@ -23,14 +28,21 @@ const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [allAllergyInSearch, setAllAllergyInSearchState] = useState(false);
   const [findFeedEnabled, setFindFeedEnabledState] = useState(true);
+  const [findFeedContentMode, setFindFeedContentModeState] =
+    useState<FindFeedContentMode>('live');
   const [isSettingsReady, setIsSettingsReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([loadAllAllergyInSearch(), loadFindFeedEnabled()]).then(([allergy, feed]) => {
+    Promise.all([
+      loadAllAllergyInSearch(),
+      loadFindFeedEnabled(),
+      loadFindFeedContentMode(),
+    ]).then(([allergy, feed, contentMode]) => {
       if (cancelled) return;
       setAllAllergyInSearchState(allergy);
       setFindFeedEnabledState(feed);
+      setFindFeedContentModeState(contentMode);
       setIsSettingsReady(true);
     });
     return () => {
@@ -48,6 +60,11 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     saveFindFeedEnabled(value).catch(() => {});
   };
 
+  const setFindFeedContentMode = (value: FindFeedContentMode) => {
+    setFindFeedContentModeState(value);
+    saveFindFeedContentMode(value).catch(() => {});
+  };
+
   return (
     <AppSettingsContext.Provider
       value={{
@@ -55,6 +72,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         setAllAllergyInSearch,
         findFeedEnabled,
         setFindFeedEnabled,
+        findFeedContentMode,
+        setFindFeedContentMode,
         isSettingsReady,
       }}
     >
