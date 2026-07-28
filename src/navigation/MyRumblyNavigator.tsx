@@ -9,6 +9,7 @@ import { AccountManagementScreen } from '../screens/AccountManagementScreen';
 import { ChangeEmailScreen } from '../screens/ChangeEmailScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import { GeneralSettingsScreen } from '../screens/GeneralSettingsScreen';
+import { NativeUiLabScreen } from '../screens/NativeUiLabScreen';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen';
 import { SettingsPlaceholderScreen } from '../screens/SettingsPlaceholderScreen';
 import { COLORS } from '../theme/tokens';
@@ -24,6 +25,7 @@ export type MyRumblyStackParamList = {
   ChangeEmail: undefined;
   ChangePassword: undefined;
   GeneralSettings: undefined;
+  NativeUiLab: undefined;
   SettingsPlaceholder: { title: string };
   ChallengeList: undefined;
   ChallengeDetail: { challengeId: string };
@@ -76,6 +78,11 @@ export function MyRumblyNavigator() {
       <Stack.Screen
         name="GeneralSettings"
         component={GeneralSettingsScreen}
+        options={{ headerShown: false, animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="NativeUiLab"
+        component={NativeUiLabScreen}
         options={{ headerShown: false, animation: 'slide_from_right' }}
       />
       <Stack.Screen

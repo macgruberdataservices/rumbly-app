@@ -1,6 +1,6 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
-import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { SyncStatusBar } from '../components/SyncStatusBar';
@@ -91,6 +91,23 @@ export function GeneralSettingsScreen({ navigation }: Props) {
           </View>
         )}
 
+        <Text style={[styles.sectionLabel, styles.experimentsSectionLabel]}>EXPERIMENTS</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Open Native UI Lab"
+          onPress={() => navigation.navigate('NativeUiLab')}
+          style={({ pressed }) => [styles.labRow, pressed && styles.labRowPressed]}
+        >
+          <View style={styles.settingRowText}>
+            <Text style={text.body}>Native UI Lab</Text>
+            <Text style={[text.bodyMuted, styles.settingRowSubtitle]}>
+              Isolated Expo UI prototypes for native preview, swipe, sheet, and
+              edge-to-edge scrolling. Production interactions stay unchanged.
+            </Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
+
         <Text style={styles.versionText}>App version {APP_VERSION}</Text>
       </ScrollView>
     </SafeAreaView>
@@ -122,6 +139,24 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.lg,
     borderTopWidth: 1,
     borderTopColor: COLORS.border,
+  },
+  experimentsSectionLabel: { marginTop: SPACING.xl },
+  labRow: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.md,
+    padding: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: 12,
+    backgroundColor: COLORS.cream,
+  },
+  labRowPressed: { backgroundColor: COLORS.goldLight },
+  chevron: {
+    fontFamily: FONT_FAMILY.interRegular,
+    fontSize: 27,
+    color: COLORS.dim,
   },
   versionText: {
     ...text.bodyMuted,
