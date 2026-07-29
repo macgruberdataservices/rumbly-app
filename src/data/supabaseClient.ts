@@ -17,3 +17,16 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     detectSessionInUrl: false,
   },
 });
+
+// Read-only public content should not inherit a stale signed-in session.
+// In particular, a temporarily invalid user JWT must not prevent feed_config
+// or published feed_content rows (both governed by their anon RLS policies)
+// from loading. This client never stores or refreshes a session and still
+// uses only the public anon key; it does not bypass RLS.
+export const publicSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: {
+    autoRefreshToken: false,
+    persistSession: false,
+    detectSessionInUrl: false,
+  },
+});

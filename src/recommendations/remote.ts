@@ -1,4 +1,4 @@
-import { supabase } from '../data/supabaseClient';
+import { publicSupabase, supabase } from '../data/supabaseClient';
 import type {
   CuratedFeedContent,
   FeedConfig,
@@ -72,7 +72,12 @@ export async function loadRemoteFeedData(
     : Promise.resolve({ data: [] as RecommendationEventRow[], error: null });
 
   const nowIso = new Date().toISOString();
-  let contentQuery = supabase
+  // Published feed configuration/content are public through RLS and should
+  // remain available even when a signed-in user's short-lived JWT needs
+  // refreshing. Administrator preview still deliberately uses the
+  // authenticated client because drafts are not public.
+  const contentClient = contentVisibility === 'preview' ? supabase : publicSupabase;
+  let contentQuery = contentClient
     .from('feed_content')
     .select(
       'id, slug, eyebrow, title, summary, image_url, destination_type, external_url, restaurant_id, item_id, challenge_id, attribution, sort_priority, required_entitlement, active, editorial_status, starts_at, ends_at'
@@ -91,7 +96,7 @@ export async function loadRemoteFeedData(
   }
 
   const [configResult, contentResult, eventsResult] = await Promise.all([
-    supabase
+    publicSupabase
       .from('feed_config')
       .select('module_key, enabled, sort_order, max_items, required_entitlement, settings')
       .order('sort_order'),
@@ -101,7 +106,12 @@ export async function loadRemoteFeedData(
 
   if (configResult.error) throw new Error(configResult.error.message);
   if (contentResult.error) throw new Error(contentResult.error.message);
-  if (eventsResult.error) throw new Error(eventsResult.error.message);
+  // Recommendation history improves ranking but is not required to render
+  // the feed. Local activity remains available when this authenticated
+  // request fails, so do not discard public editorial content with it.
+  if (eventsResult.error) {
+    console.warn('Find feed recommendation history refresh failed:', eventsResult.error.message);
+  }
 
   return {
     configs: ((configResult.data ?? []) as FeedConfigRow[]).map((row) => ({
@@ -132,7 +142,7 @@ export async function loadRemoteFeedData(
       startsAt: row.starts_at,
       endsAt: row.ends_at,
     })),
-    events: ((eventsResult.data ?? []) as RecommendationEventRow[]).map((row) => ({
+    events: ((eventsResult.error ? [] : eventsResult.data ?? []) as RecommendationEventRow[]).map((row) => ({
       eventType: row.event_type,
       targetType: row.target_type,
       restaurantId: row.restaurant_id,

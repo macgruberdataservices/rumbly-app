@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Animated,
   Easing,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -26,6 +27,8 @@ import {
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 import type { FilterGroupKey } from '../../search/findState';
+import { useAppSettings } from '../../hooks/useAppSettings';
+import { NativeFilterPanel } from './NativeFilterPanel';
 
 const PRICE_LABELS: Record<number, string> = { 1: '$', 2: '$$', 3: '$$$', 4: '$$$$' };
 export const PANEL_COLLAPSED_HEIGHT = 58;
@@ -99,7 +102,40 @@ function OptionBlock({ title, children }: { title: string; children: ReactNode }
   );
 }
 
-export function FilterPanel({
+export interface FilterPanelProps {
+  filters: SearchFilters;
+  options: FilterOptions;
+  resultCount: number;
+  visible: boolean;
+  expanded: boolean;
+  activeGroup: FilterGroupKey;
+  quickLocations: Set<QuickLocationKey>;
+  quickLocationDetails: Set<string>;
+  locationDetailGroups: QuickLocationDetailGroup[];
+  quickLocationsInline: boolean;
+  onActiveGroupChange: (group: FilterGroupKey) => void;
+  onQuickLocationToggle: (location: QuickLocationKey) => void;
+  onQuickLocationDetailToggle: (detail: string) => void;
+  onClearLocationDetails: () => void;
+  onClearAll: () => void;
+  onChange: (filters: SearchFilters) => void;
+  onCollapseToPeek: () => void;
+  onExpand: () => void;
+}
+
+export function FilterPanel(props: FilterPanelProps) {
+  const { nativeInteractionsEnabled } = useAppSettings();
+  // Stage 6 starts on iOS, where SwiftUI can keep the background
+  // interactive at the partial detent. Android's Material modal sheet
+  // blocks the result list, so it retains the classic non-modal dock
+  // until a Compose presentation can preserve that established behavior.
+  if (nativeInteractionsEnabled && Platform.OS === 'ios') {
+    return <NativeFilterPanel {...props} />;
+  }
+  return <ClassicFilterPanel {...props} />;
+}
+
+function ClassicFilterPanel({
   filters,
   options,
   resultCount,
@@ -117,34 +153,18 @@ export function FilterPanel({
   onChange,
   onCollapseToPeek,
   onExpand,
-}: {
-  filters: SearchFilters;
-  options: FilterOptions;
-  resultCount: number;
-  visible: boolean;
-  expanded: boolean;
-  activeGroup: FilterGroupKey;
-  quickLocations: Set<QuickLocationKey>;
-  quickLocationDetails: Set<string>;
-  locationDetailGroups: QuickLocationDetailGroup[];
-  onActiveGroupChange: (group: FilterGroupKey) => void;
-  onQuickLocationToggle: (location: QuickLocationKey) => void;
-  onQuickLocationDetailToggle: (detail: string) => void;
-  onClearLocationDetails: () => void;
-  onClearAll: () => void;
-  onChange: (filters: SearchFilters) => void;
+}: FilterPanelProps) {
   // Drag handle pulled all the way down past the peek threshold -- tells
   // the parent to fall back to its own 'peek' state (pillBar only, no
   // detailed pane) so filterPanelState stays in sync with what's on
   // screen instead of drifting out of sync with a purely-local height.
-  onCollapseToPeek: () => void;
+  // onCollapseToPeek keeps the parent-owned state synchronized.
   // Drag handle pulled up from peek past the normal threshold -- the
   // mirror image of onCollapseToPeek. Without this, dragging up from peek
   // grows the dock's height but the parent's `expanded` prop (which gates
   // expandedPane's own opacity/pointerEvents) never flips back on, so the
   // filter content stays invisible in a now-tall, empty-looking box.
-  onExpand: () => void;
-}) {
+  // onExpand is the mirror transition when dragging upward.
   const { height: windowHeight } = useWindowDimensions();
   const expandedHeight = Math.min(220, windowHeight * 0.25);
   // Drag-handle ceiling -- twice the normal expanded height, capped so it

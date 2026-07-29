@@ -292,10 +292,19 @@ export function FindFeed({
       setLoading(!cached);
       Promise.all([
         loadSearchIndex(),
-        loadRemoteFeedData(user?.id ?? null, previewMode ? 'preview' : 'live'),
+        // Remote editorial content must never take the local personalized
+        // feed down with it. A stale/future JWT or temporary Supabase
+        // outage used to reject this entire Promise.all, discarding the
+        // successfully loaded local search index and leaving only the
+        // challenge module (the one module that needs neither source).
+        loadRemoteFeedData(user?.id ?? null, previewMode ? 'preview' : 'live')
+          .catch((error) => {
+            console.warn('Find feed remote content refresh failed:', error);
+            return cached?.remote ?? EMPTY_REMOTE;
+          }),
         loadChangesForRange(daysAgoStr(30), todayStr()).catch((error) => {
           console.warn('Find feed change log failed:', error);
-          return [] as ChangeEvent[];
+          return cached?.changes ?? [] as ChangeEvent[];
         }),
       ])
         .then(([index, nextRemote, nextChanges]) => {
@@ -402,7 +411,9 @@ export function FindFeed({
     [onOpenChallenge, onOpenExplore, onOpenItem, onOpenRestaurant, searchIndex, trackOpen]
   );
 
-  if ((loading || !isActivityReady) && modules.length === 0) {
+  // Do not render the challenge-only intermediate state while the local
+  // index is still loading. It reads as if the rest of the feed vanished.
+  if ((loading && searchIndex.length === 0) || !isActivityReady) {
     return (
       <View style={styles.loading}>
         <ActivityIndicator color={COLORS.forest} />

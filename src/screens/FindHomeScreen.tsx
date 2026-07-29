@@ -72,6 +72,7 @@ import { useAuth } from '../hooks/useAuth';
 import {
   applyQuickLocationFilters,
   collectQuickLocationDetailGroups,
+  QUICK_LOCATIONS,
   type QuickLocationKey,
 } from '../search/quickLocations';
 
@@ -114,9 +115,52 @@ function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; ar
   );
 }
 
+function InlineQuickLocationRail({
+  selected,
+  onToggle,
+}: {
+  selected: Set<QuickLocationKey>;
+  onToggle: (location: QuickLocationKey) => void;
+}) {
+  return (
+    <ScrollView
+      horizontal
+      showsHorizontalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+      contentContainerStyle={styles.inlineQuickLocationContent}
+    >
+      {QUICK_LOCATIONS.map((location) => {
+        const active = selected.has(location.key);
+        return (
+          <Pressable
+            key={location.key}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+            onPress={() => onToggle(location.key)}
+            style={({ pressed }) => [
+              styles.inlineQuickLocationChip,
+              active && styles.inlineQuickLocationChipActive,
+              pressed && styles.inlineQuickLocationChipPressed,
+            ]}
+          >
+            <Text style={[text.chip, active && styles.inlineQuickLocationLabelActive]}>
+              {location.label}
+            </Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
+
 export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
-  const { allAllergyInSearch, findFeedEnabled, isSettingsReady } = useAppSettings();
+  const {
+    allAllergyInSearch,
+    findFeedEnabled,
+    isSettingsReady,
+    nativeInteractionsEnabled,
+  } = useAppSettings();
   const { user } = useAuth();
   const { lovedIds } = useActivity();
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
@@ -171,6 +215,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const feedDimReveal = useRef(
     new Animated.Value(initialState.searchInputFocused ? 1 : 0)
   ).current;
+  const quickLocationReveal = useRef(new Animated.Value(0)).current;
 
   const locationDetailGroups = useMemo(
     () => collectQuickLocationDetailGroups(restaurants, quickLocations),
@@ -211,6 +256,29 @@ export function FindHomeScreen({ navigation, route }: Props) {
     allAllergyInSearch
   );
   isSearchActiveRef.current = isSearchActive;
+  const [nativeQuickLocationRailVisible, setNativeQuickLocationRailVisible] = useState(false);
+
+  // Once live results have appeared, keep the location rail stable for the
+  // life of that query. Filters are allowed to reduce the current result set
+  // to zero without making the control needed to undo them disappear.
+  useEffect(() => {
+    if (!nativeInteractionsEnabled || !isSearchActive) {
+      setNativeQuickLocationRailVisible(false);
+      return;
+    }
+    if (results.length > 0) {
+      setNativeQuickLocationRailVisible(true);
+    }
+  }, [isSearchActive, nativeInteractionsEnabled, results.length]);
+
+  useEffect(() => {
+    Animated.spring(quickLocationReveal, {
+      toValue: nativeQuickLocationRailVisible ? 1 : 0,
+      useNativeDriver: false,
+      speed: 18,
+      bounciness: nativeQuickLocationRailVisible ? 5 : 0,
+    }).start();
+  }, [nativeQuickLocationRailVisible, quickLocationReveal]);
 
   // Avoids flashing "No matches" during the debounce/index-load window --
   // only commit to that message once the search has settled empty for a
@@ -598,6 +666,9 @@ export function FindHomeScreen({ navigation, route }: Props) {
   }, [navigation, resetToHomeState]);
 
   const handleFilterPress = useCallback(() => {
+    searchInputRef.current?.blur();
+    Keyboard.dismiss();
+    setSearchInputFocused(false);
     setFilterPanelState((state) => {
       if (state !== 'expanded') return 'expanded';
       return query.trim().length > 0 ? 'peek' : 'hidden';
@@ -963,6 +1034,33 @@ export function FindHomeScreen({ navigation, route }: Props) {
         </Pressable>
       </View>
 
+      <Animated.View
+        pointerEvents={nativeQuickLocationRailVisible ? 'auto' : 'none'}
+        style={[
+          styles.inlineQuickLocationRail,
+          {
+            height: quickLocationReveal.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 50],
+            }),
+            opacity: quickLocationReveal,
+            transform: [
+              {
+                translateY: quickLocationReveal.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [-8, 0],
+                }),
+              },
+            ],
+          },
+        ]}
+      >
+        <InlineQuickLocationRail
+          selected={quickLocations}
+          onToggle={handleQuickLocationToggle}
+        />
+      </Animated.View>
+
       <View style={[styles.searchMode, !isSearchActive && styles.hiddenMode]}>
         {isSearchActive && (
         results.length === 0 ? (
@@ -1144,19 +1242,22 @@ export function FindHomeScreen({ navigation, route }: Props) {
       <FilterPanel
         filters={filters}
         options={filterOptions}
-        resultCount={filteredRestaurants.length}
+        resultCount={isSearchActive ? results.length : filteredRestaurants.length}
         visible={filterPanelState !== 'hidden'}
         expanded={filterPanelState === 'expanded'}
         activeGroup={activeFilterGroup}
         quickLocations={quickLocations}
         quickLocationDetails={quickLocationDetails}
         locationDetailGroups={locationDetailGroups}
+        quickLocationsInline={nativeQuickLocationRailVisible}
         onActiveGroupChange={setActiveFilterGroup}
         onQuickLocationToggle={handleQuickLocationToggle}
         onQuickLocationDetailToggle={handleQuickLocationDetailToggle}
         onClearLocationDetails={handleClearLocationDetails}
         onClearAll={handleClearAllFilters}
-        onCollapseToPeek={() => setFilterPanelState('peek')}
+        onCollapseToPeek={() =>
+          setFilterPanelState(query.trim().length > 0 ? 'peek' : 'hidden')
+        }
         onExpand={() => setFilterPanelState('expanded')}
         onChange={handleFiltersChange}
       />
@@ -1205,6 +1306,38 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.sm,
     marginTop: SPACING.sm,
     gap: SPACING.sm,
+  },
+  inlineQuickLocationRail: {
+    overflow: 'hidden',
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  inlineQuickLocationContent: {
+    alignItems: 'center',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingBottom: SPACING.sm,
+  },
+  inlineQuickLocationChip: {
+    minHeight: 36,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.xl,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.xs,
+    backgroundColor: COLORS.surface,
+  },
+  inlineQuickLocationChipActive: {
+    borderColor: COLORS.forest,
+    backgroundColor: COLORS.forest,
+  },
+  inlineQuickLocationChipPressed: {
+    opacity: 0.6,
+  },
+  inlineQuickLocationLabelActive: {
+    color: COLORS.goldLight,
   },
   iconButton: {
     width: 44,
