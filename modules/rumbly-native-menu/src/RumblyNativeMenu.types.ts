@@ -16,6 +16,7 @@ export interface NativeMenuItem {
   gotItCount: number;
   needItEnabled: boolean;
   gotItEnabled: boolean;
+  journalEnabled: boolean;
 }
 
 export interface NativeMenuSection {
@@ -45,6 +46,7 @@ export interface RumblyNativeMenuViewProps extends ViewProps {
     event: NativeSyntheticEvent<{
       action: NativeMenuAction;
       itemId: string;
+      anchorId?: string;
     }>
   ) => void;
   onActiveCategoryChange?: (

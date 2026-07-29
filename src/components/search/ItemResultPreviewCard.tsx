@@ -15,9 +15,10 @@ interface Origin {
   height: number;
 }
 
-// Long-press preview for a search-result item row: purely visual, no
-// buttons -- tapping it navigates (same destination a plain tap gives),
-// tapping outside dismisses. Grows from the row's on-screen position, see
+// Long-press preview for a search-result item row. Tapping the main card
+// navigates to the same destination as a plain tap, the entitled Journal
+// action opens the composer, and tapping outside dismisses. It grows from
+// the row's on-screen position; see
 // MenuItemPreviewCard.tsx for the technique (this project's "Reusable UI
 // patterns" ROADMAP section has the full writeup).
 //
@@ -37,6 +38,7 @@ export function ItemResultPreviewCard({
   origin,
   onOpen,
   onClose,
+  onJournal,
   onPressAllergyInfo,
 }: {
   item: SearchIndexEntry | null;
@@ -49,6 +51,7 @@ export function ItemResultPreviewCard({
   origin: Origin | null;
   onOpen: () => void;
   onClose: () => void;
+  onJournal?: () => void;
   onPressAllergyInfo: () => void;
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -129,6 +132,15 @@ export function ItemResultPreviewCard({
                       </Pressable>
                     )}
                   </View>
+                )}
+                {onJournal && (
+                  <Pressable
+                    style={styles.journalButton}
+                    onPress={onJournal}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.journalButtonLabel}>Add to Journal</Text>
+                  </Pressable>
                 )}
               </>
             )}
@@ -211,5 +223,18 @@ const styles = StyleSheet.create({
   badgeTappable: {
     borderColor: COLORS.forest,
     backgroundColor: COLORS.goldLight,
+  },
+  journalButton: {
+    minHeight: 44,
+    marginTop: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.pine,
+  },
+  journalButtonLabel: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 12,
+    color: COLORS.ink,
   },
 });

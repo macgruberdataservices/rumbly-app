@@ -15,6 +15,7 @@ export interface NativeSearchItemRow {
   gotItCount: number;
   needItEnabled: boolean;
   gotItEnabled: boolean;
+  journalEnabled: boolean;
 }
 
 export interface RumblyNativeSearchItemRowViewProps extends ViewProps {

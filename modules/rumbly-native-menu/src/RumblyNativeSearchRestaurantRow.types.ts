@@ -11,6 +11,7 @@ export interface NativeSearchRestaurantRow {
   gotItCount: number;
   needItEnabled: boolean;
   gotItEnabled: boolean;
+  journalEnabled: boolean;
 }
 
 export interface RumblyNativeSearchRestaurantRowViewProps extends ViewProps {

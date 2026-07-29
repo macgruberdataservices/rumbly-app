@@ -10,6 +10,7 @@ import { restaurantLocationLabel } from '../../data/locationNames';
 import { formatProximityDistance } from '../../location/proximity';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
+import { useJournalComposer } from '../../hooks/useJournalComposer';
 import { isNewMenuItem } from '../../data/newItem';
 import { formatRatingAverage } from '../../data/ratingAverage';
 import { getItemIdentityKeyFor } from '../../data/itemIdentity';
@@ -39,6 +40,8 @@ export const NativeItemResultRow = forwardRef<View, NativeItemResultRowProps>(
     const gotItEnabled = useEntitlement('got_it');
     const ratingsEnabled = useEntitlement('ratings');
     const ratingAveragesEnabled = useEntitlement('rating_averages');
+    const journalEnabled = useEntitlement('journal');
+    const openJournalComposer = useJournalComposer();
     const key = getItemIdentityKeyFor(item);
     const isLoved = lovedItemKeys.has(key);
     const isNeeded = needItItemKeys.has(key);
@@ -74,10 +77,15 @@ export const NativeItemResultRow = forwardRef<View, NativeItemResultRowProps>(
           count: gotItCount + 1,
           origin: null,
         });
+      } else if (action === 'journal') {
+        openJournalComposer({
+          restaurantId: item.restaurant_id,
+          itemId: item.item_id,
+          restaurantNameSnapshot: restaurant.restaurant,
+          itemNameSnapshot: item.item,
+          mealPeriodSnapshot: item.dining_period,
+        });
       } else {
-        // Share and Journal intentionally remain visible pilot actions,
-        // matching the native menu preview contract, until their product
-        // flows are implemented.
         return;
       }
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(() => undefined);
@@ -102,6 +110,7 @@ export const NativeItemResultRow = forwardRef<View, NativeItemResultRowProps>(
               gotItCount,
               needItEnabled,
               gotItEnabled,
+              journalEnabled,
             }}
             onAction={(event) => void handleAction(event.nativeEvent.action)}
           />

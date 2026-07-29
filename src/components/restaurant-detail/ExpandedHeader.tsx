@@ -10,6 +10,7 @@ import { hasMobileOrder, openMobileOrderInOfficialApp, openRestaurantInOfficialA
 import { formatRatingAverage } from '../../data/ratingAverage';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
+import { useJournalComposer } from '../../hooks/useJournalComposer';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import {
   registerSwipeableOpen,
@@ -133,6 +134,8 @@ export function ExpandedHeader({
   // computed average gets *displayed* anywhere, so either can be toggled
   // per user without touching the other (owner request, 2026-07-27).
   const ratingAveragesEnabled = useEntitlement('rating_averages');
+  const journalEnabled = useEntitlement('journal');
+  const openJournalComposer = useJournalComposer();
   const isLoved = lovedIds.has(restaurant.restaurant_id);
   const isNeeded = needItRestaurantIds.has(restaurant.restaurant_id);
   const gotItCount = gotItRestaurantCounts.get(restaurant.restaurant_id) ?? 0;
@@ -286,6 +289,20 @@ export function ExpandedHeader({
         </Swipeable>
 
         <View style={styles.pillRow}>
+          {journalEnabled && (
+            <Pressable
+              style={styles.pill}
+              onPress={() =>
+                openJournalComposer({
+                  restaurantId: restaurant.restaurant_id,
+                  restaurantNameSnapshot: restaurant.restaurant,
+                })
+              }
+              accessibilityRole="button"
+            >
+              <Text style={text.chip}>＋ Journal</Text>
+            </Pressable>
+          )}
           {restaurant.accepts_reservations && (
             <Pressable style={styles.pill} onPress={() => openRestaurantInOfficialApp(restaurant)}>
               <ReservationsIcon color={COLORS.ink} />

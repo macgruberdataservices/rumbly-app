@@ -8,6 +8,7 @@ import { formatProximityDistance } from '../../location/proximity';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { useAppSettings } from '../../hooks/useAppSettings';
+import { useJournalComposer } from '../../hooks/useJournalComposer';
 import { HighlightedText } from '../HighlightedText';
 import { ItemResultPreviewCard } from './ItemResultPreviewCard';
 import { AllergyInfoSheet } from '../AllergyInfoSheet';
@@ -85,6 +86,8 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
+  const journalEnabled = useEntitlement('journal');
+  const openJournalComposer = useJournalComposer();
   const key = getItemIdentityKeyFor(item);
   const isLoved = lovedItemKeys.has(key);
   const isNeeded = needItItemKeys.has(key);
@@ -325,6 +328,20 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
           setPreviewVisible(false);
           animateShadow(0);
         }}
+        onJournal={
+          journalEnabled
+            ? () => {
+                setPreviewVisible(false);
+                openJournalComposer({
+                  restaurantId: item.restaurant_id,
+                  itemId: item.item_id,
+                  restaurantNameSnapshot: restaurant.restaurant,
+                  itemNameSnapshot: item.item,
+                  mealPeriodSnapshot: item.dining_period,
+                });
+              }
+            : undefined
+        }
         onPressAllergyInfo={() => setAllergyInfoVisible(true)}
       />
       <AllergyInfoSheet

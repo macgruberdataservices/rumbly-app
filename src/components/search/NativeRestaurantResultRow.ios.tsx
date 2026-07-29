@@ -11,6 +11,7 @@ import { formatRatingAverage } from '../../data/ratingAverage';
 import { useActivity } from '../../hooks/useActivity';
 import { useDataProvider } from '../../hooks/useDataProvider';
 import { useEntitlement } from '../../hooks/useEntitlement';
+import { useJournalComposer } from '../../hooks/useJournalComposer';
 import { formatProximityDistance } from '../../location/proximity';
 import {
   GotItRatingCard,
@@ -45,6 +46,8 @@ export const NativeRestaurantResultRow = forwardRef<
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
+  const journalEnabled = useEntitlement('journal');
+  const openJournalComposer = useJournalComposer();
   const isNeeded = needItRestaurantIds.has(restaurant.restaurant_id);
   const isLoved = lovedIds.has(restaurant.restaurant_id);
   const gotItCount =
@@ -86,9 +89,12 @@ export const NativeRestaurantResultRow = forwardRef<
         count: gotItCount + 1,
         origin: null,
       });
+    } else if (action === 'journal') {
+      openJournalComposer({
+        restaurantId: restaurant.restaurant_id,
+        restaurantNameSnapshot: restaurant.restaurant,
+      });
     } else {
-      // Share and Journal remain visible native preview actions until their
-      // product flows are implemented.
       return;
     }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light).catch(
@@ -111,6 +117,7 @@ export const NativeRestaurantResultRow = forwardRef<
             gotItCount,
             needItEnabled,
             gotItEnabled,
+            journalEnabled,
           }}
           onAction={(event) => void handleAction(event.nativeEvent.action)}
         />

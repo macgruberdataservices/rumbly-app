@@ -30,12 +30,12 @@ import { useAuth } from '../../hooks/useAuth';
 import { useDataProvider } from '../../hooks/useDataProvider';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { useJournal } from '../../hooks/useJournal';
-import type { JournalStackParamList } from '../../navigation/journalTypes';
+import type { AppRootStackParamList } from '../../navigation/journalTypes';
 import { loadSearchIndex } from '../../search/searchIndexLoader';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
-type Props = NativeStackScreenProps<JournalStackParamList, 'JournalComposer'>;
+type Props = NativeStackScreenProps<AppRootStackParamList, 'JournalComposer'>;
 
 type TargetResult =
   | { kind: 'restaurant'; key: string; restaurant: Restaurant }
@@ -69,6 +69,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
     latestDraft,
     saveDraft,
     updateEntry,
+    isJournalEnabled,
   } = useJournal();
   const editingEntry = entries.find((entry) => entry.id === route.params?.entryId);
   const resumedDraft =
@@ -86,13 +87,23 @@ export function JournalComposerScreen({ navigation, route }: Props) {
         : createJournalIdentifiers()
   );
   const initial = editingEntry ?? resumedDraft;
-  const [restaurantId, setRestaurantId] = useState(initial?.restaurantId ?? '');
-  const [restaurantName, setRestaurantName] = useState(
-    initial?.restaurantNameSnapshot ?? ''
+  const preselectedRestaurantName =
+    route.params?.restaurantNameSnapshot ||
+    restaurants.find(
+      (restaurant) => restaurant.restaurant_id === route.params?.restaurantId
+    )?.restaurant ||
+    '';
+  const [restaurantId, setRestaurantId] = useState(
+    initial?.restaurantId ?? route.params?.restaurantId ?? ''
   );
-  const [itemId, setItemId] = useState<string | null>(initial?.itemId ?? null);
+  const [restaurantName, setRestaurantName] = useState(
+    initial?.restaurantNameSnapshot ?? preselectedRestaurantName
+  );
+  const [itemId, setItemId] = useState<string | null>(
+    initial?.itemId ?? route.params?.itemId ?? null
+  );
   const [itemName, setItemName] = useState<string | null>(
-    initial?.itemNameSnapshot ?? null
+    initial?.itemNameSnapshot ?? route.params?.itemNameSnapshot ?? null
   );
   const [visitedOn, setVisitedOn] = useState(
     initial?.visitedOn ?? visitDateFromDate(new Date())
@@ -134,6 +145,24 @@ export function JournalComposerScreen({ navigation, route }: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!restaurantId || restaurantName) return;
+    const match = restaurants.find(
+      (restaurant) => restaurant.restaurant_id === restaurantId
+    );
+    if (match) setRestaurantName(match.restaurant);
+  }, [restaurantId, restaurantName, restaurants]);
+
+  useEffect(() => {
+    if (!restaurantId || !itemId || itemName) return;
+    const match = items.find(
+      (item) => item.restaurant_id === restaurantId && item.item_id === itemId
+    );
+    if (!match) return;
+    setItemName(match.item);
+    if (!mealPeriod && match.dining_period) setMealPeriod(match.dining_period);
+  }, [itemId, itemName, items, mealPeriod, restaurantId]);
+
   const selectedRestaurant = restaurantById.get(restaurantId);
   const mealPeriods = useMemo(() => {
     const values = new Set(COMMON_MEAL_PERIODS);
@@ -145,7 +174,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
   }, [mealPeriod, selectedRestaurant]);
 
   const draft = useMemo<JournalEntryDraft | null>(() => {
-    if (!user || !restaurantId || !restaurantName) return null;
+    if (!user || !isJournalEnabled || !restaurantId || !restaurantName) return null;
     return {
       id: identifiers.entryId,
       userId: user.id,
@@ -168,6 +197,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
   }, [
     identifiers.clientId,
     identifiers.entryId,
+    isJournalEnabled,
     editingEntry,
     existingRating,
     itemId,
@@ -354,7 +384,10 @@ export function JournalComposerScreen({ navigation, route }: Props) {
       await draftSavePromiseRef.current;
       await deleteEntry(editingEntry.id, mode);
       exitAllowedRef.current = true;
-      navigation.popToTop();
+      navigation.navigate('MainTabs', {
+        screen: 'Journal',
+        params: { screen: 'JournalHome' },
+      });
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'The entry could not be deleted.');
       setSubmitting(false);
@@ -378,6 +411,30 @@ export function JournalComposerScreen({ navigation, route }: Props) {
       },
     ]);
   };
+
+  if (!user || !isJournalEnabled) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.unavailable}>
+          <Text style={styles.title}>Journal unavailable</Text>
+          <Text style={styles.unavailableBody}>
+            {!user
+              ? 'Sign in from My Bites to use your private Journal.'
+              : 'Journal is not enabled for this account yet.'}
+          </Text>
+          <Pressable
+            style={styles.unavailableButton}
+            onPress={() => {
+              exitAllowedRef.current = true;
+              navigation.goBack();
+            }}
+          >
+            <Text style={styles.saveLabel}>Close</Text>
+          </Pressable>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -831,4 +888,25 @@ const styles = StyleSheet.create({
   },
   pressed: { opacity: 0.6 },
   noResults: { ...text.bodyMuted, paddingTop: SPACING.xl, textAlign: 'center' },
+  unavailable: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.xl,
+  },
+  unavailableBody: {
+    ...text.bodyMuted,
+    marginTop: SPACING.sm,
+    marginBottom: SPACING.xl,
+    textAlign: 'center',
+    lineHeight: 19,
+  },
+  unavailableButton: {
+    minWidth: 120,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.pine,
+  },
 });

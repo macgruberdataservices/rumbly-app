@@ -1,11 +1,13 @@
 import { NavigationContainer, type NavigatorScreenParams } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
 import { FindNavigator, type FindStackParamList } from './FindNavigator';
 import { ExploreNavigator, type ExploreStackParamList } from './ExploreNavigator';
 import { MyRumblyNavigator } from './MyRumblyNavigator';
 import { JournalNavigator } from './JournalNavigator';
-import type { JournalStackParamList } from './journalTypes';
+import { JournalComposerScreen } from '../screens/journal/JournalComposerScreen';
+import type { AppRootStackParamList, JournalStackParamList } from './journalTypes';
 import { COLORS } from '../theme/tokens';
 
 export type RootTabParamList = {
@@ -16,6 +18,7 @@ export type RootTabParamList = {
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
+const AppStack = createNativeStackNavigator<AppRootStackParamList>();
 
 function FindIcon({ color }: { color: string }) {
   return (
@@ -63,10 +66,9 @@ function TabIcon({ routeName, color }: { routeName: keyof RootTabParamList; colo
   return <JournalIcon color={color} />;
 }
 
-export function RootNavigator() {
+function MainTabs() {
   return (
-    <NavigationContainer>
-      <Tab.Navigator
+    <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarIcon: ({ color }) => <TabIcon routeName={route.name} color={color} />,
@@ -89,7 +91,21 @@ export function RootNavigator() {
         <Tab.Screen name="Explore" component={ExploreNavigator} />
         <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Bites' }} />
         <Tab.Screen name="Journal" component={JournalNavigator} />
-      </Tab.Navigator>
+    </Tab.Navigator>
+  );
+}
+
+export function RootNavigator() {
+  return (
+    <NavigationContainer>
+      <AppStack.Navigator screenOptions={{ headerShown: false }}>
+        <AppStack.Screen name="MainTabs" component={MainTabs} />
+        <AppStack.Screen
+          name="JournalComposer"
+          component={JournalComposerScreen}
+          options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
+        />
+      </AppStack.Navigator>
     </NavigationContainer>
   );
 }

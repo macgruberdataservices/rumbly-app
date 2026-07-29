@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import type { MenuItem } from '../data/types';
 import { useActivity } from '../hooks/useActivity';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { useJournalComposer } from '../hooks/useJournalComposer';
 import { MenuItemPreviewCard } from './MenuItemPreviewCard';
 import { AllergyInfoSheet } from './AllergyInfoSheet';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from './GotItRatingCard';
@@ -79,6 +80,8 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
+  const journalEnabled = useEntitlement('journal');
+  const openJournalComposer = useJournalComposer();
   const key = getItemIdentityKeyFor(item);
   const isLoved = lovedItemKeys.has(key);
   const isNeeded = needItItemKeys.has(key);
@@ -294,6 +297,20 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
           setPreviewVisible(false);
           animateShadow(0);
         }}
+        onJournal={
+          journalEnabled
+            ? () => {
+                setPreviewVisible(false);
+                openJournalComposer({
+                  restaurantId: item.restaurant_id,
+                  itemId: item.item_id,
+                  restaurantNameSnapshot: '',
+                  itemNameSnapshot: item.item,
+                  mealPeriodSnapshot: item.dining_period,
+                });
+              }
+            : undefined
+        }
         onPressAllergyInfo={() => setAllergyInfoVisible(true)}
       />
       <AllergyInfoSheet

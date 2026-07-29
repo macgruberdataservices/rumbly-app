@@ -12,6 +12,8 @@ export type JournalComposerRouteParams = {
   restaurantId?: string;
   itemId?: string;
   mealPeriodSnapshot?: string;
+  restaurantNameSnapshot?: string;
+  itemNameSnapshot?: string;
   clientId?: string;
 };
 
@@ -28,15 +30,11 @@ export type JournalTargetPickerRouteParams = {
 export type JournalStackParamList = {
   JournalHome: undefined;
   JournalPageDetail: JournalPageDetailRouteParams;
-  JournalComposer: JournalComposerRouteParams | undefined;
   JournalDateSearch: JournalDateSearchRouteParams | undefined;
   JournalTargetPicker: JournalTargetPickerRouteParams | undefined;
   JournalStorageSettings: undefined;
 };
 
-// The root stack will wrap the tabs when Journal UI work begins. Defining
-// the contract now lets entry points agree on serializable parameters
-// without changing the current navigator or adding an unfinished screen.
 export type AppRootStackParamList = {
   MainTabs: NavigatorScreenParams<RootTabParamList>;
   JournalComposer: JournalComposerRouteParams | undefined;

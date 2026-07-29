@@ -14,11 +14,10 @@ interface Origin {
   height: number;
 }
 
-// Long-press preview for a menu row: purely visual, no buttons of its own
-// -- unlike the restaurant version this replaced, there's no further
-// screen to navigate to (the row is already on the restaurant detail
-// screen), so a tap anywhere just dismisses. Exists mainly to show the
-// full, untruncated description that the fixed-height row can't fit.
+// Long-press preview for a menu row. Unlike the restaurant version this
+// replaced, the row is already on the restaurant detail screen, so a tap
+// outside dismisses it while the entitled Journal action opens the composer.
+// It also shows the full description that the fixed-height row cannot fit.
 //
 // Grows from the row's on-screen position (MenuItemRow measures it via
 // measureInWindow right before showing this) rather than just fading in
@@ -38,6 +37,7 @@ export function MenuItemPreviewCard({
   ratingAverage,
   origin,
   onClose,
+  onJournal,
   onPressAllergyInfo,
 }: {
   item: MenuItem | null;
@@ -45,6 +45,7 @@ export function MenuItemPreviewCard({
   ratingAverage: RatingAverage | undefined;
   origin: Origin | null;
   onClose: () => void;
+  onJournal?: () => void;
   onPressAllergyInfo: () => void;
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
@@ -123,6 +124,15 @@ export function MenuItemPreviewCard({
                     )}
                   </View>
                 )}
+                {onJournal && (
+                  <Pressable
+                    style={styles.journalButton}
+                    onPress={onJournal}
+                    accessibilityRole="button"
+                  >
+                    <Text style={styles.journalButtonLabel}>Add to Journal</Text>
+                  </Pressable>
+                )}
               </>
             )}
           </Pressable>
@@ -197,5 +207,18 @@ const styles = StyleSheet.create({
   badgeTappable: {
     borderColor: COLORS.forest,
     backgroundColor: COLORS.goldLight,
+  },
+  journalButton: {
+    minHeight: 44,
+    marginTop: SPACING.lg,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.pine,
+  },
+  journalButtonLabel: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 12,
+    color: COLORS.ink,
   },
 });

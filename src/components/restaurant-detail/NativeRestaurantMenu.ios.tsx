@@ -25,6 +25,7 @@ import { getItemIdentityKeyFor } from '../../data/itemIdentity';
 import type { MenuItem } from '../../data/types';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
+import { useJournalComposer } from '../../hooks/useJournalComposer';
 import type {
   NativeRestaurantMenuProps,
   NativeRestaurantMenuRef,
@@ -73,12 +74,16 @@ export const NativeRestaurantMenu = forwardRef<
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
+  const journalEnabled = useEntitlement('journal');
+  const openJournalComposer = useJournalComposer();
 
-  const itemsById = useMemo(() => {
+  const itemsByAnchor = useMemo(() => {
     const result = new Map<string, MenuItem>();
-    for (const section of sections) {
-      for (const item of section.data) result.set(item.item_id, item);
-    }
+    sections.forEach((section, sectionIndex) =>
+      section.data.forEach((item, itemIndex) => {
+        result.set(`${sectionIndex}:${itemIndex}:${item.item_id}`, item);
+      })
+    );
     return result;
   }, [sections]);
 
@@ -103,11 +108,13 @@ export const NativeRestaurantMenu = forwardRef<
             gotItCount: gotItItemCounts.get(itemKey) ?? 0,
             needItEnabled,
             gotItEnabled,
+            journalEnabled,
           };
         }),
       })),
     [
       gotItEnabled,
+      journalEnabled,
       gotItItemCounts,
       itemRatingAverages,
       lovedItemKeys,
@@ -147,8 +154,9 @@ export const NativeRestaurantMenu = forwardRef<
     haptic();
   };
 
-  const handleAction = (action: NativeMenuAction, itemId: string) => {
-    const item = itemsById.get(itemId);
+  const handleAction = (action: NativeMenuAction, itemId: string, anchorId?: string) => {
+    const item = (anchorId ? itemsByAnchor.get(anchorId) : undefined)
+      ?? [...itemsByAnchor.values()].find((candidate) => candidate.item_id === itemId);
     if (!item) return;
 
     switch (action) {
@@ -159,7 +167,12 @@ export const NativeRestaurantMenu = forwardRef<
         Alert.alert('Share', 'Sharing menu items is coming soon.');
         break;
       case 'journal':
-        Alert.alert('Journal', 'Journal entries are coming soon.');
+        openJournalComposer({
+          restaurantId: item.restaurant_id,
+          itemId: item.item_id,
+          itemNameSnapshot: item.item,
+          mealPeriodSnapshot: item.dining_period,
+        });
         break;
       case 'needIt':
         void toggleItemNeedIt(item.restaurant_id, item.item_id).then(haptic);
@@ -190,7 +203,7 @@ export const NativeRestaurantMenu = forwardRef<
           onScrollOffsetChange(nativeEvent.offsetY);
         }}
         onAction={({ nativeEvent }) => {
-          handleAction(nativeEvent.action, nativeEvent.itemId);
+          handleAction(nativeEvent.action, nativeEvent.itemId, nativeEvent.anchorId);
         }}
       />
       <MenuItemPreviewCard
@@ -203,6 +216,20 @@ export const NativeRestaurantMenu = forwardRef<
         }
         origin={null}
         onClose={() => setPreviewItem(null)}
+        onJournal={
+          previewItem && journalEnabled
+            ? () => {
+                const item = previewItem;
+                setPreviewItem(null);
+                openJournalComposer({
+                  restaurantId: item.restaurant_id,
+                  itemId: item.item_id,
+                  itemNameSnapshot: item.item,
+                  mealPeriodSnapshot: item.dining_period,
+                });
+              }
+            : undefined
+        }
         onPressAllergyInfo={() => {
           if (previewItem) setAllergyItem(previewItem);
         }}

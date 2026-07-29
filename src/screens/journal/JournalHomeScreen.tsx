@@ -18,6 +18,7 @@ import type { JournalEntry } from '../../data/journal';
 import { useActivity } from '../../hooks/useActivity';
 import { useAuth } from '../../hooks/useAuth';
 import { useJournal } from '../../hooks/useJournal';
+import { useJournalComposer } from '../../hooks/useJournalComposer';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
@@ -29,6 +30,7 @@ export function JournalHomeScreen({ navigation }: Props) {
   const { personalActivity } = useActivity();
   const { entries, error, isJournalEnabled, latestDraft, loading, reloadJournal } = useJournal();
   const [mode, setMode] = useState<JournalMode>('places');
+  const openJournalComposer = useJournalComposer();
   const timeline = useMemo(() => sortJournalEntries(entries), [entries]);
   const places = useMemo(() => groupJournalEntriesByPlace(entries), [entries]);
   const ratings = useMemo(
@@ -87,7 +89,7 @@ export function JournalHomeScreen({ navigation }: Props) {
           </View>
           <Pressable
             style={styles.addButton}
-            onPress={() => navigation.navigate('JournalComposer')}
+            onPress={() => openJournalComposer()}
             accessibilityRole="button"
             accessibilityLabel="Add Journal entry"
           >
@@ -100,7 +102,7 @@ export function JournalHomeScreen({ navigation }: Props) {
       {latestDraft && (
         <Pressable
           style={styles.draftBanner}
-          onPress={() => navigation.navigate('JournalComposer', { draftId: latestDraft.id })}
+          onPress={() => openJournalComposer({ draftId: latestDraft.id })}
           accessibilityRole="button"
         >
           <View style={styles.draftCopy}>

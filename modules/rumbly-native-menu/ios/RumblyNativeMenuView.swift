@@ -14,6 +14,7 @@ private struct NativeMenuItem: Codable, Identifiable, Equatable {
   let gotItCount: Int
   let needItEnabled: Bool
   let gotItEnabled: Bool
+  let journalEnabled: Bool
 
   var id: String { anchorId }
 
@@ -30,6 +31,7 @@ private struct NativeMenuItem: Codable, Identifiable, Equatable {
     case gotItCount
     case needItEnabled
     case gotItEnabled
+    case journalEnabled
   }
 
   init(from decoder: Decoder) throws {
@@ -48,6 +50,8 @@ private struct NativeMenuItem: Codable, Identifiable, Equatable {
       try values.decodeIfPresent(Bool.self, forKey: .needItEnabled) ?? false
     gotItEnabled =
       try values.decodeIfPresent(Bool.self, forKey: .gotItEnabled) ?? false
+    journalEnabled =
+      try values.decodeIfPresent(Bool.self, forKey: .journalEnabled) ?? false
   }
 }
 
@@ -100,7 +104,7 @@ private final class NativeMenuModel: ObservableObject {
   private var lastScrollOffset: CGFloat = 0
   private var targetAnchorId: String?
 
-  var actionHandler: ((String, String) -> Void)?
+  var actionHandler: ((String, String, String) -> Void)?
   var activeCategoryHandler: ((String) -> Void)?
   var scrollOffsetHandler: ((CGFloat) -> Void)?
   var readyHandler: (() -> Void)?
@@ -140,8 +144,8 @@ private final class NativeMenuModel: ObservableObject {
     }
   }
 
-  func sendAction(_ action: String, itemId: String) {
-    actionHandler?(action, itemId)
+  func sendAction(_ action: String, itemId: String, anchorId: String) {
+    actionHandler?(action, itemId, anchorId)
   }
 
   func setActiveCategory(_ category: String) {
@@ -225,10 +229,11 @@ public final class RumblyNativeMenuView: ExpoView {
   public required init(appContext: AppContext? = nil) {
     super.init(appContext: appContext)
 
-    model.actionHandler = { [weak self] action, itemId in
+    model.actionHandler = { [weak self] action, itemId, anchorId in
       self?.onAction([
         "action": action,
-        "itemId": itemId
+        "itemId": itemId,
+        "anchorId": anchorId
       ])
     }
     model.activeCategoryHandler = { [weak self] category in
@@ -654,19 +659,21 @@ private struct NativeSwipeMenuRow: View {
           model.openItemId = nil
         }
       } else {
-        model.sendAction("open", itemId: item.itemId)
+        model.sendAction("open", itemId: item.itemId, anchorId: item.anchorId)
       }
     }
     .contextMenu {
       Button {
-        model.sendAction("share", itemId: item.itemId)
+        model.sendAction("share", itemId: item.itemId, anchorId: item.anchorId)
       } label: {
         Label("Share", systemImage: "square.and.arrow.up")
       }
-      Button {
-        model.sendAction("journal", itemId: item.itemId)
-      } label: {
-        Label("Journal", systemImage: "book.closed")
+      if item.journalEnabled {
+        Button {
+          model.sendAction("journal", itemId: item.itemId, anchorId: item.anchorId)
+        } label: {
+          Label("Journal", systemImage: "book.closed")
+        }
       }
     } preview: {
       VStack(alignment: .leading, spacing: 10) {
@@ -681,7 +688,7 @@ private struct NativeSwipeMenuRow: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
-        Text("Share and Journal actions are coming soon.")
+        Text(item.journalEnabled ? "Share is coming soon." : "Sharing is coming soon.")
           .font(.caption)
           .foregroundStyle(.secondary)
       }
@@ -726,7 +733,7 @@ private struct NativeSwipeMenuRow: View {
     action: String
   ) -> some View {
     Button {
-      model.sendAction(action, itemId: item.itemId)
+      model.sendAction(action, itemId: item.itemId, anchorId: item.anchorId)
       withAnimation(.snappy) {
         model.openItemId = nil
         dragTranslation = 0
@@ -844,6 +851,7 @@ private struct NativeSearchItemRowPayload: Codable, Equatable {
   let gotItCount: Int
   let needItEnabled: Bool
   let gotItEnabled: Bool
+  let journalEnabled: Bool
 }
 
 @MainActor
@@ -1035,10 +1043,12 @@ private struct NativeSearchItemRowRootView: View {
       } label: {
         Label("Share", systemImage: "square.and.arrow.up")
       }
-      Button {
-        model.sendAction("journal")
-      } label: {
-        Label("Journal", systemImage: "book.closed")
+      if row.journalEnabled {
+        Button {
+          model.sendAction("journal")
+        } label: {
+          Label("Journal", systemImage: "book.closed")
+        }
       }
     } preview: {
       VStack(alignment: .leading, spacing: 8) {
@@ -1163,6 +1173,7 @@ private struct NativeSearchRestaurantRowPayload: Codable, Equatable {
   let gotItCount: Int
   let needItEnabled: Bool
   let gotItEnabled: Bool
+  let journalEnabled: Bool
 }
 
 @MainActor
@@ -1357,10 +1368,12 @@ private struct NativeSearchRestaurantRowRootView: View {
       } label: {
         Label("Share", systemImage: "square.and.arrow.up")
       }
-      Button {
-        model.sendAction("journal")
-      } label: {
-        Label("Journal", systemImage: "book.closed")
+      if row.journalEnabled {
+        Button {
+          model.sendAction("journal")
+        } label: {
+          Label("Journal", systemImage: "book.closed")
+        }
       }
     } preview: {
       VStack(alignment: .leading, spacing: 8) {

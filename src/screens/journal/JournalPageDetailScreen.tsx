@@ -8,6 +8,7 @@ import { SettingsScreenHeader } from '../../components/settings/SettingsScreenHe
 import { entriesForJournalPage } from '../../data/journalReadModel';
 import { useActivity } from '../../hooks/useActivity';
 import { useJournal } from '../../hooks/useJournal';
+import { useJournalComposer } from '../../hooks/useJournalComposer';
 import type { JournalStackParamList } from '../../navigation/journalTypes';
 import { COLORS, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
@@ -18,6 +19,7 @@ export function JournalPageDetailScreen({ navigation, route }: Props) {
   const { restaurantId, itemId } = route.params;
   const { personalActivity } = useActivity();
   const { entries, loading, reloadJournal } = useJournal();
+  const openJournalComposer = useJournalComposer();
   const pageEntries = useMemo(
     () => entriesForJournalPage(entries, restaurantId, itemId),
     [entries, itemId, restaurantId]
@@ -70,7 +72,7 @@ export function JournalPageDetailScreen({ navigation, route }: Props) {
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => navigation.navigate('JournalComposer', { entryId: item.id })}
+            onPress={() => openJournalComposer({ entryId: item.id })}
             accessibilityRole="button"
             accessibilityLabel="Edit Journal entry"
           >

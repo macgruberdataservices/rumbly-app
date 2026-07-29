@@ -44,6 +44,7 @@ import type { MenuItem } from '../data/types';
 import { useActivity } from '../hooks/useActivity';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useEntitlement } from '../hooks/useEntitlement';
+import { useJournalComposer } from '../hooks/useJournalComposer';
 import type { NativeMenuPilotRouteParams } from '../navigation/browseTypes';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
@@ -279,6 +280,8 @@ export function NativeMenuPilotScreen({
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
+  const journalEnabled = useEntitlement('journal');
+  const openJournalComposer = useJournalComposer();
 
   useEffect(() => {
     let cancelled = false;
@@ -400,11 +403,13 @@ export function NativeMenuPilotScreen({
             gotItCount: gotItItemCounts.get(itemKey) ?? 0,
             needItEnabled,
             gotItEnabled,
+            journalEnabled,
           };
         }),
       })),
     [
       gotItEnabled,
+      journalEnabled,
       gotItItemCounts,
       itemRatingAverages,
       lovedItemKeys,
@@ -473,7 +478,13 @@ export function NativeMenuPilotScreen({
         Alert.alert('Share', 'Sharing menu items is coming soon.');
         break;
       case 'journal':
-        Alert.alert('Journal', 'Journal entries are coming soon.');
+        openJournalComposer({
+          restaurantId: item.restaurant_id,
+          itemId: item.item_id,
+          restaurantNameSnapshot: restaurant?.restaurant,
+          itemNameSnapshot: item.item,
+          mealPeriodSnapshot: item.dining_period,
+        });
         break;
       case 'needIt':
         void toggleItemNeedIt(item.restaurant_id, item.item_id).then(haptic);
@@ -612,6 +623,21 @@ export function NativeMenuPilotScreen({
         }
         origin={null}
         onClose={() => setPreviewItem(null)}
+        onJournal={
+          previewItem && journalEnabled
+            ? () => {
+                const item = previewItem;
+                setPreviewItem(null);
+                openJournalComposer({
+                  restaurantId: item.restaurant_id,
+                  itemId: item.item_id,
+                  restaurantNameSnapshot: restaurant?.restaurant,
+                  itemNameSnapshot: item.item,
+                  mealPeriodSnapshot: item.dining_period,
+                });
+              }
+            : undefined
+        }
         onPressAllergyInfo={() => {
           if (previewItem) setAllergyItem(previewItem);
         }}
