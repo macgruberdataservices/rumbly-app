@@ -27,7 +27,7 @@ type JournalMode = 'places' | 'timeline';
 export function JournalHomeScreen({ navigation }: Props) {
   const { user, initializing } = useAuth();
   const { personalActivity } = useActivity();
-  const { entries, error, isJournalEnabled, loading, reloadJournal } = useJournal();
+  const { entries, error, isJournalEnabled, latestDraft, loading, reloadJournal } = useJournal();
   const [mode, setMode] = useState<JournalMode>('places');
   const timeline = useMemo(() => sortJournalEntries(entries), [entries]);
   const places = useMemo(() => groupJournalEntriesByPlace(entries), [entries]);
@@ -80,10 +80,38 @@ export function JournalHomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
-        <Text style={styles.eyebrow}>PRIVATE TO YOUR ACCOUNT</Text>
-        <Text style={styles.title}>Journal</Text>
+        <View style={styles.titleRow}>
+          <View style={styles.titleCopy}>
+            <Text style={styles.eyebrow}>PRIVATE TO YOUR ACCOUNT</Text>
+            <Text style={styles.title}>Journal</Text>
+          </View>
+          <Pressable
+            style={styles.addButton}
+            onPress={() => navigation.navigate('JournalComposer')}
+            accessibilityRole="button"
+            accessibilityLabel="Add Journal entry"
+          >
+            <Text style={styles.addButtonLabel}>＋</Text>
+          </Pressable>
+        </View>
         <Text style={styles.subtitle}>The meals, places, and details you want to remember.</Text>
       </View>
+
+      {latestDraft && (
+        <Pressable
+          style={styles.draftBanner}
+          onPress={() => navigation.navigate('JournalComposer', { draftId: latestDraft.id })}
+          accessibilityRole="button"
+        >
+          <View style={styles.draftCopy}>
+            <Text style={styles.draftTitle}>Continue your draft</Text>
+            <Text style={text.bodyMuted} numberOfLines={1}>
+              {latestDraft.itemNameSnapshot ?? latestDraft.restaurantNameSnapshot}
+            </Text>
+          </View>
+          <Text style={styles.smallChevron}>›</Text>
+        </Pressable>
+      )}
 
       <View style={styles.segmented} accessibilityRole="tablist">
         <ModeButton label="By Place" selected={mode === 'places'} onPress={() => setMode('places')} />
@@ -246,6 +274,22 @@ const styles = StyleSheet.create({
     paddingTop: SPACING.md,
     paddingBottom: SPACING.lg,
   },
+  titleRow: { flexDirection: 'row', alignItems: 'center' },
+  titleCopy: { flex: 1 },
+  addButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.pine,
+  },
+  addButtonLabel: {
+    fontFamily: FONT_FAMILY.interRegular,
+    fontSize: 27,
+    lineHeight: 30,
+    color: COLORS.ink,
+  },
   eyebrow: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 11,
@@ -271,6 +315,24 @@ const styles = StyleSheet.create({
     padding: 3,
     borderRadius: RADII.md,
     backgroundColor: COLORS.pineLight,
+  },
+  draftBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.goldLight,
+  },
+  draftCopy: { flex: 1, gap: 2 },
+  draftTitle: {
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 14,
+    color: COLORS.ink,
   },
   modeButton: {
     flex: 1,

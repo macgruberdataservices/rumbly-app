@@ -6,6 +6,7 @@ import {
   createJournalEntryRecord,
   deleteJournalEntryRecord,
   getJournalDraftRecord,
+  getLatestJournalDraftRecord,
   getJournalEntryRecord,
   listJournalEntryRecords,
   listJournalOutboxRecords,
@@ -128,7 +129,7 @@ test('creating an entry atomically links one Got It event and one outbox operati
   assert.equal(result.created, true);
   assert.equal(result.entry.clientId, 'client-1');
   const activity = await db.getFirstAsync(
-    `SELECT client_id, restaurant_id, item_id, activity_type, value, deleted
+    `SELECT client_id, restaurant_id, item_id, activity_type, occurred_at, value, deleted
      FROM activity WHERE client_id = 'client-1';`
   );
   assert.deepEqual(
@@ -138,6 +139,7 @@ test('creating an entry atomically links one Got It event and one outbox operati
       restaurant_id: 'restaurant-a',
       item_id: 'item-1',
       activity_type: 'got_it',
+      occurred_at: '2026-07-29T12:00:00.000Z',
       value: 5,
       deleted: 0,
     }
@@ -240,9 +242,10 @@ test('editing an entry updates local details, linked rating, and pending outbox 
   assert.equal(updated.mealPeriodSnapshot, 'Dinner');
   assert.equal(updated.note, 'Even better the second time');
   const activity = await db.getFirstAsync(
-    "SELECT value FROM activity WHERE client_id = 'client-1';"
+    "SELECT value, occurred_at FROM activity WHERE client_id = 'client-1';"
   );
   assert.equal(activity.value, 4);
+  assert.equal(activity.occurred_at, '2026-07-30T12:00:00.000Z');
   const outbox = await listJournalOutboxRecords(db, 'user-1');
   assert.equal(outbox.length, 1);
   assert.equal(outbox[0].operationType, 'entry_upsert');
@@ -312,6 +315,35 @@ test('drafts round-trip photo IDs and are removed by successful entry creation',
 
   await createInTransaction(db, entryInput());
   assert.equal(await getJournalDraftRecord(db, 'user-1', 'entry-1'), null);
+});
+
+test('the newest draft can be resumed for its owner', async (t) => {
+  const db = await makeDatabase(t);
+  const draft = {
+    id: 'older-draft',
+    userId: 'user-1',
+    clientId: 'older-client',
+    restaurantId: 'restaurant-a',
+    itemId: null,
+    restaurantNameSnapshot: 'Restaurant A',
+    itemNameSnapshot: null,
+    visitedOn: '2026-07-28',
+    mealPeriodSnapshot: null,
+    note: null,
+    rating: null,
+    photoIds: [],
+    updatedAt: '2026-07-28T10:00:00.000Z',
+  };
+  await saveJournalDraftRecord(db, draft);
+  await saveJournalDraftRecord(db, {
+    ...draft,
+    id: 'newer-draft',
+    clientId: 'newer-client',
+    updatedAt: '2026-07-29T10:00:00.000Z',
+  });
+
+  assert.equal((await getLatestJournalDraftRecord(db, 'user-1'))?.id, 'newer-draft');
+  assert.equal(await getLatestJournalDraftRecord(db, 'another-user'), null);
 });
 
 test('a draft ID cannot be overwritten by another user', async (t) => {

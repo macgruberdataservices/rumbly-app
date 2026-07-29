@@ -76,6 +76,13 @@ function validateVisitedOn(value: string): void {
   }
 }
 
+// Journal owns the calendar date for its linked Got It visit. Noon UTC
+// avoids the common previous-day shift when the activity history formats
+// the timestamp in North American time zones.
+function gotItOccurredAt(visitedOn: string): string {
+  return `${visitedOn}T12:00:00.000Z`;
+}
+
 function validateRating(rating: number | null): void {
   if (rating !== null && (!Number.isInteger(rating) || rating < 1 || rating > 5)) {
     throw new Error('Journal rating must be an integer from 1 through 5.');
@@ -254,7 +261,7 @@ export async function createJournalEntryRecord(
       restaurantId: input.restaurantId,
       itemId: input.itemId,
       rating: input.rating,
-      occurredAt: existing.created_at,
+      occurredAt: gotItOccurredAt(existing.visited_on),
       createdAt: existing.created_at,
     });
     await queueEntryOperation(db, input.id, input.userId, 'entry_upsert', now);
@@ -266,7 +273,7 @@ export async function createJournalEntryRecord(
     restaurantId: input.restaurantId,
     itemId: input.itemId,
     rating: input.rating,
-    occurredAt: now,
+    occurredAt: gotItOccurredAt(input.visitedOn),
     createdAt: now,
   });
   await db.runAsync(
@@ -325,15 +332,16 @@ export async function updateJournalEntryRecord(
     restaurantId: existing.restaurant_id,
     itemId: existing.item_id,
     rating: input.rating,
-    occurredAt: existing.created_at,
+    occurredAt: gotItOccurredAt(input.visitedOn),
     createdAt: existing.created_at,
   });
   await db.runAsync(
     `UPDATE activity
-     SET value = $rating, updated_at = $now
+     SET value = $rating, occurred_at = $occurred_at, updated_at = $now
      WHERE client_id = $client_id AND activity_type = 'got_it' AND deleted = 0;`,
     {
       $rating: input.rating,
+      $occurred_at: gotItOccurredAt(input.visitedOn),
       $now: now,
       $client_id: existing.client_id,
     }
@@ -530,6 +538,21 @@ export async function getJournalDraftRecord(
   const row = await db.getFirstAsync<JournalDraftRow>(
     'SELECT * FROM journal_drafts WHERE id = $id AND user_id = $user_id;',
     { $id: draftId, $user_id: userId }
+  );
+  return row ? rowToDraft(row) : null;
+}
+
+export async function getLatestJournalDraftRecord(
+  db: SqlDatabase,
+  userId: string
+): Promise<JournalEntryDraft | null> {
+  requireText(userId, 'User ID');
+  const row = await db.getFirstAsync<JournalDraftRow>(
+    `SELECT * FROM journal_drafts
+     WHERE user_id = $user_id
+     ORDER BY updated_at DESC, id DESC
+     LIMIT 1;`,
+    { $user_id: userId }
   );
   return row ? rowToDraft(row) : null;
 }

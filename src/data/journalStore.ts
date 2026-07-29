@@ -14,6 +14,7 @@ import {
   deleteJournalDraftRecord,
   deleteJournalEntryRecord,
   getJournalDraftRecord,
+  getLatestJournalDraftRecord,
   getJournalEntryRecord,
   listJournalEntryRecords,
   listJournalOutboxRecords,
@@ -117,6 +118,13 @@ export async function getLocalJournalDraft(
 ): Promise<JournalEntryDraft | null> {
   const db = await getJournalDb();
   return getJournalDraftRecord(asSqlDatabase(db), userId, draftId);
+}
+
+export async function getLatestLocalJournalDraft(
+  userId: string
+): Promise<JournalEntryDraft | null> {
+  const db = await getJournalDb();
+  return getLatestJournalDraftRecord(asSqlDatabase(db), userId);
 }
 
 export async function deleteLocalJournalDraft(

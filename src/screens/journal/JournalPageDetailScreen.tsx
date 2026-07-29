@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { JournalEntryCard } from '../../components/journal/JournalEntryCard';
 import { SettingsScreenHeader } from '../../components/settings/SettingsScreenHeader';
@@ -69,11 +69,18 @@ export function JournalPageDetailScreen({ navigation, route }: Props) {
         ]}
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
         renderItem={({ item }) => (
-          <JournalEntryCard
-            entry={item}
-            rating={ratings.get(item.clientId) ?? null}
-            showTarget={!itemId}
-          />
+          <Pressable
+            onPress={() => navigation.navigate('JournalComposer', { entryId: item.id })}
+            accessibilityRole="button"
+            accessibilityLabel="Edit Journal entry"
+          >
+            <JournalEntryCard
+              entry={item}
+              rating={ratings.get(item.clientId) ?? null}
+              showTarget={!itemId}
+            />
+            <Text style={styles.editLabel}>Edit entry</Text>
+          </Pressable>
         )}
         ListEmptyComponent={
           <View style={styles.emptyState}>
@@ -119,5 +126,13 @@ const styles = StyleSheet.create({
   emptyBody: {
     ...text.bodyMuted,
     textAlign: 'center',
+  },
+  editLabel: {
+    marginTop: SPACING.xs,
+    marginRight: SPACING.sm,
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 12,
+    color: COLORS.forest,
+    textAlign: 'right',
   },
 });

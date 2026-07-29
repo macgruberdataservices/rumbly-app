@@ -7,6 +7,8 @@ export type JournalPageDetailRouteParams = {
 };
 
 export type JournalComposerRouteParams = {
+  entryId?: string;
+  draftId?: string;
   restaurantId?: string;
   itemId?: string;
   mealPeriodSnapshot?: string;
@@ -26,6 +28,7 @@ export type JournalTargetPickerRouteParams = {
 export type JournalStackParamList = {
   JournalHome: undefined;
   JournalPageDetail: JournalPageDetailRouteParams;
+  JournalComposer: JournalComposerRouteParams | undefined;
   JournalDateSearch: JournalDateSearchRouteParams | undefined;
   JournalTargetPicker: JournalTargetPickerRouteParams | undefined;
   JournalStorageSettings: undefined;
