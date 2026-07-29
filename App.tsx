@@ -22,6 +22,7 @@ import { DataProvider } from './src/data/dataProvider';
 import { AuthProvider } from './src/data/authProvider';
 import { EntitlementsProvider } from './src/data/entitlementsProvider';
 import { ActivityProvider } from './src/data/activityProvider';
+import { JournalProvider } from './src/data/journalProvider';
 import { AppSettingsProvider } from './src/data/appSettingsProvider';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
@@ -67,7 +68,9 @@ export default function App() {
             <AuthProvider>
               <EntitlementsProvider>
                 <ActivityProvider>
-                  <RootNavigator />
+                  <JournalProvider>
+                    <RootNavigator />
+                  </JournalProvider>
                 </ActivityProvider>
               </EntitlementsProvider>
             </AuthProvider>

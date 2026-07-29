@@ -5,39 +5,16 @@
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { getDb as getSharedDb } from './sqlite';
+import { getItemIdentityKey } from './itemIdentity';
+import { ensureActivitySchema, ensureGotItEvent } from './activitySql';
+import { asSqlDatabase } from './sqlDatabase';
 
 let readyPromise: Promise<SQLiteDatabase> | null = null;
 
 function getDb(): Promise<SQLiteDatabase> {
   if (!readyPromise) {
     readyPromise = getSharedDb().then(async (db) => {
-      await db.execAsync(`
-        CREATE TABLE IF NOT EXISTS activity (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          client_id TEXT NOT NULL UNIQUE,
-          target_type TEXT NOT NULL,
-          restaurant_id TEXT NOT NULL,
-          item_id TEXT,
-          activity_type TEXT NOT NULL,
-          occurred_at TEXT NOT NULL,
-          created_at TEXT NOT NULL,
-          updated_at TEXT NOT NULL,
-          value REAL,
-          deleted INTEGER NOT NULL DEFAULT 0
-        );
-        CREATE INDEX IF NOT EXISTS idx_activity_restaurant ON activity(restaurant_id);
-
-        UPDATE activity SET activity_type = 'love_it'
-          WHERE activity_type = 'favorited';
-        UPDATE activity SET activity_type = 'need_it'
-          WHERE activity_type = 'want_to_try';
-        UPDATE activity SET activity_type = 'got_it'
-          WHERE activity_type = 'checked_in';
-      `);
-      const columns = await db.getAllAsync<{ name: string }>('PRAGMA table_info(activity);');
-      if (!columns.some((column) => column.name === 'value')) {
-        await db.execAsync('ALTER TABLE activity ADD COLUMN value REAL;');
-      }
+      await ensureActivitySchema(asSqlDatabase(db));
       return db;
     });
   }
@@ -116,17 +93,14 @@ async function addGotIt(restaurantId: string, itemId: string | null): Promise<st
   const db = await getDb();
   const now = new Date().toISOString();
   const clientId = generateClientId();
-  await db.runAsync(
-    `INSERT INTO activity (client_id, target_type, restaurant_id, item_id, activity_type, occurred_at, created_at, updated_at, deleted)
-     VALUES ($client_id, $target_type, $restaurant_id, $item_id, 'got_it', $now, $now, $now, 0);`,
-    {
-      $client_id: clientId,
-      $target_type: itemId ? 'item' : 'restaurant',
-      $restaurant_id: restaurantId,
-      $item_id: itemId,
-      $now: now,
-    }
-  );
+  await ensureGotItEvent(asSqlDatabase(db), {
+    clientId,
+    restaurantId,
+    itemId,
+    rating: null,
+    occurredAt: now,
+    createdAt: now,
+  });
   return clientId;
 }
 
@@ -186,7 +160,7 @@ async function loadItemActivityKeys(activityType: string): Promise<Set<string>> 
      WHERE activity_type = $activity_type AND item_id IS NOT NULL AND deleted = 0;`,
     { $activity_type: activityType }
   );
-  return new Set(rows.map((r) => `${r.restaurant_id}:${r.item_id}`));
+  return new Set(rows.map((r) => getItemIdentityKey(r.restaurant_id, r.item_id)));
 }
 
 export function loadLovedItemKeys(): Promise<Set<string>> {
@@ -204,7 +178,7 @@ export async function loadGotItItemCounts(): Promise<Map<string, number>> {
      WHERE activity_type = 'got_it' AND item_id IS NOT NULL AND deleted = 0
      GROUP BY restaurant_id, item_id;`
   );
-  return new Map(rows.map((r) => [`${r.restaurant_id}:${r.item_id}`, r.count]));
+  return new Map(rows.map((r) => [getItemIdentityKey(r.restaurant_id, r.item_id), r.count]));
 }
 
 export async function loadGotItRestaurantCounts(): Promise<Map<string, number>> {
@@ -297,7 +271,9 @@ function computeRatingAverages(gotItHistory: PersonalActivityEvent[]): {
   for (const event of gotItHistory) {
     if (event.rating === null) continue;
     const target = event.itemId === null ? restaurantSums : itemSums;
-    const key = event.itemId === null ? event.restaurantId : `${event.restaurantId}:${event.itemId}`;
+    const key = event.itemId === null
+      ? event.restaurantId
+      : getItemIdentityKey(event.restaurantId, event.itemId);
     const entry = target.get(key) ?? { sum: 0, count: 0 };
     entry.sum += event.rating;
     entry.count += 1;
@@ -318,7 +294,9 @@ export function emptyPersonalActivityReadModel(): PersonalActivityReadModel {
 function latestUniqueEvents(events: PersonalActivityEvent[]): PersonalActivityEvent[] {
   const seen = new Set<string>();
   return events.filter((event) => {
-    const key = `${event.restaurantId}:${event.itemId ?? ''}`;
+    const key = event.itemId === null
+      ? event.restaurantId
+      : getItemIdentityKey(event.restaurantId, event.itemId);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;

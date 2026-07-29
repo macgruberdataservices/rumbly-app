@@ -39,6 +39,7 @@ import { formatDateLabel } from '../data/changes';
 import { isNewMenuItem } from '../data/newItem';
 import { defaultPeriod, dropRedundantAllDay, sortPeriods } from '../data/period';
 import { formatRatingAverage } from '../data/ratingAverage';
+import { getItemIdentityKeyFor } from '../data/itemIdentity';
 import type { MenuItem } from '../data/types';
 import { useActivity } from '../hooks/useActivity';
 import { useDataProvider } from '../hooks/useDataProvider';
@@ -383,7 +384,7 @@ export function NativeMenuPilotScreen({
       sections.map((section, sectionIndex) => ({
         title: section.title || 'Menu',
         items: section.items.map((item, itemIndex) => {
-          const itemKey = `${item.restaurant_id}:${item.item_id}`;
+          const itemKey = getItemIdentityKeyFor(item);
           return {
             anchorId: `${sectionIndex}:${itemIndex}:${item.item_id}`,
             itemId: String(item.item_id),
@@ -444,7 +445,7 @@ export function NativeMenuPilotScreen({
   };
 
   const logGotIt = async (item: MenuItem) => {
-    const itemKey = `${item.restaurant_id}:${item.item_id}`;
+    const itemKey = getItemIdentityKeyFor(item);
     const count = gotItItemCounts.get(itemKey) ?? 0;
     const clientId = await addItemGotIt(item.restaurant_id, item.item_id);
     setGotItItem(item);
@@ -606,7 +607,7 @@ export function NativeMenuPilotScreen({
         badges={previewItem ? itemBadges(previewItem) : []}
         ratingAverage={
           previewItem && ratingAveragesEnabled
-            ? itemRatingAverages.get(`${previewItem.restaurant_id}:${previewItem.item_id}`)
+            ? itemRatingAverages.get(getItemIdentityKeyFor(previewItem))
             : undefined
         }
         origin={null}

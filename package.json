@@ -46,6 +46,9 @@
     "ios:tailscale": "EXPO_PACKAGER_HOSTNAME=jasons-macbook-pro.tailabf79a.ts.net expo run:ios --device",
     "test:challenges": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/challenges.test.mjs",
     "test:locations": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/locationNames.test.mjs",
+    "test:journal-identity": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/journalIdentity.test.mjs",
+    "test:journal-read-model": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/journalReadModel.test.mjs",
+    "test:journal-storage": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/journalStorage.test.mjs",
     "test:recommendations": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/recommendations.test.mjs",
     "test:restaurant-cards": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/restaurantCards.test.mjs",
     "web": "expo start --web"

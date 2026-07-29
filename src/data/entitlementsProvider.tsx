@@ -28,6 +28,9 @@ export function EntitlementsProvider({ children }: { children: React.ReactNode }
     }
 
     let cancelled = false;
+    // Never carry one account's cached feature flags through an account
+    // switch while the next account's cache and remote flags are loading.
+    setFlags({});
     setLoading(true);
 
     loadCachedEntitlements(user.id).then((cached) => {

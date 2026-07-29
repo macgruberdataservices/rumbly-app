@@ -15,6 +15,7 @@ import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../G
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../swipeableCoordinator';
 import { isNewMenuItem } from '../../data/newItem';
 import { formatRatingAverage } from '../../data/ratingAverage';
+import { getItemIdentityKeyFor } from '../../data/itemIdentity';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 import { NativeItemResultRow } from './NativeItemResultRow';
@@ -84,7 +85,7 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
   const gotItEnabled = useEntitlement('got_it');
   const ratingsEnabled = useEntitlement('ratings');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
-  const key = `${item.restaurant_id}:${item.item_id}`;
+  const key = getItemIdentityKeyFor(item);
   const isLoved = lovedItemKeys.has(key);
   const isNeeded = needItItemKeys.has(key);
   const gotItCount = gotItItemCounts.get(key) ?? 0;

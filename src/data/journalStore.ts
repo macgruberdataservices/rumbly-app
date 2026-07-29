@@ -1,0 +1,135 @@
+import type { SQLiteDatabase } from 'expo-sqlite';
+import { ensureActivitySchema } from './activitySql';
+import type {
+  CreateJournalEntryInput,
+  JournalDeleteMode,
+  JournalEntry,
+  JournalEntryDraft,
+  JournalEntryQuery,
+  JournalOutboxOperation,
+  UpdateJournalEntryInput,
+} from './journal';
+import {
+  createJournalEntryRecord,
+  deleteJournalDraftRecord,
+  deleteJournalEntryRecord,
+  getJournalDraftRecord,
+  getJournalEntryRecord,
+  listJournalEntryRecords,
+  listJournalOutboxRecords,
+  saveJournalDraftRecord,
+  updateJournalEntryRecord,
+  type CreateJournalEntryResult,
+} from './journalRepository';
+import { ensureJournalSchema } from './journalSchema';
+import { getDb as getSharedDb } from './sqlite';
+import { asSqlDatabase } from './sqlDatabase';
+
+let readyPromise: Promise<SQLiteDatabase> | null = null;
+
+function getJournalDb(): Promise<SQLiteDatabase> {
+  if (!readyPromise) {
+    readyPromise = getSharedDb().then(async (db) => {
+      const sqlDb = asSqlDatabase(db);
+      await ensureActivitySchema(sqlDb);
+      await ensureJournalSchema(sqlDb);
+      return db;
+    });
+  }
+  return readyPromise;
+}
+
+export async function createLocalJournalEntry(
+  input: CreateJournalEntryInput
+): Promise<CreateJournalEntryResult> {
+  const db = await getJournalDb();
+  let result: CreateJournalEntryResult | null = null;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    result = await createJournalEntryRecord(
+      asSqlDatabase(transaction),
+      input,
+      new Date().toISOString()
+    );
+  });
+  if (!result) throw new Error('Journal entry transaction did not complete.');
+  return result;
+}
+
+export async function updateLocalJournalEntry(
+  input: UpdateJournalEntryInput
+): Promise<JournalEntry> {
+  const db = await getJournalDb();
+  let result: JournalEntry | null = null;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    result = await updateJournalEntryRecord(
+      asSqlDatabase(transaction),
+      input,
+      new Date().toISOString()
+    );
+  });
+  if (!result) throw new Error('Journal update transaction did not complete.');
+  return result;
+}
+
+export async function deleteLocalJournalEntry(
+  userId: string,
+  entryId: string,
+  mode: JournalDeleteMode
+): Promise<boolean> {
+  const db = await getJournalDb();
+  let deleted = false;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    deleted = await deleteJournalEntryRecord(
+      asSqlDatabase(transaction),
+      userId,
+      entryId,
+      mode,
+      new Date().toISOString()
+    );
+  });
+  return deleted;
+}
+
+export async function getLocalJournalEntry(
+  userId: string,
+  entryId: string,
+  includeDeleted = false
+): Promise<JournalEntry | null> {
+  const db = await getJournalDb();
+  return getJournalEntryRecord(asSqlDatabase(db), userId, entryId, includeDeleted);
+}
+
+export async function listLocalJournalEntries(
+  query: JournalEntryQuery
+): Promise<JournalEntry[]> {
+  const db = await getJournalDb();
+  return listJournalEntryRecords(asSqlDatabase(db), query);
+}
+
+export async function saveLocalJournalDraft(draft: JournalEntryDraft): Promise<void> {
+  const db = await getJournalDb();
+  await saveJournalDraftRecord(asSqlDatabase(db), draft);
+}
+
+export async function getLocalJournalDraft(
+  userId: string,
+  draftId: string
+): Promise<JournalEntryDraft | null> {
+  const db = await getJournalDb();
+  return getJournalDraftRecord(asSqlDatabase(db), userId, draftId);
+}
+
+export async function deleteLocalJournalDraft(
+  userId: string,
+  draftId: string
+): Promise<boolean> {
+  const db = await getJournalDb();
+  return deleteJournalDraftRecord(asSqlDatabase(db), userId, draftId);
+}
+
+export async function listLocalJournalOutbox(
+  userId: string
+): Promise<JournalOutboxOperation[]> {
+  const db = await getJournalDb();
+  return listJournalOutboxRecords(asSqlDatabase(db), userId);
+}

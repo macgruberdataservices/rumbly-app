@@ -10,7 +10,13 @@ let dbPromise: Promise<SQLiteDatabase> | null = null;
 
 export function getDb(): Promise<SQLiteDatabase> {
   if (!dbPromise) {
-    dbPromise = openDatabaseAsync(SQLITE_DB_NAME);
+    dbPromise = openDatabaseAsync(SQLITE_DB_NAME).then(async (db) => {
+      await db.execAsync(`
+        PRAGMA journal_mode = WAL;
+        PRAGMA foreign_keys = ON;
+      `);
+      return db;
+    });
   }
   return dbPromise;
 }

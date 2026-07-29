@@ -4,12 +4,15 @@ import { StyleSheet, View } from 'react-native';
 import { FindNavigator, type FindStackParamList } from './FindNavigator';
 import { ExploreNavigator, type ExploreStackParamList } from './ExploreNavigator';
 import { MyRumblyNavigator } from './MyRumblyNavigator';
+import { JournalNavigator } from './JournalNavigator';
+import type { JournalStackParamList } from './journalTypes';
 import { COLORS } from '../theme/tokens';
 
 export type RootTabParamList = {
   Find: NavigatorScreenParams<FindStackParamList>;
   Explore: NavigatorScreenParams<ExploreStackParamList>;
   MyRumbly: undefined;
+  Journal: NavigatorScreenParams<JournalStackParamList>;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -42,10 +45,22 @@ function MyRumblyIcon({ color }: { color: string }) {
   );
 }
 
+function JournalIcon({ color }: { color: string }) {
+  return (
+    <View style={styles.iconFrame}>
+      <View style={[styles.journalBook, { borderColor: color }]}>
+        <View style={[styles.journalSpine, { backgroundColor: color }]} />
+        <View style={[styles.journalLine, { backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
 function TabIcon({ routeName, color }: { routeName: keyof RootTabParamList; color: string }) {
   if (routeName === 'Find') return <FindIcon color={color} />;
   if (routeName === 'Explore') return <ExploreIcon color={color} />;
-  return <MyRumblyIcon color={color} />;
+  if (routeName === 'MyRumbly') return <MyRumblyIcon color={color} />;
+  return <JournalIcon color={color} />;
 }
 
 export function RootNavigator() {
@@ -73,6 +88,7 @@ export function RootNavigator() {
         />
         <Tab.Screen name="Explore" component={ExploreNavigator} />
         <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Bites' }} />
+        <Tab.Screen name="Journal" component={JournalNavigator} />
       </Tab.Navigator>
     </NavigationContainer>
   );
@@ -133,5 +149,25 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 9,
     borderWidth: 2,
     borderBottomWidth: 0,
+  },
+  journalBook: {
+    width: 19,
+    height: 21,
+    borderRadius: 3,
+    borderWidth: 2,
+    justifyContent: 'center',
+  },
+  journalSpine: {
+    position: 'absolute',
+    left: 4,
+    top: 0,
+    bottom: 0,
+    width: 1.5,
+  },
+  journalLine: {
+    width: 7,
+    height: 1.5,
+    marginLeft: 8,
+    borderRadius: 1,
   },
 });

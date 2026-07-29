@@ -35,10 +35,7 @@ import {
 } from './activity';
 import { syncActivity } from './sync';
 import { useAuth } from '../hooks/useAuth';
-
-function itemKey(restaurantId: string, itemId: string): string {
-  return `${restaurantId}:${itemId}`;
-}
+import { getItemIdentityKey } from './itemIdentity';
 
 interface ActivityContextValue {
   lovedIds: Set<string>;
@@ -142,7 +139,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
   const toggleItemLove = useCallback(
     async (restaurantId: string, itemId: string) => {
       const nowLoved = await toggleItemLoveDb(restaurantId, itemId);
-      const key = itemKey(restaurantId, itemId);
+      const key = getItemIdentityKey(restaurantId, itemId);
       setLovedItemKeys((prev) => {
         const next = new Set(prev);
         if (nowLoved) {
@@ -183,7 +180,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
   const toggleItemNeedIt = useCallback(
     async (restaurantId: string, itemId: string) => {
       const nowNeeded = await toggleItemNeedItDb(restaurantId, itemId);
-      const key = itemKey(restaurantId, itemId);
+      const key = getItemIdentityKey(restaurantId, itemId);
       setNeedItItemKeys((prev) => {
         const next = new Set(prev);
         if (nowNeeded) {
@@ -220,7 +217,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       const clientId = await addItemGotItDb(restaurantId, itemId);
       setGotItItemCounts((prev) => {
         const next = new Map(prev);
-        const key = itemKey(restaurantId, itemId);
+        const key = getItemIdentityKey(restaurantId, itemId);
         next.set(key, (next.get(key) ?? 0) + 1);
         return next;
       });
@@ -247,7 +244,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
     async (clientId: string, restaurantId: string, itemId: string | null) => {
       await undoGotItDb(clientId);
       if (itemId) {
-        const key = itemKey(restaurantId, itemId);
+        const key = getItemIdentityKey(restaurantId, itemId);
         setGotItItemCounts((prev) => {
           const next = new Map(prev);
           const count = Math.max(0, (next.get(key) ?? 0) - 1);

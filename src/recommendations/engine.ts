@@ -1,6 +1,7 @@
 import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions.ts';
 import { evaluateChallenge } from '../challenges/evaluate.ts';
 import type { PersonalActivityReadModel } from '../data/activity';
+import { getItemIdentityKey } from '../data/itemIdentity.ts';
 import type { ChangeEvent, Restaurant, SearchIndexEntry } from '../data/types';
 import { distanceToRestaurant, type Coordinates } from '../location/proximity.ts';
 import type {
@@ -68,10 +69,6 @@ export interface BuildFeedInput {
   origin: Coordinates | null;
   isEntitled: (featureKey: string) => boolean;
   now?: Date;
-}
-
-function itemKey(restaurantId: string, itemId: string): string {
-  return `${restaurantId}:${itemId}`;
 }
 
 function canonicalItemName(value: string): string {
@@ -181,7 +178,7 @@ function itemRecommendation(
 ): FeedItemRecommendation {
   return {
     kind: 'item',
-    key: `${moduleKey}:${itemKey(item.restaurant_id, item.item_id)}`,
+    key: `${moduleKey}:${getItemIdentityKey(item.restaurant_id, item.item_id)}`,
     item,
     restaurant,
     reason,
@@ -215,14 +212,14 @@ function buildTasteProfile(
     addScore(priceScores, restaurant.price_tier?.toString(), weight * 0.35);
   };
   const scoreItem = (restaurantId: string, itemId: string, weight: number) => {
-    const item = itemByKey.get(itemKey(restaurantId, itemId));
+    const item = itemByKey.get(getItemIdentityKey(restaurantId, itemId));
     if (!item) return;
     for (const category of item.norm_categories) addScore(categoryScores, category, weight);
     addScore(categoryScores, item.category, weight * 0.8);
     scoreRestaurant(restaurantId, weight * 0.55);
   };
   const registerExplicitItem = (restaurantId: string, itemId: string) => {
-    const key = itemKey(restaurantId, itemId);
+    const key = getItemIdentityKey(restaurantId, itemId);
     explicitItemKeys.add(key);
     const item = itemByKey.get(key);
     if (!item) return;
@@ -235,7 +232,7 @@ function buildTasteProfile(
   for (const event of input.activity.lovedItems) {
     if (!event.itemId) continue;
     registerExplicitItem(event.restaurantId, event.itemId);
-    if (itemByKey.get(itemKey(event.restaurantId, event.itemId))?.is_allergy_friendly) {
+    if (itemByKey.get(getItemIdentityKey(event.restaurantId, event.itemId))?.is_allergy_friendly) {
       hasAllergyInterest = true;
     }
     scoreItem(event.restaurantId, event.itemId, loveWeight);
@@ -243,7 +240,7 @@ function buildTasteProfile(
   for (const event of input.activity.neededItems) {
     if (!event.itemId) continue;
     registerExplicitItem(event.restaurantId, event.itemId);
-    if (itemByKey.get(itemKey(event.restaurantId, event.itemId))?.is_allergy_friendly) {
+    if (itemByKey.get(getItemIdentityKey(event.restaurantId, event.itemId))?.is_allergy_friendly) {
       hasAllergyInterest = true;
     }
   }
@@ -255,7 +252,7 @@ function buildTasteProfile(
       if (
         event.rating !== null
         && event.rating >= 4
-        && itemByKey.get(itemKey(event.restaurantId, event.itemId))?.is_allergy_friendly
+        && itemByKey.get(getItemIdentityKey(event.restaurantId, event.itemId))?.is_allergy_friendly
       ) {
         hasAllergyInterest = true;
       }
@@ -271,7 +268,7 @@ function buildTasteProfile(
     const ageDays = Math.max(0, (now.getTime() - new Date(event.occurredAt).getTime()) / 86_400_000);
     if (ageDays > profileWindowDays) continue;
     const targetKey = event.itemId
-      ? itemKey(event.restaurantId ?? '', event.itemId)
+      ? getItemIdentityKey(event.restaurantId ?? '', event.itemId)
       : `restaurant:${event.restaurantId ?? ''}`;
     const base = event.eventType === 'search_open'
       ? numberSetting(forYouConfig, 'search_open_weight', 2)
@@ -281,7 +278,7 @@ function buildTasteProfile(
     const weight = Math.min(remaining, decayed);
     passiveByTarget.set(targetKey, (passiveByTarget.get(targetKey) ?? 0) + weight);
     if (event.itemId && event.restaurantId) {
-      const item = itemByKey.get(itemKey(event.restaurantId, event.itemId));
+      const item = itemByKey.get(getItemIdentityKey(event.restaurantId, event.itemId));
       if (item?.is_allergy_friendly) hasAllergyInterest = true;
       scoreItem(event.restaurantId, event.itemId, weight);
     } else if (event.restaurantId) {
@@ -308,19 +305,19 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
 
   const restaurantById = new Map(input.restaurants.map((restaurant) => [restaurant.restaurant_id, restaurant]));
   const itemByKey = new Map(
-    input.searchIndex.map((item) => [itemKey(item.restaurant_id, item.item_id), item])
+    input.searchIndex.map((item) => [getItemIdentityKey(item.restaurant_id, item.item_id), item])
   );
   const modules: FeedModule[] = [];
   const excludedItemKeys = new Set<string>();
   const excludedItemNames = new Set<string>();
 
   const isExcluded = (item: SearchIndexEntry) =>
-    excludedItemKeys.has(itemKey(item.restaurant_id, item.item_id))
+    excludedItemKeys.has(getItemIdentityKey(item.restaurant_id, item.item_id))
     || excludedItemNames.has(canonicalItemName(item.item));
 
   const registerItems = (items: FeedItemRecommendation[]) => {
     for (const recommendation of items) {
-      excludedItemKeys.add(itemKey(
+      excludedItemKeys.add(getItemIdentityKey(
         recommendation.item.restaurant_id,
         recommendation.item.item_id
       ));
@@ -375,7 +372,7 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     const maxDistance = numberSetting(nearbyConfig, 'max_distance_miles', 5);
     const items = input.activity.neededItems
       .map((event) => {
-        const key = event.itemId ? itemKey(event.restaurantId, event.itemId) : '';
+        const key = event.itemId ? getItemIdentityKey(event.restaurantId, event.itemId) : '';
         const item = itemByKey.get(key);
         const restaurant = restaurantById.get(event.restaurantId);
         if (!item || !restaurant) return null;
@@ -412,7 +409,7 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
       .filter((item) =>
         recommendationQuality(item)
         && matchesMealPeriod(item, mealPeriod)
-        && !explicitItemKeys.has(itemKey(item.restaurant_id, item.item_id))
+        && !explicitItemKeys.has(getItemIdentityKey(item.restaurant_id, item.item_id))
         && !explicitItemNames.has(canonicalItemName(item.item))
         && !isExcluded(item)
       )
@@ -496,7 +493,7 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
         const item = (matchingPeriod.length > 0 ? matchingPeriod : matches)
           .find((candidate) =>
             recommendationQuality(candidate)
-            && !explicitItemKeys.has(itemKey(candidate.restaurant_id, candidate.item_id))
+            && !explicitItemKeys.has(getItemIdentityKey(candidate.restaurant_id, candidate.item_id))
             && !explicitItemNames.has(canonicalItemName(candidate.item))
             && !isExcluded(candidate)
           );
@@ -572,7 +569,7 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     const ranked = input.searchIndex
       .filter((item) =>
         recommendationQuality(item)
-        && !explicitItemKeys.has(itemKey(item.restaurant_id, item.item_id))
+        && !explicitItemKeys.has(getItemIdentityKey(item.restaurant_id, item.item_id))
         && !explicitItemNames.has(canonicalItemName(item.item))
         && !isExcluded(item)
       )

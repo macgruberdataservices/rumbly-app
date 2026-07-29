@@ -4,7 +4,11 @@ import { useAuth } from '../../hooks/useAuth';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
-export function AccountAuthPanel() {
+export function AccountAuthPanel({
+  supportingText = "Sign in to sync this device's activity.",
+}: {
+  supportingText?: string;
+}) {
   const { signIn, signUp } = useAuth();
   const [mode, setMode] = useState<'signIn' | 'signUp'>('signIn');
   const [email, setEmail] = useState('');
@@ -24,7 +28,7 @@ export function AccountAuthPanel() {
 
   return (
     <View>
-      <Text style={[text.bodyMuted, styles.supportingText]}>Sign in to sync this device's activity.</Text>
+      <Text style={[text.bodyMuted, styles.supportingText]}>{supportingText}</Text>
       <TextInput
         style={styles.input}
         placeholder="Email"

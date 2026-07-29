@@ -1,0 +1,415 @@
+import assert from 'node:assert/strict';
+import { DatabaseSync } from 'node:sqlite';
+import test from 'node:test';
+import { ensureActivitySchema } from '../src/data/activitySql.ts';
+import {
+  createJournalEntryRecord,
+  deleteJournalEntryRecord,
+  getJournalDraftRecord,
+  getJournalEntryRecord,
+  listJournalEntryRecords,
+  listJournalOutboxRecords,
+  saveJournalDraftRecord,
+  updateJournalEntryRecord,
+} from '../src/data/journalRepository.ts';
+import { ensureJournalSchema } from '../src/data/journalSchema.ts';
+
+class AsyncNodeSqlite {
+  constructor() {
+    this.database = new DatabaseSync(':memory:');
+    this.database.exec('PRAGMA foreign_keys = ON;');
+  }
+
+  async execAsync(source) {
+    this.database.exec(source);
+  }
+
+  async runAsync(source, params) {
+    const result = params
+      ? this.database.prepare(source).run(params)
+      : this.database.prepare(source).run();
+    return {
+      changes: Number(result.changes),
+      lastInsertRowId: Number(result.lastInsertRowid),
+    };
+  }
+
+  async getFirstAsync(source, params) {
+    return params
+      ? (this.database.prepare(source).get(params) ?? null)
+      : (this.database.prepare(source).get() ?? null);
+  }
+
+  async getAllAsync(source, params) {
+    return params
+      ? this.database.prepare(source).all(params)
+      : this.database.prepare(source).all();
+  }
+
+  async withExclusiveTransactionAsync(task) {
+    this.database.exec('BEGIN IMMEDIATE;');
+    try {
+      await task(this);
+      this.database.exec('COMMIT;');
+    } catch (error) {
+      this.database.exec('ROLLBACK;');
+      throw error;
+    }
+  }
+
+  close() {
+    this.database.close();
+  }
+}
+
+async function makeDatabase(t) {
+  const db = new AsyncNodeSqlite();
+  t.after(() => db.close());
+  await ensureActivitySchema(db);
+  await ensureJournalSchema(db);
+  return db;
+}
+
+function entryInput(overrides = {}) {
+  return {
+    id: 'entry-1',
+    userId: 'user-1',
+    clientId: 'client-1',
+    restaurantId: 'restaurant-a',
+    itemId: 'item-1',
+    restaurantNameSnapshot: 'Restaurant A',
+    itemNameSnapshot: 'Grilled Chicken',
+    visitedOn: '2026-07-29',
+    mealPeriodSnapshot: 'Lunch',
+    note: 'Excellent',
+    rating: 5,
+    photoIds: [],
+    ...overrides,
+  };
+}
+
+const CREATED_AT = '2026-07-29T16:00:00.000Z';
+
+async function createInTransaction(db, input, now = CREATED_AT) {
+  let result;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    result = await createJournalEntryRecord(transaction, input, now);
+  });
+  return result;
+}
+
+test('Journal schema creates versioned entry, photo, draft, and outbox tables', async (t) => {
+  const db = await makeDatabase(t);
+  const tables = await db.getAllAsync(
+    `SELECT name FROM sqlite_master
+     WHERE type = 'table' AND name LIKE 'journal_%'
+     ORDER BY name;`
+  );
+  assert.deepEqual(
+    tables.map((row) => row.name),
+    [
+      'journal_drafts',
+      'journal_entries',
+      'journal_metadata',
+      'journal_outbox',
+      'journal_photos',
+    ]
+  );
+  const version = await db.getFirstAsync(
+    "SELECT value FROM journal_metadata WHERE key = 'schema_version';"
+  );
+  assert.equal(version.value, '1');
+});
+
+test('creating an entry atomically links one Got It event and one outbox operation', async (t) => {
+  const db = await makeDatabase(t);
+  const result = await createInTransaction(db, entryInput());
+
+  assert.equal(result.created, true);
+  assert.equal(result.entry.clientId, 'client-1');
+  const activity = await db.getFirstAsync(
+    `SELECT client_id, restaurant_id, item_id, activity_type, value, deleted
+     FROM activity WHERE client_id = 'client-1';`
+  );
+  assert.deepEqual(
+    { ...activity },
+    {
+      client_id: 'client-1',
+      restaurant_id: 'restaurant-a',
+      item_id: 'item-1',
+      activity_type: 'got_it',
+      value: 5,
+      deleted: 0,
+    }
+  );
+  const outbox = await listJournalOutboxRecords(db, 'user-1');
+  assert.equal(outbox.length, 1);
+  assert.equal(outbox[0].operationType, 'entry_upsert');
+});
+
+test('retrying the same create is idempotent and does not duplicate Journal or Got It rows', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+  const retry = await createInTransaction(
+    db,
+    entryInput(),
+    '2026-07-29T16:01:00.000Z'
+  );
+
+  assert.equal(retry.created, false);
+  const entryCount = await db.getFirstAsync('SELECT COUNT(*) AS count FROM journal_entries;');
+  const activityCount = await db.getFirstAsync(
+    "SELECT COUNT(*) AS count FROM activity WHERE activity_type = 'got_it';"
+  );
+  const outboxCount = await db.getFirstAsync('SELECT COUNT(*) AS count FROM journal_outbox;');
+  assert.equal(entryCount.count, 1);
+  assert.equal(activityCount.count, 1);
+  assert.equal(outboxCount.count, 1);
+});
+
+test('reusing a client ID for another target fails without partial writes', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+
+  await assert.rejects(
+    createInTransaction(db, entryInput({
+      id: 'entry-2',
+      restaurantId: 'restaurant-b',
+      restaurantNameSnapshot: 'Restaurant B',
+    })),
+    /already in use|different activity/
+  );
+  const entryCount = await db.getFirstAsync('SELECT COUNT(*) AS count FROM journal_entries;');
+  const activityCount = await db.getFirstAsync(
+    "SELECT COUNT(*) AS count FROM activity WHERE activity_type = 'got_it';"
+  );
+  assert.equal(entryCount.count, 1);
+  assert.equal(activityCount.count, 1);
+});
+
+test('item history spans meal periods at one restaurant but not another restaurant', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+  await createInTransaction(db, entryInput({
+    id: 'entry-2',
+    clientId: 'client-2',
+    visitedOn: '2026-07-30',
+    mealPeriodSnapshot: 'Dinner',
+  }));
+  await createInTransaction(db, entryInput({
+    id: 'entry-3',
+    clientId: 'client-3',
+    restaurantId: 'restaurant-b',
+    restaurantNameSnapshot: 'Restaurant B',
+  }));
+
+  const history = await listJournalEntryRecords(db, {
+    userId: 'user-1',
+    restaurantId: 'restaurant-a',
+    itemId: 'item-1',
+    startDate: null,
+    endDate: null,
+  });
+  assert.deepEqual(history.map((entry) => entry.id), ['entry-2', 'entry-1']);
+  assert.deepEqual(
+    history.map((entry) => entry.mealPeriodSnapshot),
+    ['Dinner', 'Lunch']
+  );
+});
+
+test('editing an entry updates local details, linked rating, and pending outbox state', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+  let updated;
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    updated = await updateJournalEntryRecord(
+      transaction,
+      {
+        id: 'entry-1',
+        userId: 'user-1',
+        visitedOn: '2026-07-30',
+        mealPeriodSnapshot: 'Dinner',
+        note: 'Even better the second time',
+        rating: 4,
+      },
+      '2026-07-30T16:00:00.000Z'
+    );
+  });
+
+  assert.equal(updated.visitedOn, '2026-07-30');
+  assert.equal(updated.mealPeriodSnapshot, 'Dinner');
+  assert.equal(updated.note, 'Even better the second time');
+  const activity = await db.getFirstAsync(
+    "SELECT value FROM activity WHERE client_id = 'client-1';"
+  );
+  assert.equal(activity.value, 4);
+  const outbox = await listJournalOutboxRecords(db, 'user-1');
+  assert.equal(outbox.length, 1);
+  assert.equal(outbox[0].operationType, 'entry_upsert');
+});
+
+test('Journal-only deletion preserves Got It while combined deletion removes it', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    await deleteJournalEntryRecord(
+      transaction,
+      'user-1',
+      'entry-1',
+      'journal_only',
+      '2026-07-30T16:00:00.000Z'
+    );
+  });
+  assert.equal(await getJournalEntryRecord(db, 'user-1', 'entry-1'), null);
+  const preserved = await db.getFirstAsync(
+    "SELECT deleted FROM activity WHERE client_id = 'client-1';"
+  );
+  assert.equal(preserved.deleted, 0);
+
+  await createInTransaction(db, entryInput({
+    id: 'entry-2',
+    clientId: 'client-2',
+  }));
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    await deleteJournalEntryRecord(
+      transaction,
+      'user-1',
+      'entry-2',
+      'journal_and_got_it',
+      '2026-07-30T16:01:00.000Z'
+    );
+  });
+  const removed = await db.getFirstAsync(
+    "SELECT deleted FROM activity WHERE client_id = 'client-2';"
+  );
+  assert.equal(removed.deleted, 1);
+  const outbox = await listJournalOutboxRecords(db, 'user-1');
+  assert.equal(
+    outbox.find((operation) => operation.entityId === 'entry-2').operationType,
+    'entry_delete'
+  );
+});
+
+test('drafts round-trip photo IDs and are removed by successful entry creation', async (t) => {
+  const db = await makeDatabase(t);
+  const draft = {
+    id: 'entry-1',
+    userId: 'user-1',
+    clientId: 'client-1',
+    restaurantId: 'restaurant-a',
+    itemId: 'item-1',
+    restaurantNameSnapshot: 'Restaurant A',
+    itemNameSnapshot: 'Grilled Chicken',
+    visitedOn: '2026-07-29',
+    mealPeriodSnapshot: 'Lunch',
+    note: 'Draft note',
+    rating: 5,
+    photoIds: ['photo-1', 'photo-2'],
+    updatedAt: CREATED_AT,
+  };
+  await saveJournalDraftRecord(db, draft);
+  assert.deepEqual(await getJournalDraftRecord(db, 'user-1', 'entry-1'), draft);
+
+  await createInTransaction(db, entryInput());
+  assert.equal(await getJournalDraftRecord(db, 'user-1', 'entry-1'), null);
+});
+
+test('a draft ID cannot be overwritten by another user', async (t) => {
+  const db = await makeDatabase(t);
+  const draft = {
+    id: 'entry-1',
+    userId: 'user-1',
+    clientId: 'client-1',
+    restaurantId: 'restaurant-a',
+    itemId: null,
+    restaurantNameSnapshot: 'Restaurant A',
+    itemNameSnapshot: null,
+    visitedOn: '2026-07-29',
+    mealPeriodSnapshot: null,
+    note: null,
+    rating: null,
+    photoIds: [],
+    updatedAt: CREATED_AT,
+  };
+  await saveJournalDraftRecord(db, draft);
+  await assert.rejects(
+    saveJournalDraftRecord(db, {
+      ...draft,
+      userId: 'user-2',
+      clientId: 'client-2',
+    }),
+    /already owned/
+  );
+  assert.deepEqual(await getJournalDraftRecord(db, 'user-1', 'entry-1'), draft);
+});
+
+test('photo ownership foreign key rejects cross-user attachment metadata', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+
+  await assert.rejects(
+    db.runAsync(
+      `INSERT INTO journal_photos (
+         id, user_id, entry_id, position, width, height, created_at
+       ) VALUES (
+         $id, $user_id, $entry_id, 0, 100, 100, $created_at
+       );`,
+      {
+        $id: 'photo-1',
+        $user_id: 'other-user',
+        $entry_id: 'entry-1',
+        $created_at: CREATED_AT,
+      }
+    ),
+    /FOREIGN KEY/
+  );
+});
+
+test('a deleted photo no longer occupies its six-photo position', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+  await db.runAsync(
+    `INSERT INTO journal_photos (
+       id, user_id, entry_id, position, width, height, created_at
+     ) VALUES (
+       'photo-1', 'user-1', 'entry-1', 0, 100, 100, $created_at
+     );`,
+    { $created_at: CREATED_AT }
+  );
+  await db.runAsync(
+    "UPDATE journal_photos SET deleted_at = $deleted_at WHERE id = 'photo-1';",
+    { $deleted_at: '2026-07-30T16:00:00.000Z' }
+  );
+  await db.runAsync(
+    `INSERT INTO journal_photos (
+       id, user_id, entry_id, position, width, height, created_at
+     ) VALUES (
+       'photo-2', 'user-1', 'entry-1', 0, 200, 200, $created_at
+     );`,
+    { $created_at: '2026-07-30T16:01:00.000Z' }
+  );
+  const active = await db.getAllAsync(
+    'SELECT id FROM journal_photos WHERE deleted_at IS NULL ORDER BY id;'
+  );
+  assert.deepEqual(active.map((row) => row.id), ['photo-2']);
+});
+
+test('invalid dates, ratings, and photo counts are rejected before persistence', async (t) => {
+  const db = await makeDatabase(t);
+  await assert.rejects(
+    createInTransaction(db, entryInput({ visitedOn: '2026-02-30' })),
+    /valid calendar date/
+  );
+  await assert.rejects(
+    createInTransaction(db, entryInput({ rating: 4.5 })),
+    /integer/
+  );
+  await assert.rejects(
+    createInTransaction(db, entryInput({
+      photoIds: ['1', '2', '3', '4', '5', '6', '7'],
+    })),
+    /at most six/
+  );
+  const count = await db.getFirstAsync('SELECT COUNT(*) AS count FROM journal_entries;');
+  assert.equal(count.count, 0);
+});
