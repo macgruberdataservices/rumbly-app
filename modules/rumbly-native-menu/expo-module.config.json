@@ -1,6 +1,10 @@
 {
   "platforms": ["ios"],
   "apple": {
-    "modules": ["RumblyNativeMenuModule"]
+    "modules": [
+      "RumblyNativeMenuModule",
+      "RumblyNativeSearchItemRowModule",
+      "RumblyNativeSearchRestaurantRowModule"
+    ]
   }
 }

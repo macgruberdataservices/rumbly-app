@@ -5,10 +5,15 @@ public final class RumblyNativeMenuModule: Module {
     Name("RumblyNativeMenu")
 
     View(RumblyNativeMenuView.self) {
-      Events("onAction", "onActiveCategoryChange", "onScrollOffsetChange")
+      Events("onAction", "onActiveCategoryChange", "onScrollOffsetChange", "onReady")
 
       Prop("menuJSON") { (view: RumblyNativeMenuView, menuJSON: String) in
         view.setMenuJSON(menuJSON)
+      }
+
+      Prop("targetAnchorId") {
+        (view: RumblyNativeMenuView, targetAnchorId: String?) in
+        view.setTargetAnchorId(targetAnchorId)
       }
 
       Prop("highlightedItemId") {
@@ -27,8 +32,8 @@ public final class RumblyNativeMenuModule: Module {
       }
 
       AsyncFunction("scrollToItem") {
-        (view: RumblyNativeMenuView, itemId: String) in
-        view.scrollToItem(itemId)
+        (view: RumblyNativeMenuView, itemId: String, category: String) in
+        view.scrollToItem(itemId, category: category)
       }
     }
   }

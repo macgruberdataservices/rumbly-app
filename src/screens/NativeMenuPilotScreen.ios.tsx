@@ -350,8 +350,13 @@ export function NativeMenuPilotScreen({
     if (appliedInitialTargetRef.current === targetKey) return;
 
     const frame = requestAnimationFrame(() => {
-      if (initialItemId && menuItemsById.has(initialItemId)) {
-        void nativeMenuRef.current?.scrollToItem(initialItemId);
+      const itemSection = initialItemId
+        ? sections.find((section) =>
+          section.items.some((item) => item.item_id === initialItemId)
+        )
+        : undefined;
+      if (initialItemId && menuItemsById.has(initialItemId) && itemSection) {
+        void nativeMenuRef.current?.scrollToItem(initialItemId, itemSection.title);
       } else if (
         initialCategory &&
         sections.some((section) => section.title === initialCategory)
@@ -375,11 +380,12 @@ export function NativeMenuPilotScreen({
 
   const bridgedSections = useMemo<BridgedNativeMenuSection[]>(
     () =>
-      sections.map((section) => ({
+      sections.map((section, sectionIndex) => ({
         title: section.title || 'Menu',
-        items: section.items.map((item) => {
+        items: section.items.map((item, itemIndex) => {
           const itemKey = `${item.restaurant_id}:${item.item_id}`;
           return {
+            anchorId: `${sectionIndex}:${itemIndex}:${item.item_id}`,
             itemId: String(item.item_id),
             name: item.item || 'Menu item',
             description: item.description ?? null,

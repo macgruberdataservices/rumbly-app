@@ -8,13 +8,15 @@ export interface NativeRestaurantMenuSection {
 
 export interface NativeRestaurantMenuRef {
   scrollToCategory(category: string): Promise<void>;
-  scrollToItem(itemId: string): Promise<void>;
+  scrollToItem(itemId: string, category: string): Promise<void>;
 }
 
 export interface NativeRestaurantMenuProps {
   sections: NativeRestaurantMenuSection[];
+  targetAnchorId: string | null;
   highlightedItemId: string | null;
   bottomInset: number;
+  onReady: () => void;
   onActiveCategoryChange: (category: string) => void;
   onScrollOffsetChange: (offsetY: number) => void;
 }

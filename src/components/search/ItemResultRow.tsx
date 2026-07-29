@@ -1,5 +1,5 @@
 import { forwardRef, useEffect, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import type { Restaurant, SearchIndexEntry } from '../../data/types';
@@ -7,6 +7,7 @@ import { restaurantLocationLabel } from '../../data/locationNames';
 import { formatProximityDistance } from '../../location/proximity';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
+import { useAppSettings } from '../../hooks/useAppSettings';
 import { HighlightedText } from '../HighlightedText';
 import { ItemResultPreviewCard } from './ItemResultPreviewCard';
 import { AllergyInfoSheet } from '../AllergyInfoSheet';
@@ -16,6 +17,7 @@ import { isNewMenuItem } from '../../data/newItem';
 import { formatRatingAverage } from '../../data/ratingAverage';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
+import { NativeItemResultRow } from './NativeItemResultRow';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -44,6 +46,17 @@ interface ItemResultRowProps {
 }
 
 export const ItemResultRow = forwardRef<View, ItemResultRowProps>(function ItemResultRow(
+  props,
+  ref
+) {
+  const { nativeInteractionsEnabled } = useAppSettings();
+  if (nativeInteractionsEnabled && Platform.OS === 'ios') {
+    return <NativeItemResultRow ref={ref} {...props} />;
+  }
+  return <ClassicItemResultRow ref={ref} {...props} />;
+});
+
+const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function ClassicItemResultRow(
   { item, restaurant, highlightQuery, distanceMiles, onPress },
   ref
 ) {

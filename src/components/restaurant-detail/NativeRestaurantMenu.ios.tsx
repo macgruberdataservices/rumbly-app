@@ -43,8 +43,10 @@ export const NativeRestaurantMenu = forwardRef<
 >(function NativeRestaurantMenu(
   {
     sections,
+    targetAnchorId,
     highlightedItemId,
     bottomInset,
+    onReady,
     onActiveCategoryChange,
     onScrollOffsetChange,
   },
@@ -81,11 +83,12 @@ export const NativeRestaurantMenu = forwardRef<
 
   const nativeSections = useMemo<NativeMenuSection[]>(
     () =>
-      sections.map((section) => ({
+      sections.map((section, sectionIndex) => ({
         title: section.title || 'Menu',
-        items: section.data.map((item) => {
+        items: section.data.map((item, itemIndex) => {
           const itemKey = `${item.restaurant_id}:${item.item_id}`;
           return {
+            anchorId: `${sectionIndex}:${itemIndex}:${item.item_id}`,
             itemId: String(item.item_id),
             name: item.item || 'Menu item',
             description: item.description ?? null,
@@ -119,8 +122,8 @@ export const NativeRestaurantMenu = forwardRef<
     () => ({
       scrollToCategory: (category) =>
         nativeRef.current?.scrollToCategory(category) ?? Promise.resolve(),
-      scrollToItem: (itemId) =>
-        nativeRef.current?.scrollToItem(itemId) ?? Promise.resolve(),
+      scrollToItem: (itemId, category) =>
+        nativeRef.current?.scrollToItem(itemId, category) ?? Promise.resolve(),
     }),
     []
   );
@@ -175,8 +178,10 @@ export const NativeRestaurantMenu = forwardRef<
         ref={nativeRef}
         style={styles.list}
         sections={nativeSections}
+        targetAnchorId={targetAnchorId}
         highlightedItemId={highlightedItemId}
         bottomInset={bottomInset}
+        onReady={onReady}
         onActiveCategoryChange={({ nativeEvent }) => {
           onActiveCategoryChange(nativeEvent.category);
         }}

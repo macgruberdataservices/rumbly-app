@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useState } from 'react';
-import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import type { Restaurant } from '../data/types';
 import { formatProximityDistance } from '../location/proximity';
@@ -13,6 +13,8 @@ import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { restaurantLocationLabel } from '../data/locationNames';
 import { formatRatingAverage } from '../data/ratingAverage';
+import { useAppSettings } from '../hooks/useAppSettings';
+import { NativeRestaurantResultRow } from './search/NativeRestaurantResultRow';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -40,7 +42,7 @@ function priceDots(tier: number | null): string {
 // MenuItemRow) rather than a bordered/rounded card -- no more per-row
 // background box, no gap between rows, just a bottom border like an
 // inbox/list view.
-interface RestaurantCardProps {
+export interface RestaurantCardProps {
   restaurant: Restaurant;
   highlightQuery?: string;
   distanceMiles?: number | null;
@@ -48,6 +50,17 @@ interface RestaurantCardProps {
 }
 
 export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function RestaurantCard(
+  props,
+  ref
+) {
+  const { nativeInteractionsEnabled } = useAppSettings();
+  if (nativeInteractionsEnabled && Platform.OS === 'ios') {
+    return <NativeRestaurantResultRow ref={ref} {...props} />;
+  }
+  return <ClassicRestaurantCard ref={ref} {...props} />;
+});
+
+const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function ClassicRestaurantCard(
   { restaurant, highlightQuery, distanceMiles, onPress },
   ref
 ) {

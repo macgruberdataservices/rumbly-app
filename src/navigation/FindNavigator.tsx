@@ -34,7 +34,7 @@ export function FindNavigator() {
       <Stack.Screen
         name="RestaurantDetail"
         component={RestaurantDetailScreen}
-        options={{ headerShown: false }}
+        options={{ headerShown: false, gestureEnabled: false }}
       />
       <Stack.Screen
         name="NativeMenuPilot"

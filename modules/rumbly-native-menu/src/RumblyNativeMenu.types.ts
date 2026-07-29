@@ -4,6 +4,7 @@ import type {
 } from 'react-native';
 
 export interface NativeMenuItem {
+  anchorId: string;
   itemId: string;
   name: string;
   description: string | null;
@@ -32,11 +33,12 @@ export type NativeMenuAction =
 
 export interface RumblyNativeMenuViewRef {
   scrollToCategory(category: string): Promise<void>;
-  scrollToItem(itemId: string): Promise<void>;
+  scrollToItem(itemId: string, category: string): Promise<void>;
 }
 
 export interface RumblyNativeMenuViewProps extends ViewProps {
   sections: NativeMenuSection[];
+  targetAnchorId?: string | null;
   highlightedItemId?: string | null;
   bottomInset?: number;
   onAction?: (
@@ -51,4 +53,5 @@ export interface RumblyNativeMenuViewProps extends ViewProps {
   onScrollOffsetChange?: (
     event: NativeSyntheticEvent<{ offsetY: number }>
   ) => void;
+  onReady?: () => void;
 }

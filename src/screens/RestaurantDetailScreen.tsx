@@ -27,6 +27,10 @@ type Props = {
   route: { params: RestaurantDetailRouteParams };
   navigation: {
     goBack: () => void;
+    addListener: (
+      event: 'transitionEnd',
+      callback: (event: { data: { closing: boolean } }) => void
+    ) => () => void;
     navigate: (
       screen: 'NativeMenuPilot',
       params: {
@@ -68,6 +72,8 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   const [reducedMotion, setReducedMotion] = useState(false);
   const [capabilitySheet, setCapabilitySheet] = useState<CapabilityKind | null>(null);
   const [highlightedItemId, setHighlightedItemId] = useState<string | null>(null);
+  const [nativeMenuReady, setNativeMenuReady] = useState(false);
+  const [screenTransitionComplete, setScreenTransitionComplete] = useState(false);
 
   const scrollY = useRef(new Animated.Value(0)).current;
   const sectionListRef = useRef<SectionList<MenuItem, Section>>(null);
@@ -89,6 +95,14 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   // not a user tap on an already-settled list like onCategoryPress below).
   const lastScrollTargetRef = useRef<{ sectionIndex: number; itemIndex: number } | null>(null);
   const recordedViewRef = useRef<string | null>(null);
+
+  useEffect(
+    () =>
+      navigation.addListener('transitionEnd', ({ data }) => {
+        if (!data.closing) setScreenTransitionComplete(true);
+      }),
+    [navigation]
+  );
 
   useEffect(() => {
     if (!findFeedEnabled || !user) return;
@@ -161,6 +175,17 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
       .sort((a, b) => a[1].order - b[1].order)
       .map(([category, { items }], sectionIndex) => ({ title: category, sectionIndex, data: items }));
   }, [menuItems, selectedPeriod]);
+
+  const nativeTargetAnchorId = useMemo(() => {
+    if (!targetItemId || !targetCategory) return null;
+    const sectionIndex = sections.findIndex((section) => section.title === targetCategory);
+    if (sectionIndex === -1) return null;
+    const itemIndex = sections[sectionIndex].data.findIndex(
+      (item) => item.item_id === targetItemId
+    );
+    if (itemIndex === -1) return null;
+    return `${sectionIndex}:${itemIndex}:${targetItemId}`;
+  }, [sections, targetCategory, targetItemId]);
 
   // Reset the active-category index whenever the section set itself
   // changes (period switch) so a stale active index from the old period
@@ -293,11 +318,15 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   useEffect(() => {
     if (!useNativeMenu || sections.length === 0) return;
     scrollY.setValue(0);
+    // The persistent targetAnchorId owns initial positioning for a search
+    // result. Do not race it with the normal period-change initialization
+    // that returns an untargeted menu to its first section.
+    if (nativeTargetAnchorId) return;
     const frame = requestAnimationFrame(() => {
       void nativeMenuRef.current?.scrollToCategory(sections[0].title);
     });
     return () => cancelAnimationFrame(frame);
-  }, [scrollY, sections, selectedPeriod, useNativeMenu]);
+  }, [nativeTargetAnchorId, scrollY, sections, selectedPeriod, useNativeMenu]);
 
   // Milestone 5 search tap-through: once this restaurant's sections are
   // built for the (possibly search-requested) period, find the exact
@@ -311,6 +340,8 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     if (searchTargetConsumedRef.current) return;
     if (!targetItemId || !targetCategory) return;
     if (sections.length === 0) return;
+    if (useNativeMenu && !nativeMenuReady) return;
+    if (!screenTransitionComplete) return;
 
     const sectionIndex = sections.findIndex((s) => s.title === targetCategory);
     if (sectionIndex === -1) return;
@@ -326,25 +357,20 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     // mounts — deferred a tick so this doesn't race them the same way
     // onCategoryPress's own comment above describes.
     requestAnimationFrame(() => scrollChipIntoView(sectionIndex));
-    // Unlike onCategoryPress (a user tap on an already-settled list), this
-    // effect can fire on a completely fresh navigation, before SectionList
-    // has completed its first native layout pass at all. Calling
-    // scrollToLocation synchronously here threw a real "scrollToIndex
-    // should be used in conjunction with getItemLayout" render error in
-    // testing — confirmed via a real on-device repro (search "buffalo
-    // mac" → tap result → crash). A 50ms deferral still hit it often
-    // enough to log a console error before onScrollToIndexFailed's retry
-    // recovered — 150ms in further on-device testing avoids the failure
-    // path in the common case; onScrollToIndexFailed stays as the safety
-    // net for whatever's still not ready by then (slower devices, longer
-    // menus).
-    const scrollTimeout = setTimeout(() => {
-      if (useNativeMenu) {
-        void nativeMenuRef.current?.scrollToItem(targetItemId);
-      } else {
+    // The retained native target gets the destination across the bridge, but
+    // SwiftUI can discard that initial positioning while the navigation
+    // transition is still establishing the hosted view. Once both the native
+    // list and the screen transition explicitly report ready, issue the same
+    // fresh request used by a working category-pill tap. Native rows are
+    // eagerly laid out, so this is lifecycle-gated rather than delay-based.
+    let scrollTimeout: ReturnType<typeof setTimeout> | null = null;
+    if (useNativeMenu) {
+      void nativeMenuRef.current?.scrollToItem(targetItemId, targetCategory);
+    } else {
+      scrollTimeout = setTimeout(() => {
         scrollToSectionItem(sectionIndex, itemIndex, !reducedMotionRef.current);
-      }
-    }, 150);
+      }, 150);
+    }
     setHighlightedItemId(targetItemId);
     AccessibilityInfo.announceForAccessibility(`${targetItem.item}, selected search result`);
     const highlightTimeout = setTimeout(() => setHighlightedItemId(null), 2000);
@@ -360,7 +386,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     );
 
     return () => {
-      clearTimeout(scrollTimeout);
+      if (scrollTimeout) clearTimeout(scrollTimeout);
       clearTimeout(highlightTimeout);
     };
   }, [
@@ -369,6 +395,8 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     targetCategory,
     scrollChipIntoView,
     scrollToSectionItem,
+    nativeMenuReady,
+    screenTransitionComplete,
     useNativeMenu,
   ]);
 
@@ -468,8 +496,10 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
         <NativeRestaurantMenu
           ref={nativeMenuRef}
           sections={sections}
+          targetAnchorId={nativeTargetAnchorId}
           highlightedItemId={highlightedItemId}
           bottomInset={insets.bottom}
+          onReady={() => setNativeMenuReady(true)}
           onActiveCategoryChange={onNativeActiveCategoryChange}
           onScrollOffsetChange={(offsetY) => {
             scrollY.setValue(offsetY);

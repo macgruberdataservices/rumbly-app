@@ -103,7 +103,11 @@ export function MyRumblyNavigator() {
         component={ChallengeDetailScreen}
         options={{ headerShown: false }}
       />
-      <Stack.Screen name="RestaurantDetail" component={RestaurantDetailScreen} options={{ headerShown: false }} />
+      <Stack.Screen
+        name="RestaurantDetail"
+        component={RestaurantDetailScreen}
+        options={{ headerShown: false, gestureEnabled: false }}
+      />
     </Stack.Navigator>
   );
 }

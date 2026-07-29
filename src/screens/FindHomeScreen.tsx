@@ -210,7 +210,6 @@ export function FindHomeScreen({ navigation, route }: Props) {
     filters.dietary,
     allAllergyInSearch
   );
-
   isSearchActiveRef.current = isSearchActive;
 
   // Avoids flashing "No matches" during the debounce/index-load window --
@@ -421,6 +420,20 @@ export function FindHomeScreen({ navigation, route }: Props) {
     }).start();
   }, [feedDimReveal, feedDimmed]);
 
+  // Search results replace the browse-mode tree that owns the feed overlay.
+  // If that happens while the native-driver fade is still running (notably
+  // after choosing a recent search), the detached view can leave this shared
+  // Animated.Value between 0 and 1. Clearing the query then remounts a
+  // partially blurred feed even though feedDimmed is already false, so no
+  // dependency change exists to restart the fade. Snap the dormant overlay
+  // fully clear before browse mode can mount it again.
+  useEffect(() => {
+    if (isSearchActive) {
+      feedDimReveal.stopAnimation();
+      feedDimReveal.setValue(0);
+    }
+  }, [feedDimReveal, isSearchActive]);
+
   const resetListPosition = useCallback(() => {
     resultListOffsetRef.current = 0;
     resultListRef.current?.scrollToOffset({ offset: 0, animated: false });
@@ -450,6 +463,14 @@ export function FindHomeScreen({ navigation, route }: Props) {
   );
 
   const handleClearSearch = useCallback(() => {
+    // A populated FindFeed is expensive to reveal, so acknowledge the
+    // press directly in the native field before scheduling React's
+    // controlled-state update.
+    feedDimReveal.stopAnimation();
+    feedDimReveal.setValue(0);
+    searchInputRef.current?.clear();
+    searchInputRef.current?.blur();
+    Keyboard.dismiss();
     // Keyboard.dismiss() only hides the keyboard UI -- it doesn't blur the
     // TextInput itself, so the native input can still be considered
     // focused underneath. Without an explicit .blur() here, that stale
@@ -457,15 +478,13 @@ export function FindHomeScreen({ navigation, route }: Props) {
     // switching to Explore and back), re-showing recent searches with an
     // empty query even though setSearchInputFocused(false) already ran
     // once (found 2026-07-23).
-    searchInputRef.current?.blur();
-    Keyboard.dismiss();
     setSearchInputFocused(false);
+    clear();
     resetListPosition();
     clearFocusedResult();
     setShowAllResults(false);
     setFilterPanelState('hidden');
-    clear();
-  }, [clear, clearFocusedResult, resetListPosition]);
+  }, [clear, clearFocusedResult, feedDimReveal, resetListPosition]);
 
   const handleFiltersChange = useCallback(
     (nextFilters: SearchFilters) => {
@@ -907,7 +926,13 @@ export function FindHomeScreen({ navigation, route }: Props) {
             returnKeyType="search"
           />
           {(searchInputFocused || query.trim().length > 0) && (
-            <Pressable onPress={handleClearSearch} accessibilityLabel="Clear search" style={styles.clearButton}>
+            <Pressable
+              onPressIn={handleClearSearch}
+              accessibilityLabel="Clear search"
+              accessibilityRole="button"
+              hitSlop={8}
+              style={styles.clearButton}
+            >
               <Text style={styles.clearButtonText}>×</Text>
             </Pressable>
           )}
@@ -938,7 +963,8 @@ export function FindHomeScreen({ navigation, route }: Props) {
         </Pressable>
       </View>
 
-      {isSearchActive ? (
+      <View style={[styles.searchMode, !isSearchActive && styles.hiddenMode]}>
+        {isSearchActive && (
         results.length === 0 ? (
           <View style={styles.noResults}>
             {noResultsVisible ? (
@@ -991,19 +1017,23 @@ export function FindHomeScreen({ navigation, route }: Props) {
             )}
           </View>
         )
-      ) : (
-        <ScrollView
-          ref={browseScrollRef}
-          style={styles.resultList}
-          contentContainerStyle={styles.content}
-          stickyHeaderIndices={showRecentSearches ? [0] : undefined}
-          contentOffset={initialContentOffsetRef.current}
-          onScroll={handleScroll}
-          onScrollEndDrag={() => persistRestoreState()}
-          onMomentumScrollEnd={() => persistRestoreState()}
-          scrollEventThrottle={16}
-          keyboardShouldPersistTaps="handled"
-        >
+        )}
+      </View>
+
+      <ScrollView
+        ref={browseScrollRef}
+        style={[styles.resultList, isSearchActive && styles.hiddenMode]}
+        contentContainerStyle={styles.content}
+        stickyHeaderIndices={showRecentSearches ? [0] : undefined}
+        contentOffset={initialContentOffsetRef.current}
+        onScroll={handleScroll}
+        onScrollEndDrag={() => persistRestoreState()}
+        onMomentumScrollEnd={() => persistRestoreState()}
+        scrollEventThrottle={16}
+        keyboardShouldPersistTaps="handled"
+        accessibilityElementsHidden={isSearchActive}
+        importantForAccessibility={isSearchActive ? 'no-hide-descendants' : 'auto'}
+      >
           <View style={styles.recentStickyShell}>
             <Animated.View
               pointerEvents={showRecentSearches ? 'auto' : 'none'}
@@ -1109,8 +1139,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
               </Animated.View>
             </View>
           )}
-        </ScrollView>
-      )}
+      </ScrollView>
 
       <FilterPanel
         filters={filters}
@@ -1298,6 +1327,12 @@ const styles = StyleSheet.create({
   },
   resultList: {
     flex: 1,
+  },
+  searchMode: {
+    flex: 1,
+  },
+  hiddenMode: {
+    display: 'none',
   },
   searchResults: { flex: 1 },
   stickyLocationOverlay: {

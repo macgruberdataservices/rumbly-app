@@ -18,7 +18,7 @@ type NativeProps = Omit<RumblyNativeMenuViewProps, 'sections'> & {
 
 interface NativeRef {
   scrollToCategory(category: string): Promise<void>;
-  scrollToItem(itemId: string): Promise<void>;
+  scrollToItem(itemId: string, category: string): Promise<void>;
 }
 
 const NativeView = requireNativeViewManager<NativeProps>('RumblyNativeMenu');
@@ -35,8 +35,8 @@ export const RumblyNativeMenuView = forwardRef<
     () => ({
       scrollToCategory: (category) =>
         nativeRef.current?.scrollToCategory(category) ?? Promise.resolve(),
-      scrollToItem: (itemId) =>
-        nativeRef.current?.scrollToItem(itemId) ?? Promise.resolve(),
+      scrollToItem: (itemId, category) =>
+        nativeRef.current?.scrollToItem(itemId, category) ?? Promise.resolve(),
     }),
     []
   );
