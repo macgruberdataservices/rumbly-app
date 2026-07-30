@@ -1,11 +1,17 @@
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react';
 import DateTimePicker from '@expo/ui/community/datetime-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import * as ImagePicker from 'expo-image-picker';
+import * as MediaLibrary from 'expo-media-library';
+import { uuid } from 'expo-modules-core';
 import {
   ActivityIndicator,
   Alert,
   FlatList,
+  Image,
   KeyboardAvoidingView,
+  Linking,
   Modal,
   Platform,
   Pressable,
@@ -16,13 +22,24 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { JournalEntryDraft } from '../../data/journal';
+import {
+  MAX_JOURNAL_PHOTOS,
+  type JournalEntryDraft,
+  type JournalPhoto,
+  type StagedJournalPhoto,
+} from '../../data/journal';
 import {
   dateFromVisitDate,
   formatVisitDateLong,
   visitDateFromDate,
 } from '../../data/journalDate';
 import { createJournalIdentifiers } from '../../data/journalIds';
+import { journalDraftFingerprint } from '../../data/journalDraft';
+import {
+  deleteLocalStagedJournalPhoto,
+  listLocalStagedJournalPhotos,
+  saveLocalStagedJournalPhoto,
+} from '../../data/journalStore';
 import { isActionableMenuItem } from '../../data/isActionableMenuItem';
 import type { Restaurant, SearchIndexEntry } from '../../data/types';
 import { useActivity } from '../../hooks/useActivity';
@@ -32,6 +49,12 @@ import { useEntitlement } from '../../hooks/useEntitlement';
 import { useJournal } from '../../hooks/useJournal';
 import type { AppRootStackParamList } from '../../navigation/journalTypes';
 import { loadSearchIndex } from '../../search/searchIndexLoader';
+import {
+  deleteSavedJournalPhotoFiles,
+  deleteStagedJournalPhotoFiles,
+  resolveJournalPhotoThumbnailUri,
+  stageJournalPhoto,
+} from '../../media/journalPhotoStorage';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
@@ -47,6 +70,7 @@ type TargetResult =
     };
 
 const COMMON_MEAL_PERIODS = ['Breakfast', 'Lunch', 'Dinner', 'Snacks'];
+const PENDING_PHOTO_SOURCE_KEY = 'journal.pendingPhotoSource';
 
 function normalize(value: string): string {
   return value
@@ -67,6 +91,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
     discardDraft,
     entries,
     latestDraft,
+    photos,
     saveDraft,
     updateEntry,
     isJournalEnabled,
@@ -120,6 +145,16 @@ export function JournalComposerScreen({ navigation, route }: Props) {
   const [targetQuery, setTargetQuery] = useState('');
   const deferredTargetQuery = useDeferredValue(targetQuery);
   const [androidDateVisible, setAndroidDateVisible] = useState(false);
+  const [iosDateVisible, setIosDateVisible] = useState(false);
+  const [pendingIosDate, setPendingIosDate] = useState(() =>
+    dateFromVisitDate(initial?.visitedOn ?? visitDateFromDate(new Date()))
+  );
+  const [stagedPhotos, setStagedPhotos] = useState<StagedJournalPhoto[]>([]);
+  const [removedPhotoIds, setRemovedPhotoIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [stagedPhotosLoaded, setStagedPhotosLoaded] = useState(false);
+  const [processingPhotos, setProcessingPhotos] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [draftStatus, setDraftStatus] = useState<'idle' | 'saving' | 'saved'>(
@@ -127,10 +162,30 @@ export function JournalComposerScreen({ navigation, route }: Props) {
   );
   const submittingRef = useRef(false);
   const draftSavePromiseRef = useRef<Promise<void>>(Promise.resolve());
+  const queuedDraftFingerprintRef = useRef<string | null>(
+    resumedDraft ? journalDraftFingerprint(resumedDraft) : null
+  );
   const exitAllowedRef = useRef(false);
   const restaurantById = useMemo(
     () => new Map(restaurants.map((restaurant) => [restaurant.restaurant_id, restaurant])),
     [restaurants]
+  );
+  const savedPhotos = useMemo(
+    () =>
+      editingEntry
+        ? photos
+            .filter(
+              (photo) =>
+                photo.entryId === editingEntry.id && !removedPhotoIds.has(photo.id)
+            )
+            .sort((left, right) => left.position - right.position)
+        : [],
+    [editingEntry, photos, removedPhotoIds]
+  );
+  const photoCount = savedPhotos.length + stagedPhotos.length;
+  const selectedPhotoIds = useMemo(
+    () => [...savedPhotos.map((photo) => photo.id), ...stagedPhotos.map((photo) => photo.id)],
+    [savedPhotos, stagedPhotos]
   );
 
   useEffect(() => {
@@ -144,6 +199,40 @@ export function JournalComposerScreen({ navigation, route }: Props) {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    listLocalStagedJournalPhotos(user.id, identifiers.entryId)
+      .then((photos) => {
+        if (!cancelled) {
+          setStagedPhotos(photos);
+          setStagedPhotosLoaded(true);
+        }
+      })
+      .catch((error) => {
+        console.warn('Journal staged photos failed to load:', error);
+        if (!cancelled) setStagedPhotosLoaded(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [identifiers.entryId, user]);
+
+  useEffect(() => {
+    if (!user || !stagedPhotosLoaded) return;
+    ImagePicker.getPendingResultAsync()
+      .then(async (result) => {
+        if (!result || 'code' in result || result.canceled) return;
+        const source = await AsyncStorage.getItem(PENDING_PHOTO_SOURCE_KEY);
+        await AsyncStorage.removeItem(PENDING_PHOTO_SOURCE_KEY);
+        await addPickedAssets(result.assets, source === 'camera');
+      })
+      .catch((error) => console.warn('Journal pending photo recovery failed:', error));
+    // Android only returns a pending result once. The identifiers and current
+    // staged-photo state are captured by addPickedAssets for this composer.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [identifiers.entryId, stagedPhotosLoaded, user]);
 
   useEffect(() => {
     if (!restaurantId || restaurantName) return;
@@ -174,7 +263,13 @@ export function JournalComposerScreen({ navigation, route }: Props) {
   }, [mealPeriod, selectedRestaurant]);
 
   const draft = useMemo<JournalEntryDraft | null>(() => {
-    if (!user || !isJournalEnabled || !restaurantId || !restaurantName) return null;
+    if (
+      !user
+      || !isJournalEnabled
+      || !restaurantId
+      || !restaurantName
+      || !stagedPhotosLoaded
+    ) return null;
     return {
       id: identifiers.entryId,
       userId: user.id,
@@ -191,7 +286,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
         : editingEntry
           ? existingRating
           : resumedDraft?.rating ?? null,
-      photoIds: [],
+      photoIds: selectedPhotoIds,
       updatedAt: new Date().toISOString(),
     };
   }, [
@@ -209,12 +304,18 @@ export function JournalComposerScreen({ navigation, route }: Props) {
     resumedDraft,
     restaurantId,
     restaurantName,
+    selectedPhotoIds,
+    stagedPhotos,
+    stagedPhotosLoaded,
     user,
     visitedOn,
   ]);
 
   useEffect(() => {
     if (!draft || submitting) return;
+    const fingerprint = journalDraftFingerprint(draft);
+    if (queuedDraftFingerprintRef.current === fingerprint) return;
+    queuedDraftFingerprintRef.current = fingerprint;
     setDraftStatus('saving');
     const timeout = setTimeout(() => {
       if (submittingRef.current) return;
@@ -222,6 +323,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
         .then(() => setDraftStatus('saved'))
         .catch((error) => {
           console.warn('Journal draft autosave failed:', error);
+          queuedDraftFingerprintRef.current = null;
           setDraftStatus('idle');
         });
       draftSavePromiseRef.current = savePromise;
@@ -311,6 +413,150 @@ export function JournalComposerScreen({ navigation, route }: Props) {
     setTargetPickerVisible(false);
   };
 
+  const confirmKeepWithoutLibraryCopy = (): Promise<boolean> =>
+    new Promise((resolve) => {
+      Alert.alert(
+        'Keep this photo in your Journal?',
+        'Rumbly could not save a separate original to Photos. You can keep the optimized private Journal copy or open Settings.',
+        [
+          { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: 'Open Settings',
+            onPress: () => {
+              Linking.openSettings().catch(() => {});
+              resolve(false);
+            },
+          },
+          { text: 'Keep in Journal only', onPress: () => resolve(true) },
+        ]
+      );
+    });
+
+  const preserveCameraOriginal = async (uri: string): Promise<boolean> => {
+    const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+    if (!permission.granted) return confirmKeepWithoutLibraryCopy();
+    try {
+      await MediaLibrary.Asset.create(uri);
+      return true;
+    } catch (error) {
+      console.warn('Journal camera original could not be saved:', error);
+      return confirmKeepWithoutLibraryCopy();
+    }
+  };
+
+  const addPickedAssets = async (
+    assets: ImagePicker.ImagePickerAsset[],
+    fromCamera: boolean
+  ) => {
+    if (!user || processingPhotos) return;
+    const available = MAX_JOURNAL_PHOTOS - photoCount;
+    const selected = assets.slice(0, available);
+    if (selected.length === 0) return;
+    setProcessingPhotos(true);
+    setSaveError(null);
+    try {
+      const next = [...stagedPhotos];
+      for (const asset of selected) {
+        if (fromCamera && !(await preserveCameraOriginal(asset.uri))) continue;
+        const photo = await stageJournalPhoto({
+          id: uuid.v4(),
+          userId: user.id,
+          draftId: identifiers.entryId,
+          position: next.length,
+          sourceUri: asset.uri,
+          width: asset.width,
+          height: asset.height,
+        });
+        await saveLocalStagedJournalPhoto(photo);
+        next.push(photo);
+      }
+      setStagedPhotos(next);
+    } catch (error) {
+      setSaveError(
+        error instanceof Error ? error.message : 'The selected photo could not be prepared.'
+      );
+    } finally {
+      await AsyncStorage.removeItem(PENDING_PHOTO_SOURCE_KEY);
+      setProcessingPhotos(false);
+    }
+  };
+
+  const takePhoto = async () => {
+    const permission = await ImagePicker.requestCameraPermissionsAsync();
+    if (!permission.granted) {
+      Alert.alert(
+        'Camera access is off',
+        'Allow camera access in Settings to take a Journal photo.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => Linking.openSettings().catch(() => {}) },
+        ]
+      );
+      return;
+    }
+    await AsyncStorage.setItem(PENDING_PHOTO_SOURCE_KEY, 'camera');
+    const result = await ImagePicker.launchCameraAsync({
+      mediaTypes: ['images'],
+      quality: 1,
+      exif: false,
+    });
+    if (!result.canceled) await addPickedAssets(result.assets, true);
+    else await AsyncStorage.removeItem(PENDING_PHOTO_SOURCE_KEY);
+  };
+
+  const choosePhotos = async () => {
+    await AsyncStorage.setItem(PENDING_PHOTO_SOURCE_KEY, 'library');
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ['images'],
+      allowsMultipleSelection: true,
+      orderedSelection: true,
+      selectionLimit: MAX_JOURNAL_PHOTOS - photoCount,
+      quality: 1,
+      exif: false,
+    });
+    if (!result.canceled) await addPickedAssets(result.assets, false);
+    else await AsyncStorage.removeItem(PENDING_PHOTO_SOURCE_KEY);
+  };
+
+  const showPhotoSource = () => {
+    if (!restaurantId) {
+      setSaveError('Choose a restaurant before adding photos.');
+      return;
+    }
+    Alert.alert('Add photos', 'Choose where your Journal photos come from.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Take Photo', onPress: () => takePhoto().catch(handlePhotoError) },
+      { text: 'Choose from Library', onPress: () => choosePhotos().catch(handlePhotoError) },
+    ]);
+  };
+
+  const handlePhotoError = (error: unknown) => {
+    console.warn('Journal photo selection failed:', error);
+    AsyncStorage.removeItem(PENDING_PHOTO_SOURCE_KEY).catch(() => {});
+    setProcessingPhotos(false);
+    setSaveError('The photo picker could not be opened.');
+  };
+
+  const removePhoto = async (photo: StagedJournalPhoto) => {
+    await deleteLocalStagedJournalPhoto(photo.userId, photo.id);
+    deleteStagedJournalPhotoFiles(photo);
+    const remaining = stagedPhotos
+      .filter((candidate) => candidate.id !== photo.id)
+      .map((candidate, position) => ({ ...candidate, position }));
+    for (const remainingPhoto of remaining) {
+      await saveLocalStagedJournalPhoto(remainingPhoto);
+    }
+    setStagedPhotos(remaining);
+  };
+
+  const removeSavedPhoto = (photo: JournalPhoto) => {
+    setRemovedPhotoIds((current) => {
+      const next = new Set(current);
+      next.add(photo.id);
+      return next;
+    });
+  };
+
   const handleSave = async () => {
     if (!user || !restaurantId || !restaurantName || submitting) {
       setSaveError('Choose a restaurant before saving.');
@@ -329,7 +575,14 @@ export function JournalComposerScreen({ navigation, route }: Props) {
           mealPeriodSnapshot: mealPeriod,
           note: note.trim() || null,
           rating: ratingsEnabled ? rating : existingRating,
+          photoIds: selectedPhotoIds,
         });
+        photos
+          .filter(
+            (photo) =>
+              photo.entryId === editingEntry.id && removedPhotoIds.has(photo.id)
+          )
+          .forEach(deleteSavedJournalPhotoFiles);
       } else {
         await createEntry({
           id: identifiers.entryId,
@@ -343,7 +596,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
           mealPeriodSnapshot: mealPeriod,
           note: note.trim() || null,
           rating: ratingsEnabled ? rating : null,
-          photoIds: [],
+          photoIds: stagedPhotos.map((photo) => photo.id),
         });
       }
       exitAllowedRef.current = true;
@@ -384,10 +637,17 @@ export function JournalComposerScreen({ navigation, route }: Props) {
       await draftSavePromiseRef.current;
       await deleteEntry(editingEntry.id, mode);
       exitAllowedRef.current = true;
-      navigation.navigate('MainTabs', {
-        screen: 'Journal',
-        params: { screen: 'JournalHome' },
-      });
+      // A single goBack() reliably dismisses this modal, revealing
+      // whichever screen opened it -- for the only entry point that can
+      // reach a delete (JournalEntryDetail's "Edit entry"), that screen
+      // now reacts to its own entry having disappeared and navigates
+      // itself away, rather than this screen trying to reach across the
+      // app to fix up a different screen's navigation state. Dispatching
+      // a second navigation action here (an earlier attempt at this)
+      // raced against the modal's own dismissal and could leave it not
+      // fully torn down, so the next time it opened it reused the same
+      // stale instance instead of remounting fresh.
+      navigation.goBack();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'The entry could not be deleted.');
       setSubmitting(false);
@@ -404,6 +664,12 @@ export function JournalComposerScreen({ navigation, route }: Props) {
         onPress: async () => {
           submittingRef.current = true;
           await draftSavePromiseRef.current;
+          await Promise.all(
+            stagedPhotos.map(async (photo) => {
+              await deleteLocalStagedJournalPhoto(photo.userId, photo.id);
+              deleteStagedJournalPhotoFiles(photo);
+            })
+          );
           await discardDraft(identifiers.entryId);
           exitAllowedRef.current = true;
           navigation.goBack();
@@ -428,6 +694,8 @@ export function JournalComposerScreen({ navigation, route }: Props) {
               exitAllowedRef.current = true;
               navigation.goBack();
             }}
+            accessibilityRole="button"
+            accessibilityLabel="Close"
           >
             <Text style={styles.saveLabel}>Close</Text>
           </Pressable>
@@ -443,12 +711,17 @@ export function JournalComposerScreen({ navigation, route }: Props) {
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
       >
         <View style={styles.header}>
-          <Pressable style={styles.headerButton} onPress={() => navigation.goBack()}>
+          <Pressable
+            style={styles.headerButton}
+            onPress={() => navigation.goBack()}
+            accessibilityRole="button"
+            accessibilityLabel="Close composer"
+          >
             <Text style={styles.cancelLabel}>Close</Text>
           </Pressable>
           <View style={styles.headerTitle}>
             <Text style={styles.title}>{editingEntry ? 'Edit entry' : 'New entry'}</Text>
-            <Text style={styles.draftStatus}>
+            <Text style={styles.draftStatus} accessibilityLiveRegion="polite">
               {draftStatus === 'saving'
                 ? 'Saving draft…'
                 : draftStatus === 'saved'
@@ -460,6 +733,9 @@ export function JournalComposerScreen({ navigation, route }: Props) {
             style={[styles.headerButton, styles.saveButton, submitting && styles.disabled]}
             onPress={handleSave}
             disabled={submitting}
+            accessibilityRole="button"
+            accessibilityLabel="Save Journal entry"
+            accessibilityState={{ disabled: submitting, busy: submitting }}
           >
             {submitting ? (
               <ActivityIndicator color={COLORS.ink} />
@@ -481,6 +757,13 @@ export function JournalComposerScreen({ navigation, route }: Props) {
                 setTargetQuery('');
                 setTargetPickerVisible(true);
               }}
+              accessibilityRole="button"
+              accessibilityLabel={
+                restaurantId
+                  ? `Change target: ${itemName ?? restaurantName}`
+                  : 'Choose a restaurant or menu item'
+              }
+              accessibilityState={{ disabled: !!editingEntry }}
             >
               {restaurantId ? (
                 <View style={styles.targetCopy}>
@@ -502,23 +785,21 @@ export function JournalComposerScreen({ navigation, route }: Props) {
           <ComposerSection title="Visit date">
             <View style={styles.dateRow}>
               <Text style={styles.dateLabel}>{formatVisitDateLong(visitedOn)}</Text>
-              {Platform.OS === 'ios' ? (
-                <DateTimePicker
-                  value={dateFromVisitDate(visitedOn)}
-                  mode="date"
-                  display="compact"
-                  maximumDate={new Date()}
-                  accentColor={COLORS.forest}
-                  onValueChange={(_event, date) => setVisitedOn(visitDateFromDate(date))}
-                />
-              ) : (
-                <Pressable
-                  style={styles.changeDateButton}
-                  onPress={() => setAndroidDateVisible(true)}
-                >
-                  <Text style={styles.changeDateLabel}>Change</Text>
-                </Pressable>
-              )}
+              <Pressable
+                style={styles.changeDateButton}
+                onPress={() => {
+                  if (Platform.OS === 'ios') {
+                    setPendingIosDate(dateFromVisitDate(visitedOn));
+                    setIosDateVisible(true);
+                  } else {
+                    setAndroidDateVisible(true);
+                  }
+                }}
+                accessibilityRole="button"
+                accessibilityLabel={`Change visit date, currently ${formatVisitDateLong(visitedOn)}`}
+              >
+                <Text style={styles.changeDateLabel}>Change</Text>
+              </Pressable>
             </View>
             {Platform.OS === 'android' && androidDateVisible && (
               <DateTimePicker
@@ -537,7 +818,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
           </ComposerSection>
 
           <ComposerSection title="Meal context" optional>
-            <View style={styles.chips}>
+            <View style={styles.chips} accessibilityRole="radiogroup">
               <MealChip label="None" selected={mealPeriod === null} onPress={() => setMealPeriod(null)} />
               {mealPeriods.map((period) => (
                 <MealChip
@@ -573,7 +854,11 @@ export function JournalComposerScreen({ navigation, route }: Props) {
                   })}
                 </View>
                 {rating !== null && (
-                  <Pressable onPress={() => setRating(null)}>
+                  <Pressable
+                    onPress={() => setRating(null)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Clear rating"
+                  >
                     <Text style={styles.clearRating}>Clear rating</Text>
                   </Pressable>
                 )}
@@ -593,25 +878,135 @@ export function JournalComposerScreen({ navigation, route }: Props) {
               textAlignVertical="top"
               placeholder="What stood out? Would you order it again?"
               placeholderTextColor={COLORS.dim}
+              accessibilityLabel="Journal note"
             />
             <Text style={styles.characterCount}>{note.length}/4000</Text>
+          </ComposerSection>
+
+          <ComposerSection title="Photos" optional>
+            <View style={styles.photoGrid}>
+              {savedPhotos.map((photo) => {
+                const thumbnailUri = resolveJournalPhotoThumbnailUri(photo);
+                if (!thumbnailUri) return null;
+                return (
+                  <View key={photo.id} style={styles.photoTile}>
+                    <Image source={{ uri: thumbnailUri }} style={styles.photoThumbnail} />
+                    <Pressable
+                      style={styles.removePhotoButton}
+                      onPress={() => removeSavedPhoto(photo)}
+                      accessibilityRole="button"
+                      accessibilityLabel="Remove saved Journal photo"
+                    >
+                      <Text style={styles.removePhotoLabel}>×</Text>
+                    </Pressable>
+                  </View>
+                );
+              })}
+              {stagedPhotos.map((photo) => (
+                <View key={photo.id} style={styles.photoTile}>
+                  <Image source={{ uri: photo.thumbnailUri }} style={styles.photoThumbnail} />
+                  <Pressable
+                    style={styles.removePhotoButton}
+                    onPress={() => removePhoto(photo).catch(handlePhotoError)}
+                    accessibilityRole="button"
+                    accessibilityLabel="Remove Journal photo"
+                  >
+                    <Text style={styles.removePhotoLabel}>×</Text>
+                  </Pressable>
+                </View>
+              ))}
+              {photoCount < MAX_JOURNAL_PHOTOS && (
+                <Pressable
+                  style={styles.addPhotoButton}
+                  onPress={showPhotoSource}
+                  disabled={processingPhotos || !restaurantId}
+                  accessibilityRole="button"
+                  accessibilityLabel="Add Journal photos"
+                >
+                  {processingPhotos ? (
+                    <ActivityIndicator color={COLORS.forest} />
+                  ) : (
+                    <>
+                      <Text style={styles.addPhotoPlus}>＋</Text>
+                      <Text style={styles.addPhotoLabel}>Add</Text>
+                    </>
+                  )}
+                </Pressable>
+              )}
+            </View>
+            <Text style={styles.helpText}>
+              {restaurantId
+                ? `${photoCount}/${MAX_JOURNAL_PHOTOS} · Rumbly keeps optimized private copies to reduce storage use.`
+                : 'Choose a restaurant before adding photos.'}
+            </Text>
           </ComposerSection>
 
           {!!saveError && <Text style={styles.error}>{saveError}</Text>}
 
           {editingEntry ? (
-            <Pressable style={styles.destructiveButton} onPress={handleDelete}>
+            <Pressable
+              style={styles.destructiveButton}
+              onPress={handleDelete}
+              accessibilityRole="button"
+              accessibilityLabel="Delete this Journal entry"
+            >
               <Text style={styles.destructiveLabel}>Delete entry…</Text>
             </Pressable>
           ) : (
             draft && (
-              <Pressable style={styles.discardButton} onPress={handleDiscardDraft}>
+              <Pressable
+                style={styles.discardButton}
+                onPress={handleDiscardDraft}
+                accessibilityRole="button"
+                accessibilityLabel="Discard this draft"
+              >
                 <Text style={styles.discardLabel}>Discard draft</Text>
               </Pressable>
             )
           )}
         </ScrollView>
       </KeyboardAvoidingView>
+
+      <Modal
+        visible={iosDateVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setIosDateVisible(false)}
+      >
+        <View style={styles.dateModalBackdrop}>
+          <View style={styles.dateModalCard}>
+            <View style={styles.dateModalHeader}>
+              <Pressable
+                onPress={() => setIosDateVisible(false)}
+                accessibilityRole="button"
+                accessibilityLabel="Cancel"
+              >
+                <Text style={styles.dateModalAction}>Cancel</Text>
+              </Pressable>
+              <Text style={styles.dateModalTitle}>Visit date</Text>
+              <Pressable
+                onPress={() => {
+                  setVisitedOn(visitDateFromDate(pendingIosDate));
+                  setIosDateVisible(false);
+                }}
+                accessibilityRole="button"
+                accessibilityLabel="Done"
+              >
+                <Text style={styles.dateModalAction}>Done</Text>
+              </Pressable>
+            </View>
+            <DateTimePicker
+              style={styles.iosDatePicker}
+              value={pendingIosDate}
+              mode="date"
+              display="spinner"
+              maximumDate={new Date()}
+              accentColor={COLORS.forest}
+              onValueChange={(_event, date) => setPendingIosDate(date)}
+            />
+          </View>
+        </View>
+      </Modal>
 
       <Modal
         visible={targetPickerVisible}
@@ -622,7 +1017,11 @@ export function JournalComposerScreen({ navigation, route }: Props) {
         <SafeAreaView style={styles.pickerContainer} edges={['top', 'bottom']}>
           <View style={styles.pickerHeader}>
             <Text style={styles.pickerTitle}>Choose what to journal</Text>
-            <Pressable onPress={() => setTargetPickerVisible(false)}>
+            <Pressable
+              onPress={() => setTargetPickerVisible(false)}
+              accessibilityRole="button"
+              accessibilityLabel="Done"
+            >
               <Text style={styles.doneLabel}>Done</Text>
             </Pressable>
           </View>
@@ -704,6 +1103,7 @@ function MealChip({
       style={[styles.chip, selected && styles.chipSelected]}
       onPress={onPress}
       accessibilityRole="radio"
+      accessibilityLabel={label}
       accessibilityState={{ checked: selected }}
     >
       <Text style={[styles.chipLabel, selected && styles.chipLabelSelected]}>{label}</Text>
@@ -721,7 +1121,12 @@ function TargetRow({
   onPress: () => void;
 }) {
   return (
-    <Pressable style={({ pressed }) => [styles.targetRow, pressed && styles.pressed]} onPress={onPress}>
+    <Pressable
+      style={({ pressed }) => [styles.targetRow, pressed && styles.pressed]}
+      onPress={onPress}
+      accessibilityRole="button"
+      accessibilityLabel={`${title}, ${subtitle}`}
+    >
       <View style={styles.targetCopy}>
         <Text style={styles.targetTitle}>{title}</Text>
         <Text style={text.bodyMuted}>{subtitle}</Text>
@@ -787,6 +1192,38 @@ const styles = StyleSheet.create({
   chevron: { fontFamily: FONT_FAMILY.interRegular, fontSize: 27, color: COLORS.forest },
   helpText: { ...text.bodyMuted, marginTop: SPACING.sm, lineHeight: 18 },
   dateRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center' },
+  iosDatePicker: { width: '100%', height: 210 },
+  dateModalBackdrop: {
+    flex: 1,
+    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(18, 34, 31, 0.32)',
+  },
+  dateModalCard: {
+    paddingBottom: SPACING.xl,
+    borderTopLeftRadius: RADII.lg,
+    borderTopRightRadius: RADII.lg,
+    backgroundColor: COLORS.surface,
+  },
+  dateModalHeader: {
+    minHeight: 54,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: SPACING.lg,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: COLORS.border,
+  },
+  dateModalTitle: {
+    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontSize: 18,
+    color: COLORS.ink,
+  },
+  dateModalAction: {
+    minWidth: 52,
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 14,
+    color: COLORS.forest,
+  },
   dateLabel: { flex: 1, fontFamily: FONT_FAMILY.workSansBold, fontSize: 15, color: COLORS.ink },
   changeDateButton: {
     minHeight: 38,
@@ -818,6 +1255,44 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.muted,
     textAlign: 'center',
+  },
+  photoGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  photoTile: {
+    width: 84,
+    height: 84,
+    borderRadius: RADII.sm,
+    overflow: 'hidden',
+    backgroundColor: COLORS.cream,
+  },
+  photoThumbnail: { width: '100%', height: '100%' },
+  removePhotoButton: {
+    position: 'absolute',
+    top: 4,
+    right: 4,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(18, 34, 31, 0.82)',
+  },
+  removePhotoLabel: { color: COLORS.surface, fontSize: 22, lineHeight: 24 },
+  addPhotoButton: {
+    width: 84,
+    height: 84,
+    borderWidth: 1,
+    borderStyle: 'dashed',
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: COLORS.cream,
+  },
+  addPhotoPlus: { fontSize: 25, lineHeight: 28, color: COLORS.forest },
+  addPhotoLabel: {
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 11,
+    color: COLORS.muted,
   },
   noteInput: {
     minHeight: 150,

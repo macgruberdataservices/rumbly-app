@@ -1,5 +1,6 @@
-import { StyleSheet, Text, View } from 'react-native';
-import type { JournalEntry } from '../../data/journal';
+import { Image, StyleSheet, Text, View } from 'react-native';
+import type { JournalEntry, JournalPhoto } from '../../data/journal';
+import { resolveJournalPhotoThumbnailUri } from '../../media/journalPhotoStorage';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
@@ -18,10 +19,12 @@ export function JournalEntryCard({
   entry,
   rating,
   showTarget = true,
+  photos = [],
 }: {
   entry: JournalEntry;
   rating: number | null;
   showTarget?: boolean;
+  photos?: JournalPhoto[];
 }) {
   const target = entry.itemNameSnapshot ?? entry.restaurantNameSnapshot;
   const context = [entry.mealPeriodSnapshot, formatVisitDate(entry.visitedOn)]
@@ -40,6 +43,22 @@ export function JournalEntryCard({
         )}
       </View>
       {!!entry.note && <Text style={styles.note}>{entry.note}</Text>}
+      {photos.length > 0 && (
+        <View style={styles.photoRow}>
+          {photos.slice(0, 3).map((photo) => (
+            <Image
+              key={photo.id}
+              source={{ uri: resolveJournalPhotoThumbnailUri(photo) }}
+              style={styles.photo}
+            />
+          ))}
+          {photos.length > 3 && (
+            <View style={[styles.photo, styles.morePhotos]}>
+              <Text style={styles.morePhotosLabel}>+{photos.length - 3}</Text>
+            </View>
+          )}
+        </View>
+      )}
       {entry.syncState === 'failed' && (
         <Text style={styles.syncError}>Saved here · Sync needs attention</Text>
       )}
@@ -78,6 +97,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 21,
     color: COLORS.ink,
+  },
+  photoRow: { flexDirection: 'row', gap: SPACING.sm },
+  photo: {
+    width: 72,
+    height: 72,
+    borderRadius: RADII.sm,
+    backgroundColor: COLORS.cream,
+  },
+  morePhotos: { alignItems: 'center', justifyContent: 'center' },
+  morePhotosLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 14,
+    color: COLORS.muted,
   },
   syncError: {
     fontFamily: FONT_FAMILY.workSansExtraBold,

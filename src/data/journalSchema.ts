@@ -1,6 +1,6 @@
 import type { SqlDatabase } from './sqlDatabase.ts';
 
-export const JOURNAL_LOCAL_SCHEMA_VERSION = 1;
+export const JOURNAL_LOCAL_SCHEMA_VERSION = 2;
 
 export const JOURNAL_SCHEMA_SQL = `
   CREATE TABLE IF NOT EXISTS journal_metadata (
@@ -42,6 +42,7 @@ export const JOURNAL_SCHEMA_SQL = `
     user_id TEXT NOT NULL,
     entry_id TEXT NOT NULL,
     local_uri TEXT,
+    local_thumbnail_uri TEXT,
     display_path TEXT,
     thumbnail_path TEXT,
     position INTEGER NOT NULL CHECK (position >= 0 AND position < 6),
@@ -63,6 +64,24 @@ export const JOURNAL_SCHEMA_SQL = `
   CREATE UNIQUE INDEX IF NOT EXISTS idx_journal_photos_active_position
     ON journal_photos(entry_id, position)
     WHERE deleted_at IS NULL;
+
+  CREATE TABLE IF NOT EXISTS journal_staged_photos (
+    id TEXT PRIMARY KEY NOT NULL,
+    user_id TEXT NOT NULL,
+    draft_id TEXT NOT NULL,
+    position INTEGER NOT NULL CHECK (position >= 0 AND position < 6),
+    display_uri TEXT NOT NULL,
+    thumbnail_uri TEXT NOT NULL,
+    width INTEGER NOT NULL CHECK (width > 0),
+    height INTEGER NOT NULL CHECK (height > 0),
+    display_bytes INTEGER NOT NULL CHECK (display_bytes >= 0),
+    thumbnail_bytes INTEGER NOT NULL CHECK (thumbnail_bytes >= 0),
+    created_at TEXT NOT NULL,
+    UNIQUE (draft_id, position)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_journal_staged_photos_user_draft
+    ON journal_staged_photos(user_id, draft_id, position);
 
   CREATE TABLE IF NOT EXISTS journal_drafts (
     id TEXT PRIMARY KEY NOT NULL,
@@ -130,6 +149,30 @@ export async function ensureJournalSchema(db: SqlDatabase): Promise<void> {
   if (storedVersion > JOURNAL_LOCAL_SCHEMA_VERSION) {
     throw new Error(
       `Journal local schema ${storedVersion} is newer than supported version ${JOURNAL_LOCAL_SCHEMA_VERSION}.`
+    );
+  }
+  if (storedVersion < 2) {
+    await db.execAsync(`
+      ALTER TABLE journal_photos ADD COLUMN local_thumbnail_uri TEXT;
+      CREATE TABLE IF NOT EXISTS journal_staged_photos (
+        id TEXT PRIMARY KEY NOT NULL,
+        user_id TEXT NOT NULL,
+        draft_id TEXT NOT NULL,
+        position INTEGER NOT NULL CHECK (position >= 0 AND position < 6),
+        display_uri TEXT NOT NULL,
+        thumbnail_uri TEXT NOT NULL,
+        width INTEGER NOT NULL CHECK (width > 0),
+        height INTEGER NOT NULL CHECK (height > 0),
+        display_bytes INTEGER NOT NULL CHECK (display_bytes >= 0),
+        thumbnail_bytes INTEGER NOT NULL CHECK (thumbnail_bytes >= 0),
+        created_at TEXT NOT NULL,
+        UNIQUE (draft_id, position)
+      );
+      CREATE INDEX IF NOT EXISTS idx_journal_staged_photos_user_draft
+        ON journal_staged_photos(user_id, draft_id, position);
+    `);
+    await db.runAsync(
+      "UPDATE journal_metadata SET value = '2' WHERE key = 'schema_version';"
     );
   }
 }

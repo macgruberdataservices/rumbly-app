@@ -42,6 +42,7 @@ export interface JournalPhoto {
   entryId: string;
   position: number;
   localUri: string | null;
+  localThumbnailUri: string | null;
   displayPath: string | null;
   thumbnailPath: string | null;
   width: number;
@@ -51,6 +52,26 @@ export interface JournalPhoto {
   syncState: JournalPhotoSyncState;
   createdAt: string;
   deletedAt: string | null;
+}
+
+export interface StagedJournalPhoto {
+  id: string;
+  userId: string;
+  draftId: string;
+  position: number;
+  displayUri: string;
+  thumbnailUri: string;
+  width: number;
+  height: number;
+  displayBytes: number;
+  thumbnailBytes: number;
+  createdAt: string;
+}
+
+export interface JournalStorageReport {
+  pendingBytes: number;
+  downloadedCacheBytes: number;
+  pendingPhotoCount: number;
 }
 
 export interface JournalEntryWithPhotos {
@@ -86,6 +107,7 @@ export interface UpdateJournalEntryInput {
   mealPeriodSnapshot: string | null;
   note: string | null;
   rating: number | null;
+  photoIds: string[];
 }
 
 export type JournalDeleteMode = 'journal_only' | 'journal_and_got_it';

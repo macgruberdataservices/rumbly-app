@@ -49,6 +49,24 @@
         {
           "locationWhenInUsePermission": "Allow Rumbly to use your location while the app is open to show nearby dining options."
         }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Rumbly to choose photos for your private Journal.",
+          "cameraPermission": "Allow Rumbly to take photos for your private Journal.",
+          "microphonePermission": false
+        }
+      ],
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "Allow Rumbly to choose photos for your private Journal.",
+          "savePhotosPermission": "Allow Rumbly to save Journal camera photos to your photo library.",
+          "granularPermissions": [
+            "photo"
+          ]
+        }
       ]
     ]
   }

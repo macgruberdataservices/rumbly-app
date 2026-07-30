@@ -6,6 +6,10 @@ export type JournalPageDetailRouteParams = {
   itemId?: string;
 };
 
+export type JournalEntryDetailRouteParams = {
+  entryId: string;
+};
+
 export type JournalComposerRouteParams = {
   entryId?: string;
   draftId?: string;
@@ -30,6 +34,7 @@ export type JournalTargetPickerRouteParams = {
 export type JournalStackParamList = {
   JournalHome: undefined;
   JournalPageDetail: JournalPageDetailRouteParams;
+  JournalEntryDetail: JournalEntryDetailRouteParams;
   JournalDateSearch: JournalDateSearchRouteParams | undefined;
   JournalTargetPicker: JournalTargetPickerRouteParams | undefined;
   JournalStorageSettings: undefined;

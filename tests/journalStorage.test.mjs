@@ -5,12 +5,22 @@ import { ensureActivitySchema } from '../src/data/activitySql.ts';
 import {
   createJournalEntryRecord,
   deleteJournalEntryRecord,
+  failJournalOutboxOperationRecord,
   getJournalDraftRecord,
   getLatestJournalDraftRecord,
   getJournalEntryRecord,
+  getJournalPhotoRecord,
   listJournalEntryRecords,
   listJournalOutboxRecords,
+  listJournalPhotoIdsForEntry,
+  listJournalPhotoRecords,
+  listStagedJournalPhotoRecords,
+  markJournalPhotoOrphanedRecord,
+  markJournalPhotoSyncedRecord,
+  removeJournalOutboxOperationRecord,
   saveJournalDraftRecord,
+  saveStagedJournalPhotoRecord,
+  setJournalEntrySyncStateRecord,
   updateJournalEntryRecord,
 } from '../src/data/journalRepository.ts';
 import { ensureJournalSchema } from '../src/data/journalSchema.ts';
@@ -114,12 +124,47 @@ test('Journal schema creates versioned entry, photo, draft, and outbox tables', 
       'journal_metadata',
       'journal_outbox',
       'journal_photos',
+      'journal_staged_photos',
     ]
   );
   const version = await db.getFirstAsync(
     "SELECT value FROM journal_metadata WHERE key = 'schema_version';"
   );
-  assert.equal(version.value, '1');
+  assert.equal(version.value, '2');
+});
+
+test('Journal schema migrates existing photo metadata from version 1', async (t) => {
+  const db = new AsyncNodeSqlite();
+  t.after(() => db.close());
+  await db.execAsync(`
+    CREATE TABLE journal_metadata (key TEXT PRIMARY KEY NOT NULL, value TEXT NOT NULL);
+    INSERT INTO journal_metadata (key, value) VALUES ('schema_version', '1');
+    CREATE TABLE journal_photos (
+      id TEXT PRIMARY KEY NOT NULL,
+      user_id TEXT NOT NULL,
+      entry_id TEXT NOT NULL,
+      local_uri TEXT,
+      display_path TEXT,
+      thumbnail_path TEXT,
+      position INTEGER NOT NULL,
+      width INTEGER NOT NULL,
+      height INTEGER NOT NULL,
+      display_bytes INTEGER,
+      thumbnail_bytes INTEGER,
+      sync_state TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      deleted_at TEXT
+    );
+  `);
+
+  await ensureJournalSchema(db);
+
+  const columns = await db.getAllAsync('PRAGMA table_info(journal_photos);');
+  assert.equal(columns.some((column) => column.name === 'local_thumbnail_uri'), true);
+  const version = await db.getFirstAsync(
+    "SELECT value FROM journal_metadata WHERE key = 'schema_version';"
+  );
+  assert.equal(version.value, '2');
 });
 
 test('creating an entry atomically links one Got It event and one outbox operation', async (t) => {
@@ -167,6 +212,37 @@ test('retrying the same create is idempotent and does not duplicate Journal or G
   assert.equal(entryCount.count, 1);
   assert.equal(activityCount.count, 1);
   assert.equal(outboxCount.count, 1);
+});
+
+test('retrying a saved entry removes a draft recreated by a late autosave', async (t) => {
+  const db = await makeDatabase(t);
+  const input = entryInput();
+  await createInTransaction(db, input);
+  await saveJournalDraftRecord(db, {
+    id: input.id,
+    userId: input.userId,
+    clientId: input.clientId,
+    restaurantId: input.restaurantId,
+    itemId: input.itemId,
+    restaurantNameSnapshot: input.restaurantNameSnapshot,
+    itemNameSnapshot: input.itemNameSnapshot,
+    visitedOn: input.visitedOn,
+    mealPeriodSnapshot: input.mealPeriodSnapshot,
+    note: 'Late draft',
+    rating: input.rating,
+    photoIds: [],
+    updatedAt: '2026-07-29T16:00:30.000Z',
+  });
+
+  assert.notEqual(await getJournalDraftRecord(db, input.userId, input.id), null);
+  const retry = await createInTransaction(
+    db,
+    input,
+    '2026-07-29T16:01:00.000Z'
+  );
+
+  assert.equal(retry.created, false);
+  assert.equal(await getJournalDraftRecord(db, input.userId, input.id), null);
 });
 
 test('reusing a client ID for another target fails without partial writes', async (t) => {
@@ -233,6 +309,7 @@ test('editing an entry updates local details, linked rating, and pending outbox 
         mealPeriodSnapshot: 'Dinner',
         note: 'Even better the second time',
         rating: 4,
+        photoIds: [],
       },
       '2026-07-30T16:00:00.000Z'
     );
@@ -315,6 +392,107 @@ test('drafts round-trip photo IDs and are removed by successful entry creation',
 
   await createInTransaction(db, entryInput());
   assert.equal(await getJournalDraftRecord(db, 'user-1', 'entry-1'), null);
+});
+
+test('successful entry creation promotes staged variants and queues photo upload', async (t) => {
+  const db = await makeDatabase(t);
+  await saveStagedJournalPhotoRecord(db, {
+    id: 'photo-1',
+    userId: 'user-1',
+    draftId: 'entry-1',
+    position: 0,
+    displayUri: 'file:///pending/display.jpg',
+    thumbnailUri: 'file:///pending/thumbnail.jpg',
+    width: 1200,
+    height: 900,
+    displayBytes: 450000,
+    thumbnailBytes: 24000,
+    createdAt: CREATED_AT,
+  });
+
+  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
+
+  assert.deepEqual(await listStagedJournalPhotoRecords(db, 'user-1', 'entry-1'), []);
+  const photo = await db.getFirstAsync(
+    `SELECT entry_id, local_uri, local_thumbnail_uri, position, sync_state
+     FROM journal_photos WHERE id = 'photo-1';`
+  );
+  assert.deepEqual(
+    { ...photo },
+    {
+      entry_id: 'entry-1',
+      local_uri: 'file:///pending/display.jpg',
+      local_thumbnail_uri: 'file:///pending/thumbnail.jpg',
+      position: 0,
+      sync_state: 'staged',
+    }
+  );
+  const entry = await getJournalEntryRecord(db, 'user-1', 'entry-1');
+  assert.equal(entry.syncState, 'pending_photos');
+  const listedPhotos = await listJournalPhotoRecords(db, 'user-1', 'entry-1');
+  assert.equal(listedPhotos[0].localThumbnailUri, 'file:///pending/thumbnail.jpg');
+  const outbox = await listJournalOutboxRecords(db, 'user-1');
+  assert.deepEqual(
+    outbox.map((operation) => operation.operationKey).sort(),
+    ['entry:entry-1', 'photo:photo-1']
+  );
+});
+
+test('editing an entry can retain, add, and remove photos atomically', async (t) => {
+  const db = await makeDatabase(t);
+  await saveStagedJournalPhotoRecord(db, {
+    id: 'photo-1',
+    userId: 'user-1',
+    draftId: 'entry-1',
+    position: 0,
+    displayUri: 'file:///pending/one-display.jpg',
+    thumbnailUri: 'file:///pending/one-thumbnail.jpg',
+    width: 1200,
+    height: 900,
+    displayBytes: 450000,
+    thumbnailBytes: 24000,
+    createdAt: CREATED_AT,
+  });
+  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
+  await saveStagedJournalPhotoRecord(db, {
+    id: 'photo-2',
+    userId: 'user-1',
+    draftId: 'entry-1',
+    position: 0,
+    displayUri: 'file:///pending/two-display.jpg',
+    thumbnailUri: 'file:///pending/two-thumbnail.jpg',
+    width: 900,
+    height: 1200,
+    displayBytes: 420000,
+    thumbnailBytes: 22000,
+    createdAt: '2026-07-30T16:00:00.000Z',
+  });
+
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    await updateJournalEntryRecord(
+      transaction,
+      {
+        id: 'entry-1',
+        userId: 'user-1',
+        visitedOn: '2026-07-29',
+        mealPeriodSnapshot: 'Lunch',
+        note: 'Photo changed',
+        rating: 5,
+        photoIds: ['photo-2'],
+      },
+      '2026-07-30T16:01:00.000Z'
+    );
+  });
+
+  const activePhotos = await listJournalPhotoRecords(db, 'user-1', 'entry-1');
+  assert.deepEqual(activePhotos.map((photo) => photo.id), ['photo-2']);
+  assert.equal(activePhotos[0].position, 0);
+  const removed = await db.getFirstAsync(
+    "SELECT deleted_at, sync_state FROM journal_photos WHERE id = 'photo-1';"
+  );
+  assert.equal(removed.deleted_at, '2026-07-30T16:01:00.000Z');
+  assert.equal(removed.sync_state, 'pending');
+  assert.deepEqual(await listStagedJournalPhotoRecords(db, 'user-1', 'entry-1'), []);
 });
 
 test('the newest draft can be resumed for its owner', async (t) => {
@@ -444,4 +622,169 @@ test('invalid dates, ratings, and photo counts are rejected before persistence',
   );
   const count = await db.getFirstAsync('SELECT COUNT(*) AS count FROM journal_entries;');
   assert.equal(count.count, 0);
+});
+
+test('Phase 8 sync support: photo lookups, sync-state writes, and outbox completion', async (t) => {
+  const db = await makeDatabase(t);
+  await saveStagedJournalPhotoRecord(db, {
+    id: 'photo-1',
+    userId: 'user-1',
+    draftId: 'entry-1',
+    position: 0,
+    displayUri: 'file:///pending/display.jpg',
+    thumbnailUri: 'file:///pending/thumbnail.jpg',
+    width: 1200,
+    height: 900,
+    displayBytes: 450000,
+    thumbnailBytes: 24000,
+    createdAt: CREATED_AT,
+  });
+  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
+
+  const beforeUpload = await getJournalPhotoRecord(db, 'user-1', 'photo-1');
+  assert.equal(beforeUpload.syncState, 'staged');
+  assert.equal(beforeUpload.displayPath, null);
+
+  await markJournalPhotoSyncedRecord(
+    db,
+    'user-1',
+    'photo-1',
+    'user-1/entry-1/photo-1/display.jpg',
+    'user-1/entry-1/photo-1/thumbnail.jpg'
+  );
+  const afterUpload = await getJournalPhotoRecord(db, 'user-1', 'photo-1');
+  assert.equal(afterUpload.syncState, 'synced');
+  assert.equal(afterUpload.displayPath, 'user-1/entry-1/photo-1/display.jpg');
+  assert.equal(afterUpload.thumbnailPath, 'user-1/entry-1/photo-1/thumbnail.jpg');
+
+  await setJournalEntrySyncStateRecord(db, 'user-1', 'entry-1', 'synced');
+  const entry = await getJournalEntryRecord(db, 'user-1', 'entry-1');
+  assert.equal(entry.syncState, 'synced');
+
+  const outboxOperations = await listJournalOutboxRecords(db, 'user-1');
+  assert.deepEqual(
+    outboxOperations.map((operation) => operation.operationKey).sort(),
+    ['entry:entry-1', 'photo:photo-1']
+  );
+  for (const operation of outboxOperations) {
+    await removeJournalOutboxOperationRecord(db, operation.operationKey);
+  }
+  assert.deepEqual(await listJournalOutboxRecords(db, 'user-1'), []);
+});
+
+test('getJournalPhotoRecord only returns a soft-deleted photo when includeDeleted is set', async (t) => {
+  const db = await makeDatabase(t);
+  await saveStagedJournalPhotoRecord(db, {
+    id: 'photo-1',
+    userId: 'user-1',
+    draftId: 'entry-1',
+    position: 0,
+    displayUri: 'file:///pending/display.jpg',
+    thumbnailUri: 'file:///pending/thumbnail.jpg',
+    width: 1200,
+    height: 900,
+    displayBytes: 450000,
+    thumbnailBytes: 24000,
+    createdAt: CREATED_AT,
+  });
+  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
+  await db.runAsync(
+    "UPDATE journal_photos SET deleted_at = $deleted_at WHERE id = 'photo-1';",
+    { $deleted_at: '2026-07-30T16:00:00.000Z' }
+  );
+
+  assert.equal(await getJournalPhotoRecord(db, 'user-1', 'photo-1'), null);
+  const found = await getJournalPhotoRecord(db, 'user-1', 'photo-1', true);
+  assert.equal(found.id, 'photo-1');
+  assert.equal(found.deletedAt, '2026-07-30T16:00:00.000Z');
+});
+
+test('listJournalPhotoIdsForEntry includes soft-deleted photos for storage cleanup', async (t) => {
+  const db = await makeDatabase(t);
+  await db.runAsync(
+    `INSERT INTO journal_entries (
+       id, user_id, client_id, restaurant_id, restaurant_name_snapshot,
+       visited_on, sync_state, created_at, updated_at
+     ) VALUES (
+       'entry-1', 'user-1', 'client-1', 'restaurant-a', 'Restaurant A',
+       '2026-07-29', 'synced', $created_at, $created_at
+     );`,
+    { $created_at: CREATED_AT }
+  );
+  await db.runAsync(
+    `INSERT INTO journal_photos (
+       id, user_id, entry_id, position, width, height, created_at
+     ) VALUES (
+       'photo-1', 'user-1', 'entry-1', 0, 200, 200, $created_at
+     );`,
+    { $created_at: CREATED_AT }
+  );
+  await db.runAsync(
+    `INSERT INTO journal_photos (
+       id, user_id, entry_id, position, width, height, created_at, deleted_at
+     ) VALUES (
+       'photo-2', 'user-1', 'entry-1', 1, 200, 200, $created_at, $created_at
+     );`,
+    { $created_at: CREATED_AT }
+  );
+
+  const ids = await listJournalPhotoIdsForEntry(db, 'user-1', 'entry-1');
+  assert.deepEqual(ids.sort(), ['photo-1', 'photo-2']);
+});
+
+test('markJournalPhotoOrphanedRecord soft-deletes a photo whose local file is gone', async (t) => {
+  const db = await makeDatabase(t);
+  await saveStagedJournalPhotoRecord(db, {
+    id: 'photo-1',
+    userId: 'user-1',
+    draftId: 'entry-1',
+    position: 0,
+    displayUri: 'file:///stale-container/display.jpg',
+    thumbnailUri: 'file:///stale-container/thumbnail.jpg',
+    width: 1200,
+    height: 900,
+    displayBytes: 450000,
+    thumbnailBytes: 24000,
+    createdAt: CREATED_AT,
+  });
+  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
+
+  await markJournalPhotoOrphanedRecord(db, 'user-1', 'photo-1', '2026-07-30T16:00:00.000Z');
+
+  assert.equal(await getJournalPhotoRecord(db, 'user-1', 'photo-1'), null);
+  const orphaned = await getJournalPhotoRecord(db, 'user-1', 'photo-1', true);
+  assert.equal(orphaned.deletedAt, '2026-07-30T16:00:00.000Z');
+  assert.equal(orphaned.syncState, 'failed');
+  // Excluded from the active photo list a sync pass uses to decide whether
+  // an entry is fully synced, the same way a normal removal is.
+  assert.deepEqual(await listJournalPhotoRecords(db, 'user-1', 'entry-1'), []);
+});
+
+test('failJournalOutboxOperationRecord retries quietly, then surfaces as failed', async (t) => {
+  const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput());
+  const [operation] = await listJournalOutboxRecords(db, 'user-1');
+
+  for (let attempt = 1; attempt < 5; attempt += 1) {
+    await failJournalOutboxOperationRecord(
+      db,
+      operation.operationKey,
+      'network error',
+      CREATED_AT
+    );
+    const [current] = await listJournalOutboxRecords(db, 'user-1');
+    assert.equal(current.state, 'pending');
+    assert.equal(current.attemptCount, attempt);
+  }
+
+  await failJournalOutboxOperationRecord(
+    db,
+    operation.operationKey,
+    'network error',
+    CREATED_AT
+  );
+  const [failed] = await listJournalOutboxRecords(db, 'user-1');
+  assert.equal(failed.state, 'failed');
+  assert.equal(failed.attemptCount, 5);
+  assert.equal(failed.lastError, 'network error');
 });

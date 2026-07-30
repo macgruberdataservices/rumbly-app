@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   Pressable,
   StyleSheet,
@@ -15,6 +16,7 @@ import { JournalEntryCard } from '../../components/journal/JournalEntryCard';
 import type { JournalStackParamList } from '../../navigation/journalTypes';
 import { groupJournalEntriesByPlace, sortJournalEntries } from '../../data/journalReadModel';
 import type { JournalEntry } from '../../data/journal';
+import { listLocalJournalOutbox } from '../../data/journalStore';
 import { useActivity } from '../../hooks/useActivity';
 import { useAuth } from '../../hooks/useAuth';
 import { useJournal } from '../../hooks/useJournal';
@@ -28,7 +30,18 @@ type JournalMode = 'places' | 'timeline';
 export function JournalHomeScreen({ navigation }: Props) {
   const { user, initializing } = useAuth();
   const { personalActivity } = useActivity();
-  const { entries, error, isJournalEnabled, latestDraft, loading, reloadJournal } = useJournal();
+  const {
+    entries,
+    error,
+    failedSyncCount,
+    isJournalEnabled,
+    latestDraft,
+    loading,
+    photos,
+    reloadJournal,
+    retrySync,
+  } = useJournal();
+  const [retrying, setRetrying] = useState(false);
   const [mode, setMode] = useState<JournalMode>('places');
   const openJournalComposer = useJournalComposer();
   const timeline = useMemo(() => sortJournalEntries(entries), [entries]);
@@ -40,6 +53,15 @@ export function JournalHomeScreen({ navigation }: Props) {
       ),
     [personalActivity.gotItHistory]
   );
+  const photosByEntry = useMemo(() => {
+    const result = new Map<string, typeof photos>();
+    for (const photo of photos) {
+      const entryPhotos = result.get(photo.entryId) ?? [];
+      entryPhotos.push(photo);
+      result.set(photo.entryId, entryPhotos);
+    }
+    return result;
+  }, [photos]);
 
   useFocusEffect(
     useCallback(() => {
@@ -96,7 +118,15 @@ export function JournalHomeScreen({ navigation }: Props) {
             <Text style={styles.addButtonLabel}>＋</Text>
           </Pressable>
         </View>
-        <Text style={styles.subtitle}>The meals, places, and details you want to remember.</Text>
+        <View style={styles.subtitleRow}>
+          <Text style={styles.subtitle}>The meals, places, and details you want to remember.</Text>
+          <Pressable
+            onPress={() => navigation.navigate('JournalStorageSettings')}
+            accessibilityRole="button"
+          >
+            <Text style={styles.storageLink}>Storage</Text>
+          </Pressable>
+        </View>
       </View>
 
       {latestDraft && (
@@ -122,6 +152,43 @@ export function JournalHomeScreen({ navigation }: Props) {
 
       {!!error && <Text style={styles.error}>{error}</Text>}
 
+      {failedSyncCount > 0 && (
+        <Pressable
+          style={styles.syncBanner}
+          disabled={retrying}
+          onPress={async () => {
+            if (!user) return;
+            const outbox = await listLocalJournalOutbox(user.id);
+            const failed = outbox.filter((operation) => operation.state === 'failed');
+            const detail = failed
+              .map((operation) => `${operation.operationType} (${operation.entityType} ${operation.entityId}):\n${operation.lastError ?? 'unknown error'}`)
+              .join('\n\n');
+            Alert.alert(
+              `${failed.length} Journal ${failed.length === 1 ? 'item' : 'items'} couldn't sync`,
+              detail || 'No details available.',
+              [
+                { text: 'Dismiss', style: 'cancel' },
+                {
+                  text: 'Retry now',
+                  onPress: () => {
+                    setRetrying(true);
+                    retrySync().finally(() => setRetrying(false));
+                  },
+                },
+              ]
+            );
+          }}
+          accessibilityRole="button"
+          accessibilityLabel="Show Journal sync errors and retry"
+        >
+          <Text style={styles.syncBannerText}>
+            {retrying
+              ? 'Retrying sync…'
+              : `${failedSyncCount} ${failedSyncCount === 1 ? 'entry' : 'entries'} couldn't sync — Tap for details`}
+          </Text>
+        </Pressable>
+      )}
+
       {mode === 'timeline' ? (
         <FlatList
           data={timeline}
@@ -132,13 +199,16 @@ export function JournalHomeScreen({ navigation }: Props) {
           renderItem={({ item }) => (
             <Pressable
               onPress={() =>
-                navigation.navigate('JournalPageDetail', {
-                  restaurantId: item.restaurantId,
-                  itemId: item.itemId ?? undefined,
-                })
+                navigation.navigate('JournalEntryDetail', { entryId: item.id })
               }
+              accessibilityRole="button"
+              accessibilityLabel="View Journal entry"
             >
-              <JournalEntryCard entry={item} rating={ratings.get(item.clientId) ?? null} />
+              <JournalEntryCard
+                entry={item}
+                rating={ratings.get(item.clientId) ?? null}
+                photos={photosByEntry.get(item.id)}
+              />
             </Pressable>
           )}
           ListEmptyComponent={<JournalEmptyState />}
@@ -160,6 +230,7 @@ export function JournalHomeScreen({ navigation }: Props) {
                   })
                 }
                 accessibilityRole="button"
+                accessibilityLabel={`${place.restaurantName}, ${place.entries.length} ${place.entries.length === 1 ? 'entry' : 'entries'}`}
               >
                 <View style={styles.placeHeaderCopy}>
                   <Text style={styles.placeName}>{place.restaurantName}</Text>
@@ -181,6 +252,7 @@ export function JournalHomeScreen({ navigation }: Props) {
                     })
                   }
                   accessibilityRole="button"
+                  accessibilityLabel={`${itemGroup.itemName}, ${itemGroup.entries.length} ${itemGroup.entries.length === 1 ? 'visit' : 'visits'}`}
                 >
                   <View style={styles.itemRowCopy}>
                     <Text style={styles.itemName} numberOfLines={1}>
@@ -305,10 +377,21 @@ const styles = StyleSheet.create({
     lineHeight: 40,
     color: COLORS.ink,
   },
+  subtitleRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: SPACING.md,
+  },
   subtitle: {
     ...text.bodyMuted,
+    flex: 1,
     marginTop: SPACING.xs,
     maxWidth: 360,
+  },
+  storageLink: {
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 12,
+    color: COLORS.forest,
   },
   segmented: {
     flexDirection: 'row',
@@ -431,6 +514,21 @@ const styles = StyleSheet.create({
     color: COLORS.gold,
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
+  },
+  syncBanner: {
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.goldLight,
+  },
+  syncBannerText: {
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 12,
+    color: COLORS.ink,
   },
   gateContent: {
     flex: 1,

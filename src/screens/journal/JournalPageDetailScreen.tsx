@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from 'react';
-import { useFocusEffect } from '@react-navigation/native';
+import { useCallback, useEffect, useMemo } from 'react';
+import { useFocusEffect, useIsFocused } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -8,7 +8,6 @@ import { SettingsScreenHeader } from '../../components/settings/SettingsScreenHe
 import { entriesForJournalPage } from '../../data/journalReadModel';
 import { useActivity } from '../../hooks/useActivity';
 import { useJournal } from '../../hooks/useJournal';
-import { useJournalComposer } from '../../hooks/useJournalComposer';
 import type { JournalStackParamList } from '../../navigation/journalTypes';
 import { COLORS, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
@@ -18,8 +17,8 @@ type Props = NativeStackScreenProps<JournalStackParamList, 'JournalPageDetail'>;
 export function JournalPageDetailScreen({ navigation, route }: Props) {
   const { restaurantId, itemId } = route.params;
   const { personalActivity } = useActivity();
-  const { entries, loading, reloadJournal } = useJournal();
-  const openJournalComposer = useJournalComposer();
+  const { entries, loading, photos, reloadJournal } = useJournal();
+  const isFocused = useIsFocused();
   const pageEntries = useMemo(
     () => entriesForJournalPage(entries, restaurantId, itemId),
     [entries, itemId, restaurantId]
@@ -31,12 +30,37 @@ export function JournalPageDetailScreen({ navigation, route }: Props) {
       ),
     [personalActivity.gotItHistory]
   );
+  const photosByEntry = useMemo(() => {
+    const result = new Map<string, typeof photos>();
+    for (const photo of photos) {
+      const entryPhotos = result.get(photo.entryId) ?? [];
+      entryPhotos.push(photo);
+      result.set(photo.entryId, entryPhotos);
+    }
+    return result;
+  }, [photos]);
 
   useFocusEffect(
     useCallback(() => {
       reloadJournal().catch(() => {});
     }, [reloadJournal])
   );
+
+  // Every real navigation into this page comes from a By Place / item
+  // grouping that only exists because it has entries -- there's no
+  // legitimate way to land here with zero entries except deleting the
+  // last one for this restaurant/item while already here (most often
+  // cascading back from JournalEntryDetail's own same fix, after deleting
+  // from the composer). Rather than showing the genuinely pointless empty
+  // state in that case, navigate away same as that screen does. Gated on
+  // isFocused for the same reason: entries can update while this screen
+  // is mounted but hidden underneath EntryDetail/the composer, and an
+  // unguarded goBack() here would race their own dismissal.
+  useEffect(() => {
+    if (isFocused && !loading && pageEntries.length === 0) {
+      navigation.goBack();
+    }
+  }, [isFocused, loading, navigation, pageEntries.length]);
 
   const latest = pageEntries[0];
   const title = itemId
@@ -72,16 +96,17 @@ export function JournalPageDetailScreen({ navigation, route }: Props) {
         ItemSeparatorComponent={() => <View style={{ height: SPACING.md }} />}
         renderItem={({ item }) => (
           <Pressable
-            onPress={() => openJournalComposer({ entryId: item.id })}
+            onPress={() => navigation.navigate('JournalEntryDetail', { entryId: item.id })}
             accessibilityRole="button"
-            accessibilityLabel="Edit Journal entry"
+            accessibilityLabel="View Journal entry"
           >
             <JournalEntryCard
               entry={item}
               rating={ratings.get(item.clientId) ?? null}
               showTarget={!itemId}
+              photos={photosByEntry.get(item.id)}
             />
-            <Text style={styles.editLabel}>Edit entry</Text>
+            <Text style={styles.viewLabel}>View entry</Text>
           </Pressable>
         )}
         ListEmptyComponent={
@@ -129,7 +154,7 @@ const styles = StyleSheet.create({
     ...text.bodyMuted,
     textAlign: 'center',
   },
-  editLabel: {
+  viewLabel: {
     marginTop: SPACING.xs,
     marginRight: SPACING.sm,
     fontFamily: FONT_FAMILY.workSansBold,
