@@ -5,12 +5,14 @@ import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
 import { SettingsRow } from '../components/settings/SettingsRow';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { useAuth } from '../hooks/useAuth';
+import { useIsDevOwner } from '../hooks/useIsDevOwner';
 import { COLORS, SPACING } from '../theme/tokens';
 
 type Props = NativeStackScreenProps<MyRumblyStackParamList, 'AccountSettings'>;
 
 export function AccountSettingsScreen({ navigation }: Props) {
   const { user } = useAuth();
+  const isDevOwner = useIsDevOwner();
   const openPlaceholder = (title: string) => navigation.navigate('SettingsPlaceholder', { title });
 
   return (
@@ -39,6 +41,16 @@ export function AccountSettingsScreen({ navigation }: Props) {
         <SettingsRow title="Follow Us" onPress={() => openPlaceholder('Follow Us')} />
         <SettingsRow title="Rate Us" onPress={() => openPlaceholder('Rate Us')} />
 
+        {isDevOwner && (
+          <>
+            <View style={styles.sectionBreak} />
+            <SettingsRow
+              title="Development"
+              subtitle="Experiments and in-progress prototypes"
+              onPress={() => navigation.navigate('Development')}
+            />
+          </>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
