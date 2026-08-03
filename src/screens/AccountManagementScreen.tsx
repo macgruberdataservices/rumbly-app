@@ -1,7 +1,7 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import { AccountAuthPanel } from '../components/settings/AccountAuthPanel';
 import { SettingsRow } from '../components/settings/SettingsRow';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
@@ -9,7 +9,7 @@ import { useAuth } from '../hooks/useAuth';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<MyRumblyStackParamList, 'AccountManagement'>;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'AccountManagement'>;
 
 export function AccountManagementScreen({ navigation }: Props) {
   const { user, initializing, signOut } = useAuth();

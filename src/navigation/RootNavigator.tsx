@@ -4,17 +4,19 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
 import { FindNavigator, type FindStackParamList } from './FindNavigator';
 import { ExploreNavigator, type ExploreStackParamList } from './ExploreNavigator';
-import { MyRumblyNavigator } from './MyRumblyNavigator';
-import { JournalNavigator } from './JournalNavigator';
+import { MyRumblyNavigator, type MyRumblyStackParamList } from './MyRumblyNavigator';
+import { SettingsNavigator } from './SettingsNavigator';
 import { JournalComposerScreen } from '../screens/journal/JournalComposerScreen';
-import type { AppRootStackParamList, JournalStackParamList } from './journalTypes';
+import type { AppRootStackParamList } from './journalTypes';
 import { COLORS } from '../theme/tokens';
 
 export type RootTabParamList = {
   Find: NavigatorScreenParams<FindStackParamList>;
   Explore: NavigatorScreenParams<ExploreStackParamList>;
-  MyRumbly: undefined;
-  Journal: NavigatorScreenParams<JournalStackParamList>;
+  // Nested params so screens in other tabs (Find, Explore) can jump
+  // straight to a specific My Rumbly screen -- e.g. AccountSettings,
+  // via useOpenAccountSettings -- rather than only landing on its home.
+  MyRumbly: NavigatorScreenParams<MyRumblyStackParamList>;
 };
 
 const Tab = createBottomTabNavigator<RootTabParamList>();
@@ -48,22 +50,10 @@ function MyRumblyIcon({ color }: { color: string }) {
   );
 }
 
-function JournalIcon({ color }: { color: string }) {
-  return (
-    <View style={styles.iconFrame}>
-      <View style={[styles.journalBook, { borderColor: color }]}>
-        <View style={[styles.journalSpine, { backgroundColor: color }]} />
-        <View style={[styles.journalLine, { backgroundColor: color }]} />
-      </View>
-    </View>
-  );
-}
-
 function TabIcon({ routeName, color }: { routeName: keyof RootTabParamList; color: string }) {
   if (routeName === 'Find') return <FindIcon color={color} />;
   if (routeName === 'Explore') return <ExploreIcon color={color} />;
-  if (routeName === 'MyRumbly') return <MyRumblyIcon color={color} />;
-  return <JournalIcon color={color} />;
+  return <MyRumblyIcon color={color} />;
 }
 
 function MainTabs() {
@@ -89,8 +79,7 @@ function MainTabs() {
           component={FindNavigator}
         />
         <Tab.Screen name="Explore" component={ExploreNavigator} />
-        <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Bites' }} />
-        <Tab.Screen name="Journal" component={JournalNavigator} />
+        <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Rumbly' }} />
     </Tab.Navigator>
   );
 }
@@ -105,6 +94,7 @@ export function RootNavigator() {
           component={JournalComposerScreen}
           options={{ animation: 'slide_from_bottom', presentation: 'modal' }}
         />
+        <AppStack.Screen name="Settings" component={SettingsNavigator} options={{ animation: 'slide_from_right' }} />
       </AppStack.Navigator>
     </NavigationContainer>
   );
@@ -165,25 +155,5 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 9,
     borderWidth: 2,
     borderBottomWidth: 0,
-  },
-  journalBook: {
-    width: 19,
-    height: 21,
-    borderRadius: 3,
-    borderWidth: 2,
-    justifyContent: 'center',
-  },
-  journalSpine: {
-    position: 'absolute',
-    left: 4,
-    top: 0,
-    bottom: 0,
-    width: 1.5,
-  },
-  journalLine: {
-    width: 7,
-    height: 1.5,
-    marginLeft: 8,
-    borderRadius: 1,
   },
 });

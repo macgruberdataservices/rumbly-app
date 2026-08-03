@@ -43,4 +43,7 @@ export type JournalStackParamList = {
 export type AppRootStackParamList = {
   MainTabs: NavigatorScreenParams<RootTabParamList>;
   JournalComposer: JournalComposerRouteParams | undefined;
+  // Lifted here rather than nested in MyRumblyNavigator -- see
+  // SettingsNavigator.tsx for why.
+  Settings: undefined;
 };

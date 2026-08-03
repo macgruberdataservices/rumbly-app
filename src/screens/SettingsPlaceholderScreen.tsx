@@ -1,11 +1,11 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { COLORS } from '../theme/tokens';
 
-type Props = NativeStackScreenProps<MyRumblyStackParamList, 'SettingsPlaceholder'>;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'SettingsPlaceholder'>;
 
 export function SettingsPlaceholderScreen({ navigation, route }: Props) {
   return (

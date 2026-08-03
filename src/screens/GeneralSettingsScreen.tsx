@@ -1,22 +1,44 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import Constants from 'expo-constants';
+import { useState } from 'react';
 import { ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
+import { AllergyAcknowledgementSheet } from '../components/AllergyAcknowledgementSheet';
 import { SyncStatusBar } from '../components/SyncStatusBar';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useAppSettings } from '../hooks/useAppSettings';
-import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import { COLORS, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<MyRumblyStackParamList, 'GeneralSettings'>;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'GeneralSettings'>;
 
 const APP_VERSION = Constants.expoConfig?.version ?? '—';
 
 export function GeneralSettingsScreen({ navigation }: Props) {
   const { isLoading, lastSyncedAt, forceRefresh } = useDataProvider();
-  const { allAllergyInSearch, setAllAllergyInSearch, findFeedEnabled, setFindFeedEnabled } = useAppSettings();
+  const {
+    allAllergyInSearch,
+    setAllAllergyInSearch,
+    allergyAcknowledgedThisSession,
+    acknowledgeAllergyDisclaimer,
+    findFeedEnabled,
+    setFindFeedEnabled,
+  } = useAppSettings();
+  const [allergyAcknowledgementVisible, setAllergyAcknowledgementVisible] = useState(false);
+
+  const handleAllAllergyChange = (value: boolean) => {
+    if (!value) {
+      setAllAllergyInSearch(false);
+      return;
+    }
+    if (allergyAcknowledgedThisSession) {
+      setAllAllergyInSearch(true);
+      return;
+    }
+    setAllergyAcknowledgementVisible(true);
+  };
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -42,7 +64,7 @@ export function GeneralSettingsScreen({ navigation }: Props) {
           </View>
           <Switch
             value={allAllergyInSearch}
-            onValueChange={setAllAllergyInSearch}
+            onValueChange={handleAllAllergyChange}
             trackColor={{ true: COLORS.forest }}
           />
         </View>
@@ -66,6 +88,15 @@ export function GeneralSettingsScreen({ navigation }: Props) {
 
         <Text style={styles.versionText}>App version {APP_VERSION}</Text>
       </ScrollView>
+      <AllergyAcknowledgementSheet
+        visible={allergyAcknowledgementVisible}
+        onAccept={() => {
+          acknowledgeAllergyDisclaimer();
+          setAllergyAcknowledgementVisible(false);
+          setAllAllergyInSearch(true);
+        }}
+        onCancel={() => setAllergyAcknowledgementVisible(false)}
+      />
     </SafeAreaView>
   );
 }

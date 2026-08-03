@@ -5,10 +5,13 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions';
 import { evaluateChallenge } from '../challenges/evaluate';
+import { SettingsButton } from '../components/settings/SettingsButton';
 import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
 import { useActivity } from '../hooks/useActivity';
 import { useAuth } from '../hooks/useAuth';
 import { useDataProvider } from '../hooks/useDataProvider';
+import { useJournal } from '../hooks/useJournal';
+import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
 import { COLORS, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
@@ -18,6 +21,8 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
   const { restaurants } = useDataProvider();
   const { user } = useAuth();
   const { personalActivity, isActivityReady, reloadActivity } = useActivity();
+  const { entries: journalEntries } = useJournal();
+  const openAccountSettings = useOpenAccountSettings();
   const progress = useMemo(
     () => evaluateChallenge(QUICK_FIVE_CHALLENGE, personalActivity.gotItHistory, restaurants),
     [personalActivity.gotItHistory, restaurants]
@@ -44,18 +49,10 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.headingRow}>
           <View style={styles.headingCopy}>
-            <Text style={styles.heading}>My Bites</Text>
+            <Text style={styles.heading}>My Rumbly</Text>
             <Text style={text.bodyMuted}>{user?.email ?? 'Saved on this device'}</Text>
           </View>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Open account settings"
-            hitSlop={8}
-            style={({ pressed }) => [styles.settingsButton, pressed && styles.settingsButtonPressed]}
-            onPress={() => navigation.navigate('AccountSettings')}
-          >
-            <SettingsIcon />
-          </Pressable>
+          <SettingsButton onPress={openAccountSettings} />
         </View>
 
         <Text style={styles.sectionLabel}>YOUR RUMBLY</Text>
@@ -80,6 +77,26 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
             />
             <Stat value={personalActivity.totalGotItCount} label="Got It" />
           </View>
+        </Pressable>
+
+        <Text style={[styles.sectionLabel, styles.journalLabel]}>JOURNAL</Text>
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={`Open Journal, ${journalEntries.length} ${journalEntries.length === 1 ? 'entry' : 'entries'}`}
+          style={({ pressed }) => [styles.challengeCard, pressed && styles.cardPressed]}
+          onPress={() => navigation.navigate('Journal')}
+        >
+          <View style={styles.challengeTopRow}>
+            <View style={styles.challengeIcon}><Text style={styles.challengeIconText}>✎</Text></View>
+            <View style={styles.challengeCopy}>
+              <Text style={styles.cardTitle}>Journal</Text>
+              <Text style={styles.cardSubtitle}>Your private dining memories</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </View>
+          <Text style={styles.rounds}>
+            {journalEntries.length} {journalEntries.length === 1 ? 'entry' : 'entries'} saved
+          </Text>
         </Pressable>
 
         <View style={styles.sectionHeadingRow}>
@@ -120,19 +137,6 @@ function Stat({ value, label }: { value: number; label: string }) {
   );
 }
 
-function SettingsIcon() {
-  return (
-    <View style={styles.settingsIcon}>
-      <View style={[styles.settingsLine, styles.settingsLineTop]} />
-      <View style={[styles.settingsLine, styles.settingsLineMiddle]} />
-      <View style={[styles.settingsLine, styles.settingsLineBottom]} />
-      <View style={[styles.settingsKnob, styles.settingsKnobTop]} />
-      <View style={[styles.settingsKnob, styles.settingsKnobMiddle]} />
-      <View style={[styles.settingsKnob, styles.settingsKnobBottom]} />
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   centered: { alignItems: 'center', justifyContent: 'center' },
@@ -140,33 +144,9 @@ const styles = StyleSheet.create({
   headingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xl },
   headingCopy: { flex: 1 },
   heading: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
-  settingsButton: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: 22,
-  },
-  settingsButtonPressed: { backgroundColor: COLORS.goldLight },
-  settingsIcon: { width: 22, height: 22 },
-  settingsLine: { position: 'absolute', left: 1, width: 20, height: 2, borderRadius: 1, backgroundColor: COLORS.forest },
-  settingsLineTop: { top: 3 },
-  settingsLineMiddle: { top: 10 },
-  settingsLineBottom: { top: 17 },
-  settingsKnob: {
-    position: 'absolute',
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    borderWidth: 2,
-    borderColor: COLORS.forest,
-    backgroundColor: COLORS.surface,
-  },
-  settingsKnobTop: { top: 1, left: 5 },
-  settingsKnobMiddle: { top: 8, left: 12 },
-  settingsKnobBottom: { top: 15, left: 7 },
   sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.xl },
   sectionLabel: { fontFamily: FONT_FAMILY.interBold, fontSize: 11, color: COLORS.muted, marginBottom: SPACING.sm },
+  journalLabel: { marginTop: SPACING.xl },
   sectionCount: { fontFamily: FONT_FAMILY.interRegular, fontSize: 11, color: COLORS.dim, marginBottom: SPACING.sm },
   activityCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.surface, overflow: 'hidden' },
   challengeCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.surface, padding: SPACING.md },

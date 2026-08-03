@@ -1,19 +1,13 @@
+import type { NavigatorScreenParams } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { MyRumblyHomeScreen } from '../screens/MyRumblyHomeScreen';
 import { MyActivityScreen } from '../screens/MyActivityScreen';
 import { ChallengeDetailScreen } from '../screens/ChallengeDetailScreen';
 import { ChallengeListScreen } from '../screens/ChallengeListScreen';
 import { RestaurantDetailScreen } from '../screens/RestaurantDetailScreen';
-import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
-import { AccountManagementScreen } from '../screens/AccountManagementScreen';
-import { ChangeEmailScreen } from '../screens/ChangeEmailScreen';
-import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
-import { GeneralSettingsScreen } from '../screens/GeneralSettingsScreen';
-import { DevelopmentSettingsScreen } from '../screens/DevelopmentSettingsScreen';
-import { AskRumblyScreen } from '../screens/AskRumblyScreen';
 import { NativeMenuPilotScreen } from '../screens/NativeMenuPilotScreen';
-import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen';
-import { SettingsPlaceholderScreen } from '../screens/SettingsPlaceholderScreen';
+import { JournalNavigator } from './JournalNavigator';
+import type { JournalStackParamList } from './journalTypes';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 import type { NativeMenuPilotRouteParams, RestaurantDetailRouteParams } from './browseTypes';
@@ -21,19 +15,15 @@ import type { NativeMenuPilotRouteParams, RestaurantDetailRouteParams } from './
 export type MyRumblyStackParamList = {
   MyRumblyHome: undefined;
   MyActivity: undefined;
-  AccountSettings: undefined;
-  AccountManagement: undefined;
-  ProfileSettings: undefined;
-  ChangeEmail: undefined;
-  ChangePassword: undefined;
-  GeneralSettings: undefined;
-  Development: undefined;
-  AskRumbly: undefined;
   NativeMenuPilot: NativeMenuPilotRouteParams;
-  SettingsPlaceholder: { title: string };
   ChallengeList: undefined;
   ChallengeDetail: { challengeId: string };
   RestaurantDetail: RestaurantDetailRouteParams;
+  // Journal moved off its own bottom tab and in here (2026-08-02) --
+  // nested params so a card on MyRumblyHome can still deep-link straight
+  // to e.g. a specific entry, the same way it could when Journal was a
+  // top-level tab.
+  Journal: NavigatorScreenParams<JournalStackParamList> | undefined;
 };
 
 const Stack = createNativeStackNavigator<MyRumblyStackParamList>();
@@ -51,57 +41,12 @@ export function MyRumblyNavigator() {
       <Stack.Screen
         name="MyRumblyHome"
         component={MyRumblyHomeScreen}
-        options={{ headerShown: false, title: 'My Bites' }}
+        options={{ headerShown: false, title: 'My Rumbly' }}
       />
       <Stack.Screen name="MyActivity" component={MyActivityScreen} options={{ headerShown: false }} />
       <Stack.Screen
-        name="AccountSettings"
-        component={AccountSettingsScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="AccountManagement"
-        component={AccountManagementScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="ProfileSettings"
-        component={ProfileSettingsScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="ChangeEmail"
-        component={ChangeEmailScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="ChangePassword"
-        component={ChangePasswordScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="GeneralSettings"
-        component={GeneralSettingsScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="Development"
-        component={DevelopmentSettingsScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="AskRumbly"
-        component={AskRumblyScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
         name="NativeMenuPilot"
         component={NativeMenuPilotScreen}
-        options={{ headerShown: false, animation: 'slide_from_right' }}
-      />
-      <Stack.Screen
-        name="SettingsPlaceholder"
-        component={SettingsPlaceholderScreen}
         options={{ headerShown: false, animation: 'slide_from_right' }}
       />
       <Stack.Screen name="ChallengeList" component={ChallengeListScreen} options={{ headerShown: false }} />
@@ -115,6 +60,7 @@ export function MyRumblyNavigator() {
         component={RestaurantDetailScreen}
         options={{ headerShown: false, gestureEnabled: false }}
       />
+      <Stack.Screen name="Journal" component={JournalNavigator} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import { SettingsFormField } from '../components/settings/SettingsFormField';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { SettingsSubmitButton } from '../components/settings/SettingsSubmitButton';
@@ -11,7 +11,7 @@ import { useAuth } from '../hooks/useAuth';
 import { COLORS, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<MyRumblyStackParamList, 'ProfileSettings'>;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'ProfileSettings'>;
 
 export function ProfileSettingsScreen({ navigation }: Props) {
   const { user } = useAuth();

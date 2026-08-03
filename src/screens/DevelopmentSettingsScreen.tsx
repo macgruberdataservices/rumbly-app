@@ -7,11 +7,11 @@ import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeade
 import { useAppSettings } from '../hooks/useAppSettings';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { useIsDevOwner } from '../hooks/useIsDevOwner';
-import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<MyRumblyStackParamList, 'Development'>;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'Development'>;
 
 export function DevelopmentSettingsScreen({ navigation }: Props) {
   const { findFeedContentMode, setFindFeedContentMode, nativeInteractionsEnabled, setNativeInteractionsEnabled } =

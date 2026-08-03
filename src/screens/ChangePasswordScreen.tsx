@@ -2,7 +2,7 @@ import { useState } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { KeyboardAvoidingView, Platform, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import { SettingsFormField } from '../components/settings/SettingsFormField';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { SettingsSubmitButton } from '../components/settings/SettingsSubmitButton';
@@ -10,7 +10,7 @@ import { useAuth } from '../hooks/useAuth';
 import { COLORS, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
-type Props = NativeStackScreenProps<MyRumblyStackParamList, 'ChangePassword'>;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'ChangePassword'>;
 
 export function ChangePasswordScreen({ navigation }: Props) {
   const { updatePassword } = useAuth();

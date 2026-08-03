@@ -1,14 +1,14 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ScrollView, StyleSheet, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import { SettingsRow } from '../components/settings/SettingsRow';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { useAuth } from '../hooks/useAuth';
 import { useIsDevOwner } from '../hooks/useIsDevOwner';
 import { COLORS, SPACING } from '../theme/tokens';
 
-type Props = NativeStackScreenProps<MyRumblyStackParamList, 'AccountSettings'>;
+type Props = NativeStackScreenProps<SettingsStackParamList, 'AccountSettings'>;
 
 export function AccountSettingsScreen({ navigation }: Props) {
   const { user } = useAuth();
