@@ -37,6 +37,11 @@ export function daysAgoStr(n: number): string {
 export function monthsInRange(from: string, to: string): string[] {
   const months: string[] = [];
   const d = new Date(`${from}T00:00:00`);
+  d.setDate(1); // walk by calendar month, not by from's day-of-month --
+  // otherwise stepping from e.g. the 28th lands on the 28th of next month,
+  // which can land past `to` and skip that month's bucket entirely (seen
+  // 2026-08-03: "This Week" from Jul 28 stepped straight to Aug 28, never
+  // adding "2026-08", so August's changes never got fetched).
   const end = new Date(`${to}T00:00:00`);
   while (d <= end) {
     months.push(`${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`);
