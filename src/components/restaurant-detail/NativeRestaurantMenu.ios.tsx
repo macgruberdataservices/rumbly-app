@@ -5,7 +5,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Alert, StyleSheet } from 'react-native';
+import { StyleSheet } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import {
   RumblyNativeMenuView,
@@ -13,12 +13,11 @@ import {
   type NativeMenuSection,
   type RumblyNativeMenuViewRef,
 } from '../../../modules/rumbly-native-menu/src';
-import { AllergyInfoSheet } from '../AllergyInfoSheet';
 import {
   GotItRatingCard,
   type GotItCardEvent,
 } from '../GotItRatingCard';
-import { MenuItemPreviewCard } from '../MenuItemPreviewCard';
+import { formatDateLabel } from '../../data/changes';
 import { isNewMenuItem } from '../../data/newItem';
 import { formatRatingAverage } from '../../data/ratingAverage';
 import { getItemIdentityKeyFor } from '../../data/itemIdentity';
@@ -30,14 +29,6 @@ import type {
   NativeRestaurantMenuProps,
   NativeRestaurantMenuRef,
 } from './NativeRestaurantMenu';
-
-function itemBadges(item: MenuItem): string[] {
-  return [
-    item.is_kids && 'Kids',
-    item.is_allergy_friendly && 'Allergy-friendly',
-    item.is_alcoholic && '21+',
-  ].filter(Boolean) as string[];
-}
 
 export const NativeRestaurantMenu = forwardRef<
   NativeRestaurantMenuRef,
@@ -55,8 +46,6 @@ export const NativeRestaurantMenu = forwardRef<
   forwardedRef
 ) {
   const nativeRef = useRef<RumblyNativeMenuViewRef>(null);
-  const [previewItem, setPreviewItem] = useState<MenuItem | null>(null);
-  const [allergyItem, setAllergyItem] = useState<MenuItem | null>(null);
   const [gotItItem, setGotItItem] = useState<MenuItem | null>(null);
   const [gotItEvent, setGotItEvent] = useState<GotItCardEvent | null>(null);
   const {
@@ -100,6 +89,8 @@ export const NativeRestaurantMenu = forwardRef<
             description: item.description ?? null,
             price: item.price_display ?? '',
             isNew: isNewMenuItem(item.first_seen),
+            addedLabel: `Added ${formatDateLabel(item.first_seen)}`,
+            periodCategoryLabel: `${item.dining_period} - ${item.category}`,
             rating: ratingAveragesEnabled
               ? formatRatingAverage(itemRatingAverages.get(itemKey))
               : null,
@@ -160,12 +151,6 @@ export const NativeRestaurantMenu = forwardRef<
     if (!item) return;
 
     switch (action) {
-      case 'open':
-        setPreviewItem(item);
-        break;
-      case 'share':
-        Alert.alert('Share', 'Sharing menu items is coming soon.');
-        break;
       case 'journal':
         openJournalComposer({
           restaurantId: item.restaurant_id,
@@ -205,39 +190,6 @@ export const NativeRestaurantMenu = forwardRef<
         onAction={({ nativeEvent }) => {
           handleAction(nativeEvent.action, nativeEvent.itemId, nativeEvent.anchorId);
         }}
-      />
-      <MenuItemPreviewCard
-        item={previewItem}
-        badges={previewItem ? itemBadges(previewItem) : []}
-        ratingAverage={
-          previewItem && ratingAveragesEnabled
-            ? itemRatingAverages.get(getItemIdentityKeyFor(previewItem))
-            : undefined
-        }
-        origin={null}
-        onClose={() => setPreviewItem(null)}
-        onJournal={
-          previewItem && journalEnabled
-            ? () => {
-                const item = previewItem;
-                setPreviewItem(null);
-                openJournalComposer({
-                  restaurantId: item.restaurant_id,
-                  itemId: item.item_id,
-                  itemNameSnapshot: item.item,
-                  mealPeriodSnapshot: item.dining_period,
-                });
-              }
-            : undefined
-        }
-        onPressAllergyInfo={() => {
-          if (previewItem) setAllergyItem(previewItem);
-        }}
-      />
-      <AllergyInfoSheet
-        visible={allergyItem !== null}
-        allergyFreeOf={allergyItem?.allergy_free_of ?? []}
-        onClose={() => setAllergyItem(null)}
       />
       {gotItEvent && gotItItem && (
         <GotItRatingCard

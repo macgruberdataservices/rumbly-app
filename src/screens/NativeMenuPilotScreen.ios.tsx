@@ -395,6 +395,8 @@ export function NativeMenuPilotScreen({
             description: item.description ?? null,
             price: item.price_display ?? '',
             isNew: isNewMenuItem(item.first_seen),
+            addedLabel: `Added ${formatDateLabel(item.first_seen)}`,
+            periodCategoryLabel: `${item.dining_period} - ${item.category}`,
             rating: ratingAveragesEnabled
               ? formatRatingAverage(itemRatingAverages.get(itemKey))
               : null,

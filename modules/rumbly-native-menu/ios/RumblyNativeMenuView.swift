@@ -8,6 +8,8 @@ private struct NativeMenuItem: Codable, Identifiable, Equatable {
   let description: String?
   let price: String
   let isNew: Bool
+  let addedLabel: String
+  let periodCategoryLabel: String
   let rating: String?
   let isNeeded: Bool
   let isLoved: Bool
@@ -25,6 +27,8 @@ private struct NativeMenuItem: Codable, Identifiable, Equatable {
     case description
     case price
     case isNew
+    case addedLabel
+    case periodCategoryLabel
     case rating
     case isNeeded
     case isLoved
@@ -42,6 +46,9 @@ private struct NativeMenuItem: Codable, Identifiable, Equatable {
     description = try values.decodeIfPresent(String.self, forKey: .description)
     price = try values.decodeIfPresent(String.self, forKey: .price) ?? ""
     isNew = try values.decodeIfPresent(Bool.self, forKey: .isNew) ?? false
+    addedLabel = try values.decodeIfPresent(String.self, forKey: .addedLabel) ?? ""
+    periodCategoryLabel =
+      try values.decodeIfPresent(String.self, forKey: .periodCategoryLabel) ?? ""
     rating = try values.decodeIfPresent(String.self, forKey: .rating)
     isNeeded = try values.decodeIfPresent(Bool.self, forKey: .isNeeded) ?? false
     isLoved = try values.decodeIfPresent(Bool.self, forKey: .isLoved) ?? false
@@ -597,6 +604,17 @@ private struct NativeSwipeMenuRow: View {
           .font(.system(size: 15, weight: .bold))
           .foregroundStyle(Color(red: 0.10, green: 0.13, blue: 0.14))
           .lineLimit(1)
+        // Next to the name (not trailing after price) -- rating is fixed-
+        // size so it never truncates itself; the name is what shrinks
+        // when the row is tight, same as it already did before rating
+        // moved here.
+        if let rating = item.rating, !rating.isEmpty {
+          Text(rating)
+            .font(.system(size: 12))
+            .foregroundStyle(Color(red: 0.68, green: 0.48, blue: 0.08))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        }
         Spacer(minLength: 4)
         if item.isNew {
           Text("NEW")
@@ -609,11 +627,6 @@ private struct NativeSwipeMenuRow: View {
         if !item.price.isEmpty {
           Text(item.price)
             .font(.system(size: 14))
-        }
-        if let rating = item.rating, !rating.isEmpty {
-          Text(rating)
-            .font(.system(size: 12))
-            .foregroundStyle(Color(red: 0.68, green: 0.48, blue: 0.08))
         }
       }
       if let description = item.description, !description.isEmpty {
@@ -652,14 +665,15 @@ private struct NativeSwipeMenuRow: View {
         .filter { !$0.isEmpty }
         .joined(separator: ", ")
     )
-    .accessibilityHint("Double tap for details. Swipe left for actions.")
+    .accessibilityHint("Long press for details. Swipe left for actions.")
+    // Tap only closes an open swipe-actions tray -- it doesn't open
+    // anything of its own; the peek/pop preview below is reached by long
+    // press only.
     .onTapGesture {
       if isOpen {
         withAnimation(.snappy) {
           model.openItemId = nil
         }
-      } else {
-        model.sendAction("open", itemId: item.itemId, anchorId: item.anchorId)
       }
     }
     .contextMenu {
@@ -676,21 +690,52 @@ private struct NativeSwipeMenuRow: View {
         }
       }
     } preview: {
-      VStack(alignment: .leading, spacing: 10) {
-        Text(item.name)
-          .font(.title3.bold())
-        if !item.price.isEmpty {
-          Text(item.price)
-            .font(.headline)
+      // Name, price, dining period - category, when it was added (+ NEW
+      // flag), rating, and the full description -- deliberately no
+      // allergy badges (this view has no data for those, see
+      // NativeMenuItem) and no Journal button (that stays a menu action
+      // above, in .contextMenu itself, not preview content). Colors
+      // matched to this same row's own NEW-badge/rating styling just
+      // above, so the preview reads as the same design, not a
+      // system-default one.
+      VStack(alignment: .leading, spacing: 8) {
+        HStack(alignment: .firstTextBaseline) {
+          Text(item.name)
+            .font(.title3.bold())
+          Spacer(minLength: 8)
+          if !item.price.isEmpty {
+            Text(item.price)
+              .font(.headline)
+          }
+        }
+        if !item.periodCategoryLabel.isEmpty {
+          Text(item.periodCategoryLabel)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        HStack(spacing: 6) {
+          if item.isNew {
+            Text("NEW")
+              .font(.system(size: 9, weight: .heavy))
+              .padding(.horizontal, 6)
+              .padding(.vertical, 2)
+              .background(Color(red: 0.82, green: 0.61, blue: 0.16))
+              .clipShape(RoundedRectangle(cornerRadius: 5))
+          }
+          Text(item.addedLabel)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
+        if let rating = item.rating, !rating.isEmpty {
+          Text(rating)
+            .font(.subheadline)
+            .foregroundStyle(Color(red: 0.68, green: 0.48, blue: 0.08))
         }
         if let description = item.description, !description.isEmpty {
           Text(description)
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
-        Text(item.journalEnabled ? "Share is coming soon." : "Sharing is coming soon.")
-          .font(.caption)
-          .foregroundStyle(.secondary)
       }
       .padding(20)
       .frame(width: 320, alignment: .leading)
@@ -981,6 +1026,15 @@ private struct NativeSearchItemRowRootView: View {
         Text(highlightedName(row))
           .font(.system(size: 16, weight: .bold))
           .lineLimit(1)
+        // Next to the name (not trailing after price) -- fixed-size so it
+        // never truncates itself; the name shrinks first when tight.
+        if let rating = row.rating, !rating.isEmpty {
+          Text(rating)
+            .font(.system(size: 12))
+            .foregroundStyle(Color(red: 0.68, green: 0.48, blue: 0.08))
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+        }
         Spacer(minLength: 4)
         if row.isNew {
           Text("NEW")
@@ -989,11 +1043,6 @@ private struct NativeSearchItemRowRootView: View {
             .padding(.vertical, 2)
             .background(Color(red: 0.93, green: 0.72, blue: 0.33))
             .clipShape(RoundedRectangle(cornerRadius: 5))
-        }
-        if row.isNeeded || row.isLoved || row.gotItCount > 0 {
-          Circle()
-            .fill(Color(red: 0.54, green: 0.78, blue: 0.88))
-            .frame(width: 7, height: 7)
         }
       }
 
@@ -1010,11 +1059,6 @@ private struct NativeSearchItemRowRootView: View {
         if !row.price.isEmpty {
           Text(row.price)
             .font(.system(size: 14))
-        }
-        if let rating = row.rating, !rating.isEmpty {
-          Text(rating)
-            .font(.system(size: 12))
-            .foregroundStyle(Color(red: 0.68, green: 0.48, blue: 0.08))
         }
       }
     }

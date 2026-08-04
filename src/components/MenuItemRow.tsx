@@ -59,7 +59,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
   // signal that needs the disclaimer, unlike the other badges here.
   const badges = [
     item.is_kids && 'Kids',
-    item.is_allergy_friendly && 'Allergy-friendly',
+    item.is_allergy_friendly && 'Disney lists this as Allergy-Friendly',
     item.is_alcoholic && '21+',
   ].filter(Boolean) as string[];
   const [allergyInfoVisible, setAllergyInfoVisible] = useState(false);
@@ -265,20 +265,22 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
             ]}
           >
             <View style={styles.titleRow}>
-              <Text style={[text.restaurantName, styles.name]} numberOfLines={1}>
-                {item.item}
-              </Text>
+              <View style={styles.nameGroup}>
+                <Text style={[text.restaurantName, styles.name]} numberOfLines={1}>
+                  {item.item}
+                </Text>
+                {!!ratingAverageLabel && (
+                  <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
+                    {ratingAverageLabel}
+                  </Text>
+                )}
+              </View>
               {isNew && (
                 <View style={styles.newBadge}>
                   <Text style={styles.newBadgeText}>NEW</Text>
                 </View>
               )}
               <Text style={[text.body, styles.price]}>{item.price_display}</Text>
-              {!!ratingAverageLabel && (
-                <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
-                  {ratingAverageLabel}
-                </Text>
-              )}
             </View>
             {!!item.description && (
               <Text style={[text.bodyMuted, styles.description]} numberOfLines={1}>
@@ -374,8 +376,14 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
     gap: SPACING.md,
   },
-  name: {
+  nameGroup: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: SPACING.xs,
+  },
+  name: {
+    flexShrink: 1,
     fontSize: 15,
   },
   price: {

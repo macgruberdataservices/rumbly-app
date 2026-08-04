@@ -10,6 +10,8 @@ export interface NativeMenuItem {
   description: string | null;
   price: string;
   isNew: boolean;
+  addedLabel: string;
+  periodCategoryLabel: string;
   rating: string | null;
   isNeeded: boolean;
   isLoved: boolean;

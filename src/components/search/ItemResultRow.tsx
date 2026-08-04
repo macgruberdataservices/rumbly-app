@@ -67,7 +67,7 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
   // of an inert string here.
   const badges = [
     item.is_kids && 'Kids',
-    item.is_allergy_friendly && 'Allergy-friendly',
+    item.is_allergy_friendly && 'Disney lists this as Allergy-Friendly',
   ].filter(Boolean) as string[];
   const [allergyInfoVisible, setAllergyInfoVisible] = useState(false);
 
@@ -94,7 +94,6 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
   const gotItCount = gotItItemCounts.get(key) ?? 0;
   const ratingAverage = ratingAveragesEnabled ? itemRatingAverages.get(key) : undefined;
   const ratingAverageLabel = formatRatingAverage(ratingAverage);
-  const hasActivity = isLoved || (needItEnabled && isNeeded) || (gotItEnabled && gotItCount > 0);
   const isNew = isNewMenuItem(item.first_seen);
 
   const swipeableRef = useRef<Swipeable>(null);
@@ -281,18 +280,24 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
           ]}
         >
           <View style={styles.titleRow}>
-            <HighlightedText
-              text={item.item}
-              query={highlightQuery}
-              style={[text.restaurantName, styles.name]}
-              numberOfLines={1}
-            />
+            <View style={styles.nameGroup}>
+              <HighlightedText
+                text={item.item}
+                query={highlightQuery}
+                style={[text.restaurantName, styles.name]}
+                numberOfLines={1}
+              />
+              {!!ratingAverageLabel && (
+                <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
+                  {ratingAverageLabel}
+                </Text>
+              )}
+            </View>
             {isNew && (
               <View style={styles.newBadge}>
                 <Text style={styles.newBadgeText}>NEW</Text>
               </View>
             )}
-            {hasActivity && <View style={styles.activityDot} />}
           </View>
           <Text style={[text.body, styles.restaurant]} numberOfLines={1}>
             {restaurant.restaurant}
@@ -302,11 +307,6 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
               {metaLabel}
             </Text>
             <Text style={[text.body, styles.price]}>{item.price_display}</Text>
-            {!!ratingAverageLabel && (
-              <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
-                {ratingAverageLabel}
-              </Text>
-            )}
           </View>
         </AnimatedPressable>
       </Swipeable>
@@ -382,8 +382,14 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: SPACING.xs,
   },
-  name: {
+  nameGroup: {
     flex: 1,
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: SPACING.xs,
+  },
+  name: {
+    flexShrink: 1,
     fontSize: 14,
   },
   newBadge: {
@@ -397,12 +403,6 @@ const styles = StyleSheet.create({
     fontSize: 9,
     lineHeight: 11,
     color: COLORS.ink,
-  },
-  activityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.pine,
   },
   restaurant: {
     marginTop: 2,
@@ -423,7 +423,6 @@ const styles = StyleSheet.create({
   ratingAverage: {
     fontSize: 12,
     color: COLORS.gold,
-    marginLeft: SPACING.xs,
   },
   actionsRow: {
     flexDirection: 'row',
