@@ -94,7 +94,17 @@ function MainTabs() {
             end: 64,
             bottom: insets.bottom + SPACING.sm,
             height: 62,
+            // The base style (same file, above the tabBarStyle merge) also
+            // sets paddingBottom: insets.bottom unconditionally for a
+            // bottom-position bar -- meant for a bar docked flush against
+            // the physical edge, reserving room so its content clears the
+            // home indicator. This bar already clears the home indicator
+            // via its own `bottom` offset above, so that reserved padding
+            // just ate into the 62pt height with nothing to show for it,
+            // squeezing icon+label down until the icons' bottoms clipped.
+            // Overriding back to 0 here is what actually fixes that.
             paddingTop: 7,
+            paddingBottom: 0,
             borderRadius: 31,
             borderTopWidth: 0,
             backgroundColor: 'transparent',
