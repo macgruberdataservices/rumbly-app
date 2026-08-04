@@ -26,13 +26,16 @@ import { BlurView } from 'expo-blur';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
 import type { RootTabParamList } from '../navigation/RootNavigator';
+import { SettingsButton } from '../components/settings/SettingsButton';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useAppSettings } from '../hooks/useAppSettings';
+import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
 import { useActivity } from '../hooks/useActivity';
 import { useSearch } from '../hooks/useSearch';
 import { useNearMe } from '../hooks/useNearMe';
 import { useWalkingDistances } from '../hooks/useWalkingDistances';
 import { LoadingScreen } from '../components/LoadingScreen';
+import { AllergyAcknowledgementSheet } from '../components/AllergyAcknowledgementSheet';
 import { FindFeed } from '../components/find/FindFeed';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { ItemResultRow } from '../components/search/ItemResultRow';
@@ -43,9 +46,13 @@ import { FilterPanel, PANEL_COLLAPSED_HEIGHT } from '../components/search/Filter
 import { groupResultsByLocation, type ResultRow } from '../search/resultGrouping';
 import {
   applyFilters,
+  ALLERGEN_FILTER_KEYS,
+  ALLERGEN_LABELS,
   collectFilterOptions,
   countActiveFilters,
   emptyFilters,
+  hasAllergyDietarySelection,
+  withoutAllergyDietarySelections,
   type SearchFilters,
 } from '../search/filters';
 import {
@@ -157,16 +164,33 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const { restaurants, isLoading, error, lastSyncedAt, forceRefresh } = useDataProvider();
   const {
     allAllergyInSearch,
+    allergyAcknowledgedThisSession,
+    acknowledgeAllergyDisclaimer,
     findFeedEnabled,
     isSettingsReady,
     nativeInteractionsEnabled,
   } = useAppSettings();
   const { user } = useAuth();
   const { lovedIds } = useActivity();
+  const openAccountSettings = useOpenAccountSettings();
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
   const initialState = initialStateRef.current;
+  const restoredFiltersRef = useRef(deserializeFilters(initialState.filters));
+  const restoredFilters = restoredFiltersRef.current;
+  const restoredAllergyFiltersNeedAcknowledgement =
+    !allergyAcknowledgedThisSession && hasAllergyDietarySelection(restoredFilters.dietary);
   const initialContentOffsetRef = useRef({ x: 0, y: initialState.resultListOffset });
-  const [filters, setFilters] = useState<SearchFilters>(() => deserializeFilters(initialState.filters));
+  const [filters, setFilters] = useState<SearchFilters>(() =>
+    restoredAllergyFiltersNeedAcknowledgement
+      ? { ...restoredFilters, dietary: withoutAllergyDietarySelections(restoredFilters.dietary) }
+      : restoredFilters
+  );
+  const [pendingAllergyFilters, setPendingAllergyFilters] = useState<SearchFilters | null>(
+    restoredAllergyFiltersNeedAcknowledgement ? restoredFilters : null
+  );
+  const [allergyAcknowledgementVisible, setAllergyAcknowledgementVisible] = useState(
+    restoredAllergyFiltersNeedAcknowledgement
+  );
   const [quickLocations, setQuickLocations] = useState<Set<QuickLocationKey>>(
     () => new Set(initialState.quickLocations)
   );
@@ -198,6 +222,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
   const focusedResultKeyRef = useRef(initialState.focusedResultKey);
   const shouldRestoreFocusRef = useRef(initialState.focusedResultKey !== null);
   const pendingAccessibilityFocusRef = useRef(false);
+  const allergyPromptedForCurrentSearchRef = useRef(false);
   const isSearchActiveRef = useRef(initialState.query.trim().length >= 2);
   const latestRestoreStateRef = useRef<FindRestoreState>(initialState);
   // Keep the blur cleanup stable even if React Navigation replaces the
@@ -233,6 +258,20 @@ export function FindHomeScreen({ navigation, route }: Props) {
   );
   const filterOptions = useMemo(() => collectFilterOptions(restaurants), [restaurants]);
   const activeFilterCount = countActiveFilters(filters) + quickLocations.size + quickLocationDetails.size;
+  const explicitAllergyFilterActive = hasAllergyDietarySelection(filters.dietary);
+  const allergyResultContextActive =
+    explicitAllergyFilterActive || (allAllergyInSearch && allergyAcknowledgedThisSession);
+  const allergyResultTitle = useMemo(() => {
+    const labels = ALLERGEN_FILTER_KEYS
+      .filter((key) => filters.dietary.has(key))
+      .map((key) => ALLERGEN_LABELS[key]);
+    if (!explicitAllergyFilterActive) {
+      return 'Disney-labeled Allergy-Friendly items are included in these results.';
+    }
+    return labels.length > 0
+      ? `Disney lists these items as ${labels.join(' and ')} Allergy-Friendly.`
+      : 'Disney lists these items as Allergy-Friendly.';
+  }, [explicitAllergyFilterActive, filters.dietary]);
 
   const {
     query,
@@ -253,10 +292,25 @@ export function FindHomeScreen({ navigation, route }: Props) {
     },
     lastSyncedAt,
     filters.dietary,
-    allAllergyInSearch
+    allAllergyInSearch && allergyAcknowledgedThisSession
   );
   isSearchActiveRef.current = isSearchActive;
   const [nativeQuickLocationRailVisible, setNativeQuickLocationRailVisible] = useState(false);
+
+  useEffect(() => {
+    if (!isSearchActive) {
+      allergyPromptedForCurrentSearchRef.current = false;
+      return;
+    }
+    if (
+      allAllergyInSearch &&
+      !allergyAcknowledgedThisSession &&
+      !allergyPromptedForCurrentSearchRef.current
+    ) {
+      allergyPromptedForCurrentSearchRef.current = true;
+      setAllergyAcknowledgementVisible(true);
+    }
+  }, [allAllergyInSearch, allergyAcknowledgedThisSession, isSearchActive]);
 
   // Once live results have appeared, keep the location rail stable for the
   // life of that query. Filters are allowed to reduce the current result set
@@ -554,7 +608,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
     setFilterPanelState('hidden');
   }, [clear, clearFocusedResult, feedDimReveal, resetListPosition]);
 
-  const handleFiltersChange = useCallback(
+  const applyFiltersChange = useCallback(
     (nextFilters: SearchFilters) => {
       resetListPosition();
       clearFocusedResult();
@@ -563,6 +617,30 @@ export function FindHomeScreen({ navigation, route }: Props) {
     },
     [clearFocusedResult, resetListPosition]
   );
+
+  const handleFiltersChange = useCallback(
+    (nextFilters: SearchFilters) => {
+      if (!allergyAcknowledgedThisSession && hasAllergyDietarySelection(nextFilters.dietary)) {
+        setPendingAllergyFilters(nextFilters);
+        setAllergyAcknowledgementVisible(true);
+        return;
+      }
+      applyFiltersChange(nextFilters);
+    },
+    [allergyAcknowledgedThisSession, applyFiltersChange]
+  );
+
+  const acceptAllergyAcknowledgement = useCallback(() => {
+    acknowledgeAllergyDisclaimer();
+    setAllergyAcknowledgementVisible(false);
+    if (pendingAllergyFilters) applyFiltersChange(pendingAllergyFilters);
+    setPendingAllergyFilters(null);
+  }, [acknowledgeAllergyDisclaimer, applyFiltersChange, pendingAllergyFilters]);
+
+  const cancelAllergyAcknowledgement = useCallback(() => {
+    setAllergyAcknowledgementVisible(false);
+    setPendingAllergyFilters(null);
+  }, []);
 
   const rememberQuery = useCallback(
     (value = query) => {
@@ -938,31 +1016,31 @@ export function FindHomeScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <Animated.View
-        style={[
-          styles.headerClip,
-          {
-            height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 78] }),
-            opacity: introReveal,
-            transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
-          },
-        ]}
-        pointerEvents="none"
-      >
-        <View style={styles.header}>
-          <Image
-            source={require('../../assets/parkivore-wordmark.png')}
-            style={styles.wordmark}
-            resizeMode="contain"
-            accessibilityLabel="Parkivore"
-          />
-          <View style={styles.introCopy}>
-            <Text style={styles.introText}>
-              Search for restaurants and menu items, filter and sort by proximity, or just explore!
-            </Text>
+      <View style={styles.headerRow}>
+        <Animated.View
+          style={[
+            styles.headerClip,
+            {
+              height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 60] }),
+              opacity: introReveal,
+              transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+            },
+          ]}
+          pointerEvents="none"
+        >
+          <View style={styles.header}>
+            <Image
+              source={require('../../assets/rumbly-wordmark.png')}
+              style={styles.wordmark}
+              resizeMode="contain"
+              accessibilityLabel="Rumbly"
+            />
           </View>
+        </Animated.View>
+        <View style={styles.settingsOverlay}>
+          <SettingsButton onPress={openAccountSettings} />
         </View>
-      </Animated.View>
+      </View>
 
       <View style={styles.searchRow}>
         <Pressable
@@ -1067,8 +1145,16 @@ export function FindHomeScreen({ navigation, route }: Props) {
           <View style={styles.noResults}>
             {noResultsVisible ? (
               <>
-                <Text style={text.body}>No matches for "{query}".</Text>
-                <Text style={[text.bodyMuted, styles.noResultsHint]}>Check spelling or try a broader term.</Text>
+                <Text style={text.body}>
+                  {explicitAllergyFilterActive
+                    ? `Disney does not currently list a matching Allergy-Friendly item for "${query}" in Rumbly's menu data.`
+                    : `No matches for "${query}".`}
+                </Text>
+                <Text style={[text.bodyMuted, styles.noResultsHint]}>
+                  {explicitAllergyFilterActive
+                    ? 'This is not a statement about ingredients or whether the restaurant can accommodate you. Confirm with a Disney Cast Member.'
+                    : 'Check spelling or try a broader term.'}
+                </Text>
               </>
             ) : (
               <Text style={text.body}>Gathering results…</Text>
@@ -1094,6 +1180,15 @@ export function FindHomeScreen({ navigation, route }: Props) {
               onMomentumScrollEnd={() => persistRestoreState()}
               scrollEventThrottle={16}
               keyboardShouldPersistTaps="handled"
+              ListHeaderComponent={allergyResultContextActive ? (
+                <View style={styles.allergyResultNotice}>
+                  <Text style={[text.body, styles.allergyResultTitle]}>{allergyResultTitle}</Text>
+                  <Text style={text.bodyMuted}>
+                    Rumbly does not evaluate ingredients or determine whether food is safe for you.
+                    Menus and preparation can change — confirm with a Disney Cast Member before ordering.
+                  </Text>
+                </View>
+              ) : null}
               ListFooterComponent={hasMoreResults ? (
                 <Pressable
                   accessibilityRole="button"
@@ -1261,6 +1356,11 @@ export function FindHomeScreen({ navigation, route }: Props) {
         onExpand={() => setFilterPanelState('expanded')}
         onChange={handleFiltersChange}
       />
+      <AllergyAcknowledgementSheet
+        visible={allergyAcknowledgementVisible}
+        onAccept={acceptAllergyAcknowledgement}
+        onCancel={cancelAllergyAcknowledgement}
+      />
     </SafeAreaView>
   );
 }
@@ -1270,34 +1370,53 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.surface,
   },
+  allergyResultNotice: {
+    backgroundColor: COLORS.goldLight,
+    borderRadius: RADII.md,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.md,
+    padding: SPACING.md,
+  },
+  allergyResultTitle: { marginBottom: SPACING.xs },
   header: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
     paddingBottom: SPACING.sm,
   },
   headerClip: { overflow: 'hidden' },
-  // Source asset is 401x160 (~2.51:1, back to a wide wordmark shape
-  // like the original Rumbly logo -- Park Bites' was ~1.54:1, taller/
-  // squarer). Keep that ratio so resizeMode="contain" doesn't letterbox
-  // the new logo down inside a box sized for the old one's proportions.
-  // Sized 90% of the ratio-matched box (owner feedback, 2026-07-28: full
-  // size read as too big).
+  // Source asset (rumbly-wordmark.png, swapped again 2026-08-03 to the V2
+  // script wordmark) is 480x213 (~2.25:1) -- squarer than the previous
+  // artwork's ~2.57:1, so the box ratio moved with it to keep
+  // resizeMode="contain" from letterboxing it. Height held at the
+  // previous shrink's 44 so it isn't a fresh size decision, just the
+  // width following the new ratio.
   wordmark: {
-    width: 151,
-    height: 60,
+    width: 99,
+    height: 44,
   },
-  introCopy: {
-    flex: 1,
-    marginLeft: SPACING.lg,
+  // Wraps headerClip and the settings button together so the button can be
+  // absolutely positioned within just this small local area -- not the
+  // whole screen, which has several unrelated absolutely-positioned
+  // overlays further down (recentStickyShell alone is zIndex 20) that an
+  // earlier, screen-wide overlay attempt collided with. Giving the button
+  // its own full row instead worked but doubled up on vertical space
+  // headerClip/searchRow already account for; this way it shares the
+  // header's own space rather than adding a row above it.
+  headerRow: {
+    position: 'relative',
   },
-  introText: {
-    fontFamily: text.bodyMuted.fontFamily,
-    fontSize: 12.5,
-    lineHeight: 16,
-    color: COLORS.muted,
+  // Not inside headerClip itself: that Animated.View is pointerEvents="none"
+  // and collapses away while searching (see introReveal), but the button
+  // needs to stay tappable and visible regardless of search state. Its
+  // "top" offset is measured from headerRow's own top edge, which doesn't
+  // move as headerClip's height animates, so the button stays put while
+  // the wordmark shrinks/fades beneath it.
+  settingsOverlay: {
+    position: 'absolute',
+    top: SPACING.sm,
+    right: SPACING.lg,
   },
   searchRow: {
     flexDirection: 'row',
@@ -1460,6 +1579,7 @@ const styles = StyleSheet.create({
   },
   resultList: {
     flex: 1,
+    backgroundColor: COLORS.cream,
   },
   searchMode: {
     flex: 1,

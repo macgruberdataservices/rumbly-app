@@ -3,6 +3,7 @@ import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ExploreStackParamList } from '../navigation/ExploreNavigator';
+import { SettingsButton } from '../components/settings/SettingsButton';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { groupRestaurants, WATER_PARKS_GROUP_KEY, type RestaurantGroup } from '../data/groups';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
@@ -11,6 +12,7 @@ import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions';
 import { evaluateChallenge } from '../challenges/evaluate';
 import { ChallengeSummaryCard } from '../components/challenges/ChallengeSummaryCard';
 import { useActivity } from '../hooks/useActivity';
+import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
 
 type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreHome'>;
 
@@ -28,6 +30,7 @@ const CARD_COLORS = [
 export function ExploreHomeScreen({ navigation }: Props) {
   const { restaurants, isLoading, error } = useDataProvider();
   const { personalActivity } = useActivity();
+  const openAccountSettings = useOpenAccountSettings();
   const groups = groupRestaurants(restaurants);
   const quickFiveProgress = useMemo(
     () => evaluateChallenge(QUICK_FIVE_CHALLENGE, personalActivity.gotItHistory, restaurants),
@@ -47,7 +50,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <View style={styles.header}>
         <Text
           style={styles.heading}
           numberOfLines={1}
@@ -57,6 +60,10 @@ export function ExploreHomeScreen({ navigation }: Props) {
         >
           Explore Restaurants and Menus
         </Text>
+        <SettingsButton onPress={openAccountSettings} />
+      </View>
+      <View style={styles.body}>
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={[text.sectionToggle, styles.sectionLabel]}>EXPLORE BY LOCATION</Text>
 
         {isLoading && restaurants.length === 0 ? (
@@ -135,6 +142,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
           </View>
         )}
       </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -144,18 +152,30 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: COLORS.surface,
   },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
+    backgroundColor: COLORS.surface,
+  },
+  body: {
+    flex: 1,
+    backgroundColor: COLORS.cream,
+  },
   content: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.xxl,
   },
   heading: {
+    flex: 1,
     fontFamily: FONT_FAMILY.interSemiBold,
     fontSize: 20,
     lineHeight: 24,
     letterSpacing: 0,
     color: COLORS.ink,
-    marginBottom: SPACING.sm,
   },
   sectionLabel: {
     marginBottom: SPACING.sm,

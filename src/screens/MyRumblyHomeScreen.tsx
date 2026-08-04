@@ -46,15 +46,15 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.headingRow}>
-          <View style={styles.headingCopy}>
-            <Text style={styles.heading}>My Rumbly</Text>
-            <Text style={text.bodyMuted}>{user?.email ?? 'Saved on this device'}</Text>
-          </View>
-          <SettingsButton onPress={openAccountSettings} />
+      <View style={styles.header}>
+        <View style={styles.headingCopy}>
+          <Text style={styles.heading}>My Rumbly</Text>
+          <Text style={text.bodyMuted}>{user?.email ?? 'Saved on this device'}</Text>
         </View>
-
+        <SettingsButton onPress={openAccountSettings} />
+      </View>
+      <View style={styles.body}>
+      <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.sectionLabel}>YOUR RUMBLY</Text>
         <Pressable
           accessibilityRole="button"
@@ -124,6 +124,7 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
           <Text style={styles.rounds}>{progress.completions.length} completed {progress.completions.length === 1 ? 'round' : 'rounds'}</Text>
         </Pressable>
       </ScrollView>
+      </View>
     </SafeAreaView>
   );
 }
@@ -140,8 +141,16 @@ function Stat({ value, label }: { value: number; label: string }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   centered: { alignItems: 'center', justifyContent: 'center' },
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
+    backgroundColor: COLORS.surface,
+  },
+  body: { flex: 1, backgroundColor: COLORS.cream },
   content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xxl },
-  headingRow: { flexDirection: 'row', alignItems: 'center', marginBottom: SPACING.xl },
   headingCopy: { flex: 1 },
   heading: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
   sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.xl },

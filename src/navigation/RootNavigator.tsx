@@ -2,13 +2,15 @@ import { NavigationContainer, type NavigatorScreenParams } from '@react-navigati
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { BlurView } from 'expo-blur';
 import { FindNavigator, type FindStackParamList } from './FindNavigator';
 import { ExploreNavigator, type ExploreStackParamList } from './ExploreNavigator';
 import { MyRumblyNavigator, type MyRumblyStackParamList } from './MyRumblyNavigator';
 import { SettingsNavigator } from './SettingsNavigator';
 import { JournalComposerScreen } from '../screens/journal/JournalComposerScreen';
 import type { AppRootStackParamList } from './journalTypes';
-import { COLORS } from '../theme/tokens';
+import { COLORS, SPACING } from '../theme/tokens';
 
 export type RootTabParamList = {
   Find: NavigatorScreenParams<FindStackParamList>;
@@ -56,7 +58,16 @@ function TabIcon({ routeName, color }: { routeName: keyof RootTabParamList; colo
   return <MyRumblyIcon color={color} />;
 }
 
+// Floating "pill" tab bar matching current iOS system chrome (the
+// inset-from-edges, rounded, frosted-glass bar iOS itself now uses) rather
+// than the previous edge-to-edge bar docked flush against the bottom.
+// tabBarStyle.position:'absolute' is what makes it float over content
+// instead of reserving its own row -- screens don't currently pad their
+// scroll content to account for that, so the last bit of a long list can
+// still tuck in behind the pill. Worth a follow-up pass per-screen if that
+// turns out to matter in practice; out of scope for this visual pass.
 function MainTabs() {
+  const insets = useSafeAreaInsets();
   return (
     <Tab.Navigator
         screenOptions={({ route }) => ({
@@ -65,12 +76,22 @@ function MainTabs() {
           tabBarActiveTintColor: COLORS.forest,
           tabBarInactiveTintColor: COLORS.muted,
           tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+          tabBarBackground: () => <BlurView intensity={78} tint="light" style={styles.tabBarBlur} />,
           tabBarStyle: {
-            height: 66,
+            position: 'absolute',
+            left: SPACING.xl,
+            right: SPACING.xl,
+            bottom: insets.bottom + SPACING.sm,
+            height: 62,
             paddingTop: 7,
-            paddingBottom: 8,
-            backgroundColor: COLORS.surface,
-            borderTopColor: COLORS.border,
+            borderRadius: 31,
+            borderTopWidth: 0,
+            backgroundColor: 'transparent',
+            shadowColor: '#000',
+            shadowOpacity: 0.12,
+            shadowRadius: 16,
+            shadowOffset: { width: 0, height: 6 },
+            elevation: 10,
           },
         })}
       >
@@ -101,6 +122,15 @@ export function RootNavigator() {
 }
 
 const styles = StyleSheet.create({
+  // Rounded + clipped on its own, separate from tabBarStyle's outer
+  // container -- that container needs overflow left visible for its shadow
+  // to render outside its bounds, so the corner-clipping has to live here
+  // on the blur layer instead, not on the shadowed parent.
+  tabBarBlur: {
+    ...StyleSheet.absoluteFill,
+    borderRadius: 31,
+    overflow: 'hidden',
+  },
   iconFrame: {
     width: 24,
     height: 24,
