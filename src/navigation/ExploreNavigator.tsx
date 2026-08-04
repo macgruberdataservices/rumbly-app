@@ -8,15 +8,18 @@ import { ChallengeDetailScreen } from '../screens/ChallengeDetailScreen';
 import { ChangesHomeScreen } from '../screens/ChangesHomeScreen';
 import { ChangesRestaurantScreen } from '../screens/ChangesRestaurantScreen';
 import { ChangesCategoryScreen } from '../screens/ChangesCategoryScreen';
+import { TicketedEventScreen } from '../screens/TicketedEventScreen';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 import type { BrowseStackParamList } from './browseTypes';
 import type { ChangesStackParamList } from './changesTypes';
+import type { MenuItem } from '../data/types';
 
 export type ExploreStackParamList = BrowseStackParamList &
   ChangesStackParamList & {
     ExploreHome: undefined;
     ChallengeDetail: { challengeId: string };
+    TicketedEvent: { title: string; subtitle: string; items: MenuItem[] };
   };
 
 const Stack = createNativeStackNavigator<ExploreStackParamList>();
@@ -61,6 +64,7 @@ export function ExploreNavigator() {
       <Stack.Screen name="ChangesHome" component={ChangesHomeScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ChangesRestaurant" component={ChangesRestaurantScreen} options={{ headerShown: false }} />
       <Stack.Screen name="ChangesCategory" component={ChangesCategoryScreen} options={{ headerShown: false }} />
+      <Stack.Screen name="TicketedEvent" component={TicketedEventScreen} options={{ headerShown: false }} />
     </Stack.Navigator>
   );
 }

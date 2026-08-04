@@ -13,6 +13,7 @@ import { evaluateChallenge } from '../challenges/evaluate';
 import { ChallengeSummaryCard } from '../components/challenges/ChallengeSummaryCard';
 import { useActivity } from '../hooks/useActivity';
 import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
+import { useTicketedEvents } from '../hooks/useTicketedEvents';
 
 type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreHome'>;
 
@@ -31,6 +32,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
   const { restaurants, isLoading, error } = useDataProvider();
   const { personalActivity } = useActivity();
   const openAccountSettings = useOpenAccountSettings();
+  const activeTicketedEvents = useTicketedEvents();
   const groups = groupRestaurants(restaurants);
   const quickFiveProgress = useMemo(
     () => evaluateChallenge(QUICK_FIVE_CHALLENGE, personalActivity.gotItHistory, restaurants),
@@ -139,6 +141,38 @@ export function ExploreHomeScreen({ navigation }: Props) {
               </View>
               <Text style={styles.chevron}>›</Text>
             </Pressable>
+          </View>
+        )}
+
+        {activeTicketedEvents.length > 0 && (
+          <View style={styles.challengeSection}>
+            <Text style={[text.sectionToggle, styles.sectionLabel]}>CHECK OUT EXCLUSIVE ITEMS</Text>
+            {activeTicketedEvents.map((event) => (
+              <Pressable
+                key={event.id}
+                accessibilityRole="button"
+                accessibilityLabel={`${event.title}: ${event.subtitle}`}
+                style={({ pressed }) => [styles.changesCard, pressed && styles.changesCardPressed]}
+                onPress={() =>
+                  navigation.navigate('TicketedEvent', {
+                    title: event.title,
+                    subtitle: event.subtitle,
+                    items: event.items,
+                  })
+                }
+              >
+                <View style={styles.changesIcon}>
+                  <Text style={styles.changesIconText}>{event.icon}</Text>
+                </View>
+                <View style={styles.changesCopy}>
+                  <Text style={styles.changesTitle}>{event.title}</Text>
+                  <Text style={styles.changesDescription} numberOfLines={1}>
+                    {event.subtitle}
+                  </Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            ))}
           </View>
         )}
       </ScrollView>

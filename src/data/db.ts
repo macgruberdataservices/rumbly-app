@@ -226,3 +226,29 @@ export async function countMenuItems(): Promise<number> {
   const row = await db.getFirstAsync<{ count: number }>('SELECT COUNT(*) as count FROM menu_items;');
   return row?.count ?? 0;
 }
+
+// Backs the "Check Out Exclusive Items" ticketed-event cards on Explore
+// (see ticketedEvents.ts) -- a handful of category_group values out of
+// 45k+ rows, so a plain IN () scan is fine without a dedicated index.
+// dining_period is checked too, not just category_group, matching the
+// combined signal that distinguishes real hard-ticket-event exclusives
+// from the unrelated "exclusive" categories elsewhere in the data
+// (Annual Passholder Exclusive, Dinner Exclusives, etc. -- all under
+// normal dining periods, not Special Ticketed Event).
+export async function getMenuItemsByCategoryGroups(categoryGroups: string[]): Promise<MenuItem[]> {
+  if (categoryGroups.length === 0) return [];
+  const db = await getDb();
+  const params: Record<string, string> = {};
+  const placeholders = categoryGroups
+    .map((group, index) => {
+      const key = `$cg${index}`;
+      params[key] = group;
+      return key;
+    })
+    .join(', ');
+  const rows = await db.getAllAsync<MenuItemRow>(
+    `SELECT * FROM menu_items WHERE category_group IN (${placeholders}) AND dining_period = 'Special Ticketed Event';`,
+    params
+  );
+  return rows.map(rowToMenuItem);
+}
