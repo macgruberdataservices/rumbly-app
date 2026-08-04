@@ -95,6 +95,14 @@ export const ALLERGEN_LABELS: Record<string, string> = {
   sesame: 'Sesame', peanut: 'Peanut', 'tree-nut': 'Tree Nut', fish: 'Fish', shellfish: 'Shellfish',
 };
 
+export function hasAllergyDietarySelection(dietary: Set<string>): boolean {
+  return dietary.has('allergy-friendly') || ALLERGEN_FILTER_KEYS.some((key) => dietary.has(key));
+}
+
+export function withoutAllergyDietarySelections(dietary: Set<string>): Set<string> {
+  return new Set(Array.from(dietary).filter((key) => key === 'kids'));
+}
+
 // Item-level visibility, safety-critical (Docs/ROADMAP.md, 2026-07-27
 // plan): every allergy-related chip (general or allergen-specific) is
 // matched ONLY against is_allergy_friendly + the item's own `allergens`
@@ -105,19 +113,27 @@ export const ALLERGEN_LABELS: Record<string, string> = {
 // hedged informational badge on regular items (see MenuItemRow.tsx/
 // ItemResultRow.tsx).
 //
-// Dietary chips are OR-within-the-group like every other filter group in
-// this app (Docs/ROADMAP.md open question #1) -- selecting Kids menu and
-// Peanut-friendly together shows items matching either, not only items
-// that are both.
+// Dietary selections are the deliberate exception to the app's usual
+// OR-within-a-group behavior. Allergy requirements combine with AND semantics:
+// an item must carry every Disney-published allergen label the guest selected.
+// The general Allergy-friendly chip only widens the set when it is selected by
+// itself; it cannot override a specific allergen. Kids + an allergy selection
+// means the item must satisfy both requirements.
 export function itemMatchesDietary(item: Pick<MenuItem | SearchIndexEntry, 'is_kids' | 'is_allergy_friendly' | 'allergens'>, dietary: Set<string>): boolean {
-  if (dietary.has('kids') && item.is_kids) return true;
+  const wantsKids = dietary.has('kids');
+  const wantsAnyAllergyFriendly = dietary.has('allergy-friendly');
+  const requestedAllergens = ALLERGEN_FILTER_KEYS.filter((key) => dietary.has(key));
+  const hasAllergySelection = wantsAnyAllergyFriendly || requestedAllergens.length > 0;
+
+  if (wantsKids && !item.is_kids) return false;
+  if (!hasAllergySelection) return wantsKids && item.is_kids;
   if (!item.is_allergy_friendly) return false;
-  if (dietary.has('allergy-friendly')) return true;
   // item.allergens can be undefined on stale locally-cached data
   // predating this field, despite the type -- see LOCAL_DATA_SCHEMA_VERSION
   // 7's comment in manifest.ts. Fails closed (no allergen match) rather
   // than crashing.
-  return ALLERGEN_FILTER_KEYS.some((a) => dietary.has(a) && (item.allergens ?? []).includes(a));
+  if (requestedAllergens.length === 0) return wantsAnyAllergyFriendly;
+  return requestedAllergens.every((allergen) => (item.allergens ?? []).includes(allergen));
 }
 
 // The single item-visibility decision for search results (Find only --
@@ -145,6 +161,28 @@ export function itemVisibleInSearch(
   // these rows specifically; show_in_menu only governs everything else.
   if (item.is_allergy_friendly) return allowAllergyByDefault;
   if (!item.show_in_menu) return false;
+  return true;
+}
+
+// The item-visibility decision for a restaurant's own menu display
+// (RestaurantDetailScreen -- shared by both the native and JS rendering
+// paths, since they're both fed the one `sections` list it builds).
+// Unlike itemVisibleInSearch, there's no dietary-chip narrowing here, a
+// restaurant's menu doesn't have those. show_in_menu already suppresses
+// ordinary allergy-variant dupe rows at a normal restaurant (see
+// normalize_menu.py's process()), so showAllergyFriendlyMenuItems has no
+// effect there. It only matters for the rare restaurant whose entire
+// menu IS allergy-friendly categories with no base items to defer to
+// (normalize_menu.py's unsuppress_allergy_only_restaurants() leaves
+// those show_in_menu:true rather than showing an empty menu) -- the
+// "Show Allergy Friendly Menu Items" Settings toggle (default off)
+// decides whether those show up here.
+export function itemVisibleInMenu(
+  item: Pick<MenuItem, 'is_allergy_friendly' | 'show_in_menu'>,
+  showAllergyFriendlyMenuItems: boolean
+): boolean {
+  if (!item.show_in_menu) return false;
+  if (item.is_allergy_friendly) return showAllergyFriendlyMenuItems;
   return true;
 }
 

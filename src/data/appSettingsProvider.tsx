@@ -8,16 +8,23 @@ import {
   loadFindFeedContentMode,
   loadFindFeedEnabled,
   loadNativeInteractionsEnabled,
+  loadShowAllergyFriendlyMenuItems,
   saveAllAllergyInSearch,
+  saveAllergyAcknowledgement,
   saveFindFeedContentMode,
   saveFindFeedEnabled,
   saveNativeInteractionsEnabled,
+  saveShowAllergyFriendlyMenuItems,
   type FindFeedContentMode,
 } from './appSettings';
 
 interface AppSettingsContextValue {
   allAllergyInSearch: boolean;
   setAllAllergyInSearch: (value: boolean) => void;
+  showAllergyFriendlyMenuItems: boolean;
+  setShowAllergyFriendlyMenuItems: (value: boolean) => void;
+  allergyAcknowledgedThisSession: boolean;
+  acknowledgeAllergyDisclaimer: () => void;
   findFeedEnabled: boolean;
   setFindFeedEnabled: (value: boolean) => void;
   findFeedContentMode: FindFeedContentMode;
@@ -31,6 +38,8 @@ const AppSettingsContext = createContext<AppSettingsContextValue | null>(null);
 
 export function AppSettingsProvider({ children }: { children: React.ReactNode }) {
   const [allAllergyInSearch, setAllAllergyInSearchState] = useState(false);
+  const [showAllergyFriendlyMenuItems, setShowAllergyFriendlyMenuItemsState] = useState(false);
+  const [allergyAcknowledgedThisSession, setAllergyAcknowledgedThisSession] = useState(false);
   const [findFeedEnabled, setFindFeedEnabledState] = useState(true);
   const [findFeedContentMode, setFindFeedContentModeState] =
     useState<FindFeedContentMode>('live');
@@ -41,12 +50,14 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     let cancelled = false;
     Promise.all([
       loadAllAllergyInSearch(),
+      loadShowAllergyFriendlyMenuItems(),
       loadFindFeedEnabled(),
       loadFindFeedContentMode(),
       loadNativeInteractionsEnabled(),
-    ]).then(([allergy, feed, contentMode, nativeInteractions]) => {
+    ]).then(([allergy, showAllergyMenuItems, feed, contentMode, nativeInteractions]) => {
       if (cancelled) return;
       setAllAllergyInSearchState(allergy);
+      setShowAllergyFriendlyMenuItemsState(showAllergyMenuItems);
       setFindFeedEnabledState(feed);
       setFindFeedContentModeState(contentMode);
       setNativeInteractionsEnabledState(nativeInteractions);
@@ -60,6 +71,16 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const setAllAllergyInSearch = (value: boolean) => {
     setAllAllergyInSearchState(value);
     saveAllAllergyInSearch(value).catch(() => {});
+  };
+
+  const setShowAllergyFriendlyMenuItems = (value: boolean) => {
+    setShowAllergyFriendlyMenuItemsState(value);
+    saveShowAllergyFriendlyMenuItems(value).catch(() => {});
+  };
+
+  const acknowledgeAllergyDisclaimer = () => {
+    setAllergyAcknowledgedThisSession(true);
+    saveAllergyAcknowledgement().catch(() => {});
   };
 
   const setFindFeedEnabled = (value: boolean) => {
@@ -82,6 +103,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       value={{
         allAllergyInSearch,
         setAllAllergyInSearch,
+        showAllergyFriendlyMenuItems,
+        setShowAllergyFriendlyMenuItems,
+        allergyAcknowledgedThisSession,
+        acknowledgeAllergyDisclaimer,
         findFeedEnabled,
         setFindFeedEnabled,
         findFeedContentMode,

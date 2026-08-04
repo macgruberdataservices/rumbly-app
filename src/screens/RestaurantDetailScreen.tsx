@@ -8,6 +8,7 @@ import { useAuth } from '../hooks/useAuth';
 import { getMenuItemsByRestaurant } from '../data/db';
 import { getTodayStatus } from '../data/hoursStatus';
 import { dropRedundantAllDay, sortPeriods, defaultPeriod } from '../data/period';
+import { itemVisibleInMenu } from '../search/filters';
 import type { MenuItem } from '../data/types';
 import { ExpandedHeader } from '../components/restaurant-detail/ExpandedHeader';
 import { CollapsedHeader } from '../components/restaurant-detail/CollapsedHeader';
@@ -55,7 +56,7 @@ interface Section {
 export function RestaurantDetailScreen({ route, navigation }: Props) {
   const { restaurantId, itemId: targetItemId, period: targetPeriod, category: targetCategory } = route.params;
   const { restaurants, hoursData } = useDataProvider();
-  const { findFeedEnabled, nativeInteractionsEnabled } = useAppSettings();
+  const { findFeedEnabled, nativeInteractionsEnabled, showAllergyFriendlyMenuItems } = useAppSettings();
   const useNativeMenu = nativeInteractionsEnabled && Platform.OS === 'ios';
   const { user } = useAuth();
   const insets = useSafeAreaInsets();
@@ -145,9 +146,13 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   }, []);
 
   const periods = useMemo(() => {
-    const set = new Set(menuItems.filter((i) => i.show_in_menu).map((i) => i.dining_period));
+    const set = new Set(
+      menuItems
+        .filter((i) => itemVisibleInMenu(i, showAllergyFriendlyMenuItems))
+        .map((i) => i.dining_period)
+    );
     return sortPeriods(dropRedundantAllDay(Array.from(set)));
-  }, [menuItems]);
+  }, [menuItems, showAllergyFriendlyMenuItems]);
 
   useEffect(() => {
     if (!selectedPeriod && periods.length > 0) {
@@ -161,7 +166,9 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
 
   const sections: Section[] = useMemo(() => {
     if (!selectedPeriod) return [];
-    const filtered = menuItems.filter((i) => i.show_in_menu && i.dining_period === selectedPeriod);
+    const filtered = menuItems.filter(
+      (i) => itemVisibleInMenu(i, showAllergyFriendlyMenuItems) && i.dining_period === selectedPeriod
+    );
     const byCategory = new Map<string, { order: number; items: MenuItem[] }>();
     for (const item of filtered) {
       const existing = byCategory.get(item.category);
@@ -174,7 +181,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     return Array.from(byCategory.entries())
       .sort((a, b) => a[1].order - b[1].order)
       .map(([category, { items }], sectionIndex) => ({ title: category, sectionIndex, data: items }));
-  }, [menuItems, selectedPeriod]);
+  }, [menuItems, selectedPeriod, showAllergyFriendlyMenuItems]);
 
   const nativeTargetAnchorId = useMemo(() => {
     if (!targetItemId || !targetCategory) return null;

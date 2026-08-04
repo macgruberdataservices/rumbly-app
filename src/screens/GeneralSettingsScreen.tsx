@@ -21,12 +21,19 @@ export function GeneralSettingsScreen({ navigation }: Props) {
   const {
     allAllergyInSearch,
     setAllAllergyInSearch,
+    showAllergyFriendlyMenuItems,
+    setShowAllergyFriendlyMenuItems,
     allergyAcknowledgedThisSession,
     acknowledgeAllergyDisclaimer,
     findFeedEnabled,
     setFindFeedEnabled,
   } = useAppSettings();
   const [allergyAcknowledgementVisible, setAllergyAcknowledgementVisible] = useState(false);
+  // Both allergy toggles below share one disclaimer sheet -- same hedge
+  // language, same "confirm with a Cast Member" concern either way.
+  // Tracks which toggle actually asked for it, so onAccept enables the
+  // right one instead of always defaulting to search.
+  const [pendingAllergyToggle, setPendingAllergyToggle] = useState<'search' | 'menu' | null>(null);
 
   const handleAllAllergyChange = (value: boolean) => {
     if (!value) {
@@ -37,6 +44,20 @@ export function GeneralSettingsScreen({ navigation }: Props) {
       setAllAllergyInSearch(true);
       return;
     }
+    setPendingAllergyToggle('search');
+    setAllergyAcknowledgementVisible(true);
+  };
+
+  const handleShowAllergyMenuItemsChange = (value: boolean) => {
+    if (!value) {
+      setShowAllergyFriendlyMenuItems(false);
+      return;
+    }
+    if (allergyAcknowledgedThisSession) {
+      setShowAllergyFriendlyMenuItems(true);
+      return;
+    }
+    setPendingAllergyToggle('menu');
     setAllergyAcknowledgementVisible(true);
   };
 
@@ -69,6 +90,23 @@ export function GeneralSettingsScreen({ navigation }: Props) {
           />
         </View>
 
+        <View style={[styles.settingRow, styles.settingRowSpaced]}>
+          <View style={styles.settingRowText}>
+            <Text style={text.body}>Show Allergy Friendly Menu Items</Text>
+            <Text style={[text.bodyMuted, styles.settingRowSubtitle]}>
+              Off by default. A restaurant's own menu already shows regular items with an "allergy
+              option available" note rather than a separate row. This only matters for the rare menu
+              made up entirely of allergy-friendly items with no regular version -- turn this on to see
+              those instead of an empty menu.
+            </Text>
+          </View>
+          <Switch
+            value={showAllergyFriendlyMenuItems}
+            onValueChange={handleShowAllergyMenuItemsChange}
+            trackColor={{ true: COLORS.forest }}
+          />
+        </View>
+
         <Text style={[styles.sectionLabel, styles.findSectionLabel]}>FIND</Text>
         <View style={styles.settingRow}>
           <View style={styles.settingRowText}>
@@ -93,9 +131,17 @@ export function GeneralSettingsScreen({ navigation }: Props) {
         onAccept={() => {
           acknowledgeAllergyDisclaimer();
           setAllergyAcknowledgementVisible(false);
-          setAllAllergyInSearch(true);
+          if (pendingAllergyToggle === 'menu') {
+            setShowAllergyFriendlyMenuItems(true);
+          } else if (pendingAllergyToggle === 'search') {
+            setAllAllergyInSearch(true);
+          }
+          setPendingAllergyToggle(null);
         }}
-        onCancel={() => setAllergyAcknowledgementVisible(false)}
+        onCancel={() => {
+          setAllergyAcknowledgementVisible(false);
+          setPendingAllergyToggle(null);
+        }}
       />
     </SafeAreaView>
   );
@@ -121,6 +167,7 @@ const styles = StyleSheet.create({
   },
   settingRowText: { flex: 1 },
   settingRowSubtitle: { marginTop: SPACING.xs },
+  settingRowSpaced: { marginTop: SPACING.lg },
   versionText: {
     ...text.bodyMuted,
     textAlign: 'center',
