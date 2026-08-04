@@ -79,8 +79,19 @@ function MainTabs() {
           tabBarBackground: () => <BlurView intensity={78} tint="light" style={styles.tabBarBlur} />,
           tabBarStyle: {
             position: 'absolute',
-            left: SPACING.xl,
-            right: SPACING.xl,
+            // start/end, not left/right -- @react-navigation/bottom-tabs'
+            // own base style (BottomTabBar.js's styles.bottom) sets
+            // start:0/end:0 (RN's logical, RTL-aware properties). Setting
+            // left/right here doesn't override that -- start/end and
+            // left/right aren't the same style keys, so both apply and
+            // start/end wins the actual layout, which is exactly why an
+            // earlier attempt at left/right silently had zero visual
+            // effect at any value. Wide margins on purpose -- a compact,
+            // content-hugging capsule centered on screen (see reference:
+            // NYT Games' Play/Friends/Me bar), not a nearly-edge-to-edge
+            // bar with a small gap.
+            start: 64,
+            end: 64,
             bottom: insets.bottom + SPACING.sm,
             height: 62,
             paddingTop: 7,
