@@ -7,6 +7,7 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
+  Easing,
   findNodeHandle,
   FlatList,
   Image,
@@ -29,6 +30,7 @@ import type { RootTabParamList } from '../navigation/RootNavigator';
 import { SettingsButton } from '../components/settings/SettingsButton';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useAppSettings } from '../hooks/useAppSettings';
+import { useIsDevOwner } from '../hooks/useIsDevOwner';
 import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
 import { useActivity } from '../hooks/useActivity';
 import { useSearch } from '../hooks/useSearch';
@@ -88,24 +90,78 @@ const INITIAL_RESULT_LIMIT = 50;
 
 function FilterIcon({ active }: { active: boolean }) {
   return (
-    <View style={styles.filterIcon}>
-      <View style={[styles.filterIconLine, active && styles.filterIconLineActive]}>
-        <View style={[styles.filterIconKnob, styles.filterIconKnobLeft, active && styles.filterIconKnobActive]} />
-      </View>
-      <View style={[styles.filterIconLine, active && styles.filterIconLineActive]}>
-        <View style={[styles.filterIconKnob, styles.filterIconKnobRight, active && styles.filterIconKnobActive]} />
-      </View>
-      <View style={[styles.filterIconLine, active && styles.filterIconLineActive]}>
-        <View style={[styles.filterIconKnob, styles.filterIconKnobMiddle, active && styles.filterIconKnobActive]} />
-      </View>
-    </View>
+    <Image
+      source={require('../../assets/filter-icon.png')}
+      style={styles.filterIcon}
+      resizeMode="contain"
+      tintColor={active ? COLORS.surface : COLORS.forest}
+    />
   );
 }
 
 function NearMeIcon({ active }: { active: boolean }) {
   return (
-    <View style={[styles.nearIconOuter, active && styles.nearIconOuterActive]}>
-      <View style={[styles.nearIconInner, active && styles.nearIconInnerActive]} />
+    <Image
+      source={require('../../assets/nearby-icon.png')}
+      style={styles.nearIcon}
+      resizeMode="contain"
+      tintColor={active ? COLORS.surface : COLORS.forest}
+    />
+  );
+}
+
+// Two rings pulsing outward on a stagger (each loop resets to scale 1 /
+// opacity 0.45 automatically -- Animated.loop's default
+// resetBeforeIteration) so a beat starts roughly every 800ms instead of
+// every 1600ms. Lives in its own wrapping View, rendered as a sibling
+// *before* the Near Me button rather than inside it, so the button's own
+// opaque fill paints over the rings within its bounds -- only the glow
+// that escapes past the button's circle is visible.
+function NearMePulse({ active }: { active: boolean }) {
+  const ring1 = useRef(new Animated.Value(0)).current;
+  const ring2 = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (!active) return;
+    // .stop() below freezes each value wherever the animation happened to
+    // be, it doesn't rewind it -- so without this reset, reactivating
+    // replays from that stale leftover value (often already at 1, i.e.
+    // no visible motion at all) instead of a fresh 0 -> 1 sweep.
+    ring1.setValue(0);
+    ring2.setValue(0);
+    const pulse = (value: Animated.Value, delay: number) =>
+      Animated.loop(
+        Animated.sequence([
+          Animated.delay(delay),
+          Animated.timing(value, {
+            toValue: 1,
+            duration: 1600,
+            easing: Easing.out(Easing.ease),
+            useNativeDriver: true,
+          }),
+        ])
+      );
+    const loop1 = pulse(ring1, 0);
+    const loop2 = pulse(ring2, 800);
+    loop1.start();
+    loop2.start();
+    return () => {
+      loop1.stop();
+      loop2.stop();
+    };
+  }, [active, ring1, ring2]);
+
+  if (!active) return null;
+
+  const ringStyle = (value: Animated.Value) => ({
+    opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
+    transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
+  });
+
+  return (
+    <View style={styles.nearPulseWrap} pointerEvents="none">
+      <Animated.View style={[styles.nearPulseRing, ringStyle(ring1)]} />
+      <Animated.View style={[styles.nearPulseRing, ringStyle(ring2)]} />
     </View>
   );
 }
@@ -114,6 +170,7 @@ function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; ar
   return (
     <View style={styles.locationHeader}>
       <View style={styles.locationHeaderBar}>
+        <View style={styles.locationHeaderDot} />
         <Text style={styles.locationHeaderText} numberOfLines={1}>
           {parkLabel.toUpperCase()}{areaLabel ? ` · ${areaLabel.toUpperCase()}` : ''}
         </Text>
@@ -169,8 +226,10 @@ export function FindHomeScreen({ navigation, route }: Props) {
     findFeedEnabled,
     isSettingsReady,
     nativeInteractionsEnabled,
+    mockLocation,
   } = useAppSettings();
   const { user } = useAuth();
+  const isDevOwner = useIsDevOwner();
   const { lovedIds } = useActivity();
   const openAccountSettings = useOpenAccountSettings();
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
@@ -213,7 +272,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
     getPermissionStatus: getNearMePermissionStatus,
     enable: enableNearMe,
     disable: disableNearMe,
-  } = useNearMe(initialState.nearMeOrigin);
+  } = useNearMe(initialState.nearMeOrigin, isDevOwner ? mockLocation : null);
   const resultListRef = useRef<FlatList<ResultRow>>(null);
   const browseScrollRef = useRef<ScrollView>(null);
   const searchInputRef = useRef<TextInput>(null);
@@ -1087,29 +1146,32 @@ export function FindHomeScreen({ navigation, route }: Props) {
           )}
         </View>
 
-        <Pressable
-          disabled={nearMeStatus === 'requesting'}
-          onPress={() => void handleNearMePress()}
-          accessibilityLabel={nearMeActive ? 'Turn off Near Me' : 'Show dining near me'}
-          accessibilityHint="Uses foreground location and Disney guest entrance coordinates"
-          accessibilityRole="button"
-          accessibilityState={{
-            selected: nearMeActive,
-            busy: nearMeStatus === 'requesting',
-            disabled: nearMeStatus === 'requesting',
-          }}
-          style={[
-            styles.iconButton,
-            nearMeActive && styles.iconButtonActive,
-            nearMeStatus === 'requesting' && styles.iconButtonBusy,
-          ]}
-        >
-          {nearMeStatus === 'requesting' ? (
-            <ActivityIndicator color={COLORS.forest} />
-          ) : (
-            <NearMeIcon active={nearMeActive} />
-          )}
-        </Pressable>
+        <View style={styles.nearButtonShell}>
+          <NearMePulse active={nearMeActive && nearMeStatus !== 'requesting'} />
+          <Pressable
+            disabled={nearMeStatus === 'requesting'}
+            onPress={() => void handleNearMePress()}
+            accessibilityLabel={nearMeActive ? 'Turn off Near Me' : 'Show dining near me'}
+            accessibilityHint="Uses foreground location and Disney guest entrance coordinates"
+            accessibilityRole="button"
+            accessibilityState={{
+              selected: nearMeActive,
+              busy: nearMeStatus === 'requesting',
+              disabled: nearMeStatus === 'requesting',
+            }}
+            style={[
+              styles.iconButton,
+              nearMeActive && styles.iconButtonActive,
+              nearMeStatus === 'requesting' && styles.iconButtonBusy,
+            ]}
+          >
+            {nearMeStatus === 'requesting' ? (
+              <ActivityIndicator color={COLORS.forest} />
+            ) : (
+              <NearMeIcon active={nearMeActive} />
+            )}
+          </Pressable>
+        </View>
       </View>
 
       <Animated.View
@@ -1476,59 +1538,30 @@ const styles = StyleSheet.create({
     opacity: 0.7,
   },
   filterIcon: {
-    width: 22,
-    gap: 4,
+    width: 26,
+    height: 26,
   },
-  filterIconLine: {
-    height: 2,
-    borderRadius: 1,
-    backgroundColor: COLORS.ink,
+  nearIcon: {
+    width: 26,
+    height: 26,
   },
-  filterIconLineActive: {
-    backgroundColor: COLORS.goldLight,
-  },
-  filterIconKnob: {
-    position: 'absolute',
-    top: -3,
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: COLORS.surface,
-    backgroundColor: COLORS.ink,
-  },
-  filterIconKnobActive: {
-    backgroundColor: COLORS.goldLight,
-  },
-  filterIconKnobLeft: {
-    left: 2,
-  },
-  filterIconKnobMiddle: {
-    left: 7,
-  },
-  filterIconKnobRight: {
-    right: 2,
-  },
-  nearIconOuter: {
-    width: 22,
-    height: 22,
-    borderRadius: 11,
-    borderWidth: 2,
-    borderColor: COLORS.ink,
+  nearButtonShell: {
     alignItems: 'center',
     justifyContent: 'center',
   },
-  nearIconInner: {
-    width: 7,
-    height: 7,
-    borderRadius: 3.5,
-    backgroundColor: COLORS.ink,
+  nearPulseWrap: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
-  nearIconOuterActive: {
-    borderColor: COLORS.goldLight,
-  },
-  nearIconInnerActive: {
-    backgroundColor: COLORS.goldLight,
+  nearPulseRing: {
+    position: 'absolute',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: COLORS.gold,
   },
   filterBadge: {
     position: 'absolute',
@@ -1620,22 +1653,25 @@ const styles = StyleSheet.create({
     color: COLORS.forest,
   },
   locationHeader: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.cream,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm,
   },
   locationHeaderBar: {
-    width: '100%',
-    justifyContent: 'center',
-    borderRadius: RADII.xl,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+  },
+  locationHeaderDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
     backgroundColor: COLORS.gold,
-    paddingHorizontal: 13,
-    paddingVertical: 6.5,
   },
   locationHeaderText: {
-    fontFamily: text.sectionToggle.fontFamily,
+    fontFamily: text.buttonLabel.fontFamily,
     fontSize: 12,
-    color: '#FFFFFF',
+    color: COLORS.forest,
   },
   recentStickyShell: {
     position: 'relative',

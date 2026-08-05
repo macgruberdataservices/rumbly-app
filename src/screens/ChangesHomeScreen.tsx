@@ -96,7 +96,7 @@ export function ChangesHomeScreen({ navigation }: Props) {
         <Pressable onPress={() => navigation.goBack()} hitSlop={8} style={styles.backButton}>
           <Text style={text.buttonLabel}>‹ Back</Text>
         </Pressable>
-        <Text style={styles.title}>See Changes</Text>
+        <Text style={styles.title}>See what's new!</Text>
         <Text style={text.bodyMuted}>Menu updates, prices, openings & closures</Text>
       </View>
 

@@ -6,6 +6,5 @@ export type SettingsStackParamList = {
   ChangePassword: undefined;
   GeneralSettings: undefined;
   Development: undefined;
-  AskRumbly: undefined;
   SettingsPlaceholder: { title: string };
 };

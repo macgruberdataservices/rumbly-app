@@ -5,7 +5,6 @@ import { ChangeEmailScreen } from '../screens/ChangeEmailScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
 import { GeneralSettingsScreen } from '../screens/GeneralSettingsScreen';
 import { DevelopmentSettingsScreen } from '../screens/DevelopmentSettingsScreen';
-import { AskRumblyScreen } from '../screens/AskRumblyScreen';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen';
 import { SettingsPlaceholderScreen } from '../screens/SettingsPlaceholderScreen';
 import type { SettingsStackParamList } from './settingsTypes';
@@ -49,7 +48,6 @@ export function SettingsNavigator() {
         options={{ animation: 'slide_from_right' }}
       />
       <Stack.Screen name="Development" component={DevelopmentSettingsScreen} options={{ animation: 'slide_from_right' }} />
-      <Stack.Screen name="AskRumbly" component={AskRumblyScreen} options={{ animation: 'slide_from_right' }} />
       <Stack.Screen
         name="SettingsPlaceholder"
         component={SettingsPlaceholderScreen}

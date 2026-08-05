@@ -123,10 +123,10 @@ export function ExploreHomeScreen({ navigation }: Props) {
 
         {restaurants.length > 0 && (
           <View style={styles.challengeSection}>
-            <Text style={[text.sectionToggle, styles.sectionLabel]}>SEE CHANGES</Text>
+            <Text style={[text.sectionToggle, styles.sectionLabel]}>WHAT'S NEW</Text>
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="See Changes: menu updates, prices, openings and closures"
+              accessibilityLabel="See what's new: menu updates, prices, openings and closures"
               style={({ pressed }) => [styles.changesCard, pressed && styles.changesCardPressed]}
               onPress={() => navigation.navigate('ChangesHome')}
             >
@@ -134,7 +134,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
                 <Text style={styles.changesIconText}>🔄</Text>
               </View>
               <View style={styles.changesCopy}>
-                <Text style={styles.changesTitle}>See Changes</Text>
+                <Text style={styles.changesTitle}>See what's new!</Text>
                 <Text style={styles.changesDescription} numberOfLines={1}>
                   Menu updates, prices, openings & closures
                 </Text>
