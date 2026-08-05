@@ -106,6 +106,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
+    backgroundColor: COLORS.surface,
   },
   togglePressed: {
     backgroundColor: COLORS.goldLight,

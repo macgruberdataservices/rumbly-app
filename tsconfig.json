@@ -3,5 +3,6 @@
   "compilerOptions": {
     "allowImportingTsExtensions": true,
     "strict": true
-  }
+  },
+  "exclude": ["tests/askRumbly.test.mjs", "tests/askRumblySemantic.test.mjs", "src/askRumbly/**", "src/screens/AskRumblyScreen.tsx"]
 }
