@@ -41,10 +41,8 @@ export interface CuratedFeedContent {
   itemId: string | null;
   challengeId: string | null;
   attribution: string | null;
-  sortPriority: number;
   requiredEntitlement: string | null;
-  active: boolean;
-  editorialStatus: 'draft' | 'review' | 'scheduled' | 'published' | 'archived';
+  contentState: 'waiting' | 'scheduled' | 'live' | 'inactive';
   startsAt: string;
   endsAt: string | null;
 }

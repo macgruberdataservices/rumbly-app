@@ -129,7 +129,7 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
   },
   restaurantName: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 18,
     color: COLORS.ink,
   },
@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   emptyTitle: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 21,
     color: COLORS.ink,
     marginBottom: SPACING.sm,

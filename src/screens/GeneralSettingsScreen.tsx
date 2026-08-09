@@ -94,10 +94,10 @@ export function GeneralSettingsScreen({ navigation }: Props) {
           <View style={styles.settingRowText}>
             <Text style={text.body}>Show Allergy Friendly Menu Items</Text>
             <Text style={[text.bodyMuted, styles.settingRowSubtitle]}>
-              Off by default. A restaurant's own menu already shows regular items with an "allergy
-              option available" note rather than a separate row. This only matters for the rare menu
-              made up entirely of allergy-friendly items with no regular version -- turn this on to see
-              those instead of an empty menu.
+              On by default. A restaurant's own menu already shows regular items with an "allergy
+              option available" note rather than a separate row, so this only ever matters for the rare
+              menu made up entirely of allergy-friendly items with no regular version -- turn this off
+              if you'd rather see an empty menu there instead.
             </Text>
           </View>
           <Switch
@@ -151,7 +151,7 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
   sectionLabel: {
-    fontFamily: FONT_FAMILY.interBold,
+    fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 11,
     color: COLORS.muted,
     marginBottom: SPACING.sm,

@@ -15,6 +15,7 @@ interface AuthContextValue {
   updateEmail: (email: string) => Promise<{ error: string | null }>;
   updatePassword: (password: string) => Promise<{ error: string | null }>;
   signOut: () => Promise<void>;
+  deleteAccount: () => Promise<{ error: string | null }>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -60,6 +61,27 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await supabase.auth.signOut();
   }, []);
 
+  // Apple App Store Guideline 5.1.1(v): an app that supports account
+  // creation must let the user initiate account deletion from within the
+  // app. Deleting the auth user has to happen server-side (it needs the
+  // service-role key, which never ships in the client), so this just calls
+  // the delete-account Edge Function, which verifies the caller's own JWT
+  // and deletes exactly that account -- see supabase/functions/delete-account.
+  // On success, sign out locally too so the client's session state matches
+  // the now-deleted server-side account immediately rather than waiting on
+  // its next failed refresh.
+  const deleteAccount = useCallback(async () => {
+    const { data, error } = await supabase.functions.invoke<{ error?: string }>('delete-account');
+    if (error) {
+      return { error: error.message };
+    }
+    if (data?.error) {
+      return { error: data.error };
+    }
+    await supabase.auth.signOut();
+    return { error: null };
+  }, []);
+
   return (
     <AuthContext.Provider
       value={{
@@ -71,6 +93,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         updateEmail,
         updatePassword,
         signOut,
+        deleteAccount,
       }}
     >
       {children}

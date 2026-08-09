@@ -10,6 +10,7 @@ import type { MenuItem } from './types';
 import { getDb as getSharedDb } from './sqlite';
 
 let readyPromise: Promise<SQLiteDatabase> | null = null;
+let allMenuItemsPromise: Promise<MenuItem[]> | null = null;
 
 // CREATE TABLE IF NOT EXISTS is a no-op on any device that already has
 // this table from a prior session -- it does NOT retroactively add new
@@ -88,6 +89,7 @@ const json = (v: unknown): string => JSON.stringify(v ?? []);
 
 export async function clearMenuItems(): Promise<void> {
   const db = await getDb();
+  allMenuItemsPromise = null;
   await db.execAsync('DELETE FROM menu_items;');
 }
 
@@ -219,6 +221,25 @@ export async function getMenuItemsByRestaurant(restaurantId: string): Promise<Me
     { $restaurant_id: restaurantId }
   );
   return rows.map(rowToMenuItem);
+}
+
+// Ask Rumbly is intentionally lazy: normal app startup only needs the slim
+// search index and restaurant records, while semantic menu questions need the
+// full rows (including Disney's direct allergy labels) to prove an answer.
+// Keep one in-memory promise for the Ask tab so a second question does not
+// rescan SQLite. DataProvider clears this cache indirectly through
+// clearMenuItems() before every import.
+export function getAllMenuItems(): Promise<MenuItem[]> {
+  if (!allMenuItemsPromise) {
+    allMenuItemsPromise = getDb()
+      .then((db) => db.getAllAsync<MenuItemRow>('SELECT * FROM menu_items ORDER BY id;'))
+      .then((rows) => rows.map(rowToMenuItem))
+      .catch((error) => {
+        allMenuItemsPromise = null;
+        throw error;
+      });
+  }
+  return allMenuItemsPromise;
 }
 
 export async function countMenuItems(): Promise<number> {

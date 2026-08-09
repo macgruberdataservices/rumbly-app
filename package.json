@@ -3,9 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
-    "@expo-google-fonts/besley": "^0.4.1",
-    "@expo-google-fonts/fraunces": "^0.4.1",
-    "@expo-google-fonts/inter": "^0.4.2",
+    "@expo-google-fonts/piazzolla": "^0.4.2",
     "@expo-google-fonts/work-sans": "^0.4.2",
     "@expo-google-fonts/yellowtail": "^0.4.1",
     "@expo/ui": "~57.0.7",
@@ -57,6 +55,11 @@
     "test:journal-storage": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/journalStorage.test.mjs",
     "test:recommendations": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/recommendations.test.mjs",
     "test:restaurant-cards": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/restaurantCards.test.mjs",
+    "test:ask-rumbly": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs --test tests/askRumbly.test.mjs",
+    "test:ask-rumbly-semantic": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs --test tests/askRumblySemantic.test.mjs",
+    "typecheck:ask-rumbly": "tsc -p modules/ask-rumbly/scripts/ask-rumbly/tsconfig.json",
+    "eval:ask-rumbly-semantic": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs modules/ask-rumbly/scripts/ask-rumbly/semantic_eval.ts",
+    "measure:ask-rumbly": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON modules/ask-rumbly/scripts/ask-rumbly/architecture_metrics.ts",
     "web": "expo start --web"
   },
   "private": true

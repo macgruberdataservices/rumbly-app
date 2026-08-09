@@ -1,7 +1,10 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
+  Keyboard,
   KeyboardAvoidingView,
+  Linking,
   Platform,
   Pressable,
   ScrollView,
@@ -11,214 +14,438 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
-import type { SettingsStackParamList } from '../navigation/settingsTypes';
+import { AllergyAcknowledgementSheet } from '../components/AllergyAcknowledgementSheet';
+import { RestaurantCard } from '../components/RestaurantCard';
+import { useDataProvider } from '../hooks/useDataProvider';
+import { useNearMe } from '../hooks/useNearMe';
+import { getAllMenuItems } from '../data/db';
+import type { MenuItem, Restaurant } from '../data/types';
+import { distanceToRestaurant } from '../location/proximity';
+import { suggestEntities, type EntitySuggestion } from '../../modules/ask-rumbly/scripts/ask-rumbly/entity_suggestions';
+import { buildAskRumblyData } from '../askRumbly/appData';
+import { runAskRumbly, type AskRumblyResponse } from '../askRumbly/appExecutor';
+import type { AskRumblyStackParamList } from '../navigation/AskRumblyNavigator';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
-import RumblyFoundationModels from '../../modules/rumbly-foundation-models/src';
 
-type Props = NativeStackScreenProps<SettingsStackParamList, 'AskRumbly'>;
+type Props = NativeStackScreenProps<AskRumblyStackParamList, 'AskRumblyHome'>;
 
-const DEFAULT_PROMPT = 'Say hello in one short, friendly sentence.';
-const DEFAULT_QUERY_PROMPT = "Where's the cheapest hamburger?";
+const DEFAULT_QUERY = 'Where can I get a burger?';
+
+function MenuResultCard({
+  item,
+  restaurant,
+  onPress,
+}: {
+  item: MenuItem;
+  restaurant: Restaurant;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`${item.item} at ${restaurant.restaurant}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.menuResultCard, pressed && styles.pressed]}
+    >
+      <View style={styles.menuResultHeader}>
+        <Text style={text.restaurantName}>{item.item}</Text>
+        {item.price_display ? <Text style={styles.price}>{item.price_display}</Text> : null}
+      </View>
+      <Text style={[text.bodyMuted, styles.menuRestaurant]}>{restaurant.restaurant}</Text>
+      {!!item.category && <Text style={[text.bodyMuted, styles.menuCategory]}>{item.category}</Text>}
+      <Text style={styles.openLabel}>Open restaurant menu ›</Text>
+    </Pressable>
+  );
+}
 
 export function AskRumblyScreen({ navigation }: Props) {
-  const [availabilityText, setAvailabilityText] = useState('Not checked yet.');
-  const [prompt, setPrompt] = useState(DEFAULT_PROMPT);
-  const [responseText, setResponseText] = useState('');
+  const { restaurants, hoursData, isLoading, lastSyncedAt, error: dataError } = useDataProvider();
+  const { origin, status: locationStatus, enable: enableLocation } = useNearMe();
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState<string | null>(null);
+  const [query, setQuery] = useState(DEFAULT_QUERY);
+  const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
+  const [response, setResponse] = useState<AskRumblyResponse | null>(null);
+  const [pendingResponse, setPendingResponse] = useState<AskRumblyResponse | null>(null);
+  const [acknowledgementVisible, setAcknowledgementVisible] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
-  const [queryPrompt, setQueryPrompt] = useState(DEFAULT_QUERY_PROMPT);
-  const [queryResultText, setQueryResultText] = useState('');
-  const [isClassifying, setIsClassifying] = useState(false);
-  const [timingPrompt, setTimingPrompt] = useState(DEFAULT_PROMPT);
-  const [timingResultText, setTimingResultText] = useState('');
-  const [isTiming, setIsTiming] = useState(false);
+  const [requestError, setRequestError] = useState<string | null>(null);
 
-  const checkAvailability = async () => {
-    if (Platform.OS !== 'ios') {
-      setAvailabilityText('Foundation Models spike is iOS-only for now.');
-      return;
-    }
-    try {
-      const result = await RumblyFoundationModels.checkAvailability();
-      setAvailabilityText(JSON.stringify(result));
-    } catch (error) {
-      setAvailabilityText(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    }
-  };
+  useEffect(() => {
+    if (isLoading || restaurants.length === 0) return;
+    let cancelled = false;
+    setMenuLoading(true);
+    setMenuError(null);
+    getAllMenuItems()
+      .then((items) => {
+        if (!cancelled) setMenuItems(items);
+      })
+      .catch((loadError) => {
+        if (!cancelled) setMenuError(loadError instanceof Error ? loadError.message : String(loadError));
+      })
+      .finally(() => {
+        if (!cancelled) setMenuLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoading, lastSyncedAt, restaurants.length]);
 
-  const askPrompt = async () => {
-    if (Platform.OS !== 'ios') return;
+  const askData = useMemo(
+    () => buildAskRumblyData(restaurants, menuItems, hoursData),
+    [hoursData, menuItems, restaurants],
+  );
+
+  const suggestions = useMemo<EntitySuggestion[]>(() => {
+    if (!query.trim() || restaurants.length === 0) return [];
+    return suggestEntities(query, askData).slice(0, 4);
+  }, [askData, query, restaurants.length]);
+
+  const itemResults = useMemo(() => {
+    const result = response?.result;
+    if (!result || result.kind !== 'answer') return [];
+    const restaurantIds = new Set(result.restaurantIds ?? []);
+    const itemKeys = new Set(result.itemKeys ?? []);
+    const itemIds = new Set(result.itemIds ?? []);
+    return menuItems.filter((item) => {
+      const key = `${item.restaurant_id}:${item.item_id}`;
+      return itemKeys.has(key) || (itemIds.has(item.item_id) && restaurantIds.has(item.restaurant_id));
+    });
+  }, [menuItems, response]);
+
+  const restaurantResults = useMemo(() => {
+    const result = response?.result;
+    if (!result || result.kind !== 'answer') return [];
+    const ids = new Set(result.restaurantIds ?? []);
+    return restaurants.filter((restaurant) => ids.has(restaurant.restaurant_id));
+  }, [restaurants, response]);
+
+  const submitQuery = useCallback(() => {
+    const trimmed = query.trim();
+    if (!trimmed || isAsking || menuLoading || isLoading) return;
+    Keyboard.dismiss();
     setIsAsking(true);
-    setResponseText('');
+    setRequestError(null);
+    setSubmittedQuery(trimmed);
     try {
-      const result = await RumblyFoundationModels.askSimplePrompt(prompt);
-      setResponseText(result);
-    } catch (error) {
-      setResponseText(`Error: ${error instanceof Error ? error.message : String(error)}`);
+      const next = runAskRumbly(trimmed, askData, origin ?? undefined);
+      if ('safety' in next.result && next.result.safety?.kind === 'allergy') {
+        setPendingResponse(next);
+        setAcknowledgementVisible(true);
+      } else {
+        setResponse(next);
+      }
+    } catch (askError) {
+      setRequestError(askError instanceof Error ? askError.message : String(askError));
+      setResponse(null);
     } finally {
       setIsAsking(false);
     }
-  };
+  }, [askData, isAsking, isLoading, menuLoading, origin, query]);
 
-  const classifyQuery = async () => {
-    if (Platform.OS !== 'ios') return;
-    setIsClassifying(true);
-    setQueryResultText('');
-    try {
-      const result = await RumblyFoundationModels.classifyTestQuery(queryPrompt);
-      setQueryResultText(JSON.stringify(result));
-    } catch (error) {
-      setQueryResultText(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsClassifying(false);
-    }
-  };
+  const chooseSuggestion = useCallback((suggestion: EntitySuggestion) => {
+    setQuery((current) => `${current.slice(0, suggestion.replaceStart)}${suggestion.label}${current.slice(suggestion.replaceEnd)}`);
+  }, []);
 
-  const askWithTiming = async () => {
-    if (Platform.OS !== 'ios') return;
-    setIsTiming(true);
-    setTimingResultText('');
-    try {
-      const result = await RumblyFoundationModels.askWithTiming(timingPrompt);
-      setTimingResultText(
-        `thinking: ${result.thinkingMs}ms, generation: ${result.generationMs}ms, total: ${result.totalMs}ms\n\n${result.content}`
-      );
-    } catch (error) {
-      setTimingResultText(`Error: ${error instanceof Error ? error.message : String(error)}`);
-    } finally {
-      setIsTiming(false);
-    }
-  };
+  const openRestaurant = useCallback(
+    (restaurantId: string, item?: MenuItem) => {
+      navigation.navigate('RestaurantDetail', {
+        restaurantId,
+        ...(item
+          ? { itemId: item.item_id, period: item.dining_period, category: item.category }
+          : {}),
+      });
+    },
+    [navigation],
+  );
+
+  const acceptAllergyAcknowledgement = useCallback(() => {
+    setResponse(pendingResponse);
+    setPendingResponse(null);
+    setAcknowledgementVisible(false);
+  }, [pendingResponse]);
+
+  const cancelAllergyAcknowledgement = useCallback(() => {
+    setPendingResponse(null);
+    setAcknowledgementVisible(false);
+    setResponse(null);
+  }, []);
+
+  const result = response?.result;
+  const isReady = !isLoading && !menuLoading && menuError === null && dataError === null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <SettingsScreenHeader title="Ask Rumbly" onBack={() => navigation.goBack()} />
       <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-        <ScrollView contentContainerStyle={styles.content}>
-        <Text style={text.bodyMuted}>
-          Isolated prototype for natural-language menu and restaurant queries. This screen only
-          tests whether the on-device Foundation Models framework is reachable from Expo -- no
-          menu/restaurant data is wired up yet.
-        </Text>
-
-        <Text style={[styles.sectionLabel, styles.sectionSpacing]}>AVAILABILITY</Text>
-        <Pressable
-          accessibilityRole="button"
-          onPress={checkAvailability}
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
+        <ScrollView
+          keyboardShouldPersistTaps="handled"
+          contentContainerStyle={styles.content}
         >
-          <Text style={styles.buttonText}>Check availability</Text>
-        </Pressable>
-        <Text style={[text.bodyMuted, styles.resultText]}>{availabilityText}</Text>
+          <Text style={text.sectionTitle}>Ask Rumbly</Text>
+          <Text style={[text.bodyMuted, styles.intro]}>
+            Ask about Disney food, restaurants, menus, prices, locations, hours, and published allergy labels.
+          </Text>
 
-        <Text style={[styles.sectionLabel, styles.sectionSpacing]}>SIMPLE PROMPT</Text>
-        <TextInput
-          value={prompt}
-          onChangeText={setPrompt}
-          multiline
-          style={styles.input}
-          placeholder="Ask something..."
-        />
-        <Pressable
-          accessibilityRole="button"
-          onPress={askPrompt}
-          disabled={isAsking}
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, isAsking && styles.buttonDisabled]}
-        >
-          <Text style={styles.buttonText}>{isAsking ? 'Asking...' : 'Ask'}</Text>
-        </Pressable>
-        {!!responseText && <Text style={[text.bodyMuted, styles.resultText]}>{responseText}</Text>}
+          <View style={styles.inputShell}>
+            <TextInput
+              value={query}
+              onChangeText={setQuery}
+              onSubmitEditing={submitQuery}
+              returnKeyType="search"
+              editable={isReady && !isAsking}
+              placeholder="Ask a dining question"
+              placeholderTextColor={COLORS.dim}
+              accessibilityLabel="Ask Rumbly question"
+              style={styles.input}
+            />
+            {suggestions.length > 0 && (
+              <View style={styles.suggestions}>
+                {suggestions.map((suggestion) => (
+                  <Pressable
+                    key={`${suggestion.type}:${suggestion.label}`}
+                    onPress={() => chooseSuggestion(suggestion)}
+                    style={({ pressed }) => [styles.suggestion, pressed && styles.pressed]}
+                  >
+                    <Text style={text.body}>{suggestion.label}</Text>
+                    <Text style={text.bodyMuted}>{suggestion.type}</Text>
+                  </Pressable>
+                ))}
+              </View>
+            )}
+          </View>
 
-        <Text style={[styles.sectionLabel, styles.sectionSpacing]}>STRUCTURED OUTPUT TEST</Text>
-        <Text style={[text.bodyMuted, styles.helperText]}>
-          Guided Generation test -- extracts queryType (cheapest/nearest) + item from free text.
-        </Text>
-        <TextInput
-          value={queryPrompt}
-          onChangeText={setQueryPrompt}
-          multiline
-          style={styles.input}
-          placeholder="Ask a menu question..."
-        />
-        <Pressable
-          accessibilityRole="button"
-          onPress={classifyQuery}
-          disabled={isClassifying}
-          style={({ pressed }) => [
-            styles.button,
-            pressed && styles.buttonPressed,
-            isClassifying && styles.buttonDisabled,
-          ]}
-        >
-          <Text style={styles.buttonText}>{isClassifying ? 'Classifying...' : 'Classify'}</Text>
-        </Pressable>
-        {!!queryResultText && <Text style={[text.bodyMuted, styles.resultText]}>{queryResultText}</Text>}
+          <View style={styles.utilityRow}>
+            <Text style={text.bodyMuted}>
+              {locationStatus === 'active' ? 'Using your location for distance questions.' : 'Enable Near Me for distance-aware answers.'}
+            </Text>
+            {locationStatus !== 'active' && (
+              <Pressable onPress={() => void enableLocation()} accessibilityRole="button">
+                <Text style={styles.utilityAction}>Use Near Me</Text>
+              </Pressable>
+            )}
+          </View>
 
-        <Text style={[styles.sectionLabel, styles.sectionSpacing]}>TIMING BREAKDOWN</Text>
-        <Text style={[text.bodyMuted, styles.helperText]}>
-          Streams the response to split "thinking" (time to first chunk) from generation time --
-          answers whether a streaming UI or just a better loading state is the right fix for the
-          ~5s latency.
-        </Text>
-        <TextInput
-          value={timingPrompt}
-          onChangeText={setTimingPrompt}
-          multiline
-          style={styles.input}
-          placeholder="Ask something..."
-        />
-        <Pressable
-          accessibilityRole="button"
-          onPress={askWithTiming}
-          disabled={isTiming}
-          style={({ pressed }) => [styles.button, pressed && styles.buttonPressed, isTiming && styles.buttonDisabled]}
-        >
-          <Text style={styles.buttonText}>{isTiming ? 'Timing...' : 'Ask with timing'}</Text>
-        </Pressable>
-        {!!timingResultText && <Text style={[text.bodyMuted, styles.resultText]}>{timingResultText}</Text>}
+          <Pressable
+            accessibilityRole="button"
+            onPress={submitQuery}
+            disabled={!isReady || isAsking}
+            style={({ pressed }) => [styles.askButton, pressed && styles.pressed, (!isReady || isAsking) && styles.disabled]}
+          >
+            {isAsking ? <ActivityIndicator color={COLORS.surface} /> : <Text style={styles.askButtonText}>Ask</Text>}
+          </Pressable>
+
+          {!isReady && (
+            <View style={styles.statusBox}>
+              <ActivityIndicator color={COLORS.forest} />
+              <Text style={[text.bodyMuted, styles.statusText]}>
+                {dataError ?? menuError ?? (isLoading ? 'Loading Rumbly dining data…' : 'Preparing menu search…')}
+              </Text>
+            </View>
+          )}
+
+          {submittedQuery && result && (
+            <View style={styles.responseSection}>
+              <Text style={styles.queryLabel}>{submittedQuery}</Text>
+              <View style={styles.responseBox}>
+                <Text style={text.body}>{result.text}</Text>
+              </View>
+
+              {result.kind === 'answer' && result.actions?.length ? (
+                <View style={styles.actionRow}>
+                  {result.actions.map((action) => (
+                    <Pressable
+                      key={`${action.kind}:${action.label}`}
+                      accessibilityRole={action.kind === 'openDisney' ? 'link' : 'button'}
+                      onPress={() => {
+                        if (action.kind === 'openDisney') void Linking.openURL(action.url);
+                        else openRestaurant(action.restaurantId);
+                      }}
+                      style={({ pressed }) => [styles.actionButton, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.actionText}>{action.label}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              ) : null}
+
+              {result.kind === 'answer' && itemResults.length > 0 && (
+                <View style={styles.resultGroup}>
+                  <Text style={styles.resultGroupTitle}>Menu matches</Text>
+                  {itemResults.slice(0, 12).map((item) => {
+                    const restaurant = restaurants.find((candidate) => candidate.restaurant_id === item.restaurant_id);
+                    if (!restaurant) return null;
+                    return (
+                      <MenuResultCard
+                        key={`${item.restaurant_id}:${item.item_id}`}
+                        item={item}
+                        restaurant={restaurant}
+                        onPress={() => openRestaurant(restaurant.restaurant_id, item)}
+                      />
+                    );
+                  })}
+                </View>
+              )}
+
+              {result.kind === 'answer' && itemResults.length === 0 && restaurantResults.length > 0 && (
+                <View style={styles.resultGroup}>
+                  <Text style={styles.resultGroupTitle}>Places</Text>
+                  {restaurantResults.slice(0, 12).map((restaurant) => (
+                    <RestaurantCard
+                      key={restaurant.restaurant_id}
+                      restaurant={restaurant}
+                      distanceMiles={origin ? distanceToRestaurant(origin, restaurant) : undefined}
+                      onPress={() => openRestaurant(restaurant.restaurant_id)}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
+          )}
+
+          {requestError && <Text style={styles.errorText}>{requestError}</Text>}
         </ScrollView>
       </KeyboardAvoidingView>
+      <AllergyAcknowledgementSheet
+        visible={acknowledgementVisible}
+        onAccept={acceptAllergyAcknowledgement}
+        onCancel={cancelAllergyAcknowledgement}
+      />
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { padding: SPACING.lg, paddingBottom: SPACING.xxl },
-  sectionLabel: {
-    fontFamily: FONT_FAMILY.interBold,
-    fontSize: 11,
-    color: COLORS.muted,
-    marginBottom: SPACING.sm,
-  },
-  sectionSpacing: { marginTop: SPACING.xl },
-  helperText: { marginBottom: SPACING.md },
-  button: {
-    minHeight: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.forest,
-  },
-  buttonPressed: { opacity: 0.8 },
-  buttonDisabled: { opacity: 0.5 },
-  buttonText: {
-    fontFamily: FONT_FAMILY.interSemiBold,
-    fontSize: 15,
-    color: COLORS.surface,
-  },
+  content: { padding: SPACING.lg, paddingBottom: 150 },
+  intro: { marginTop: SPACING.sm, lineHeight: 18 },
+  inputShell: { marginTop: SPACING.xl, zIndex: 2 },
   input: {
-    minHeight: 72,
+    minHeight: 52,
+    borderWidth: 1,
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.md,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 15,
+    color: COLORS.ink,
+    backgroundColor: COLORS.surface,
+  },
+  suggestions: {
+    marginTop: SPACING.xs,
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADII.md,
-    padding: SPACING.md,
-    marginBottom: SPACING.md,
-    fontFamily: FONT_FAMILY.interRegular,
-    fontSize: 15,
-    color: COLORS.ink,
-    textAlignVertical: 'top',
+    backgroundColor: COLORS.surface,
+    overflow: 'hidden',
   },
-  resultText: { marginTop: SPACING.md },
+  suggestion: {
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  utilityRow: {
+    marginTop: SPACING.sm,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  utilityAction: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: COLORS.forest,
+  },
+  askButton: {
+    minHeight: 50,
+    marginTop: SPACING.md,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.forest,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  askButtonText: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 15,
+    color: COLORS.surface,
+  },
+  disabled: { opacity: 0.45 },
+  pressed: { opacity: 0.78 },
+  statusBox: {
+    marginTop: SPACING.lg,
+    padding: SPACING.md,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.cream,
+    alignItems: 'center',
+  },
+  statusText: { marginTop: SPACING.sm, textAlign: 'center' },
+  responseSection: { marginTop: SPACING.xxl },
+  queryLabel: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12.5,
+    color: COLORS.muted,
+    marginBottom: SPACING.sm,
+  },
+  responseBox: {
+    padding: SPACING.md,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.cream,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+  },
+  actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.md },
+  actionButton: {
+    borderWidth: 1,
+    borderColor: COLORS.forest,
+    borderRadius: RADII.xl,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  actionText: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: COLORS.forest,
+  },
+  resultGroup: { marginTop: SPACING.xl },
+  resultGroupTitle: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: COLORS.ink,
+    marginBottom: SPACING.sm,
+  },
+  menuResultCard: {
+    padding: SPACING.md,
+    marginBottom: SPACING.sm,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.surface,
+  },
+  menuResultHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.md },
+  price: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 15,
+    color: COLORS.forest,
+  },
+  menuRestaurant: { marginTop: SPACING.xs },
+  menuCategory: { marginTop: SPACING.xs },
+  openLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: COLORS.forest,
+    marginTop: SPACING.md,
+  },
+  errorText: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12.5,
+    color: '#A84444',
+    marginTop: SPACING.lg,
+  },
 });

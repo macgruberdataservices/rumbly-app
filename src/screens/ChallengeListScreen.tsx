@@ -26,7 +26,7 @@ export function ChallengeListScreen({ navigation }: Props) {
       <View style={styles.header}>
         <Pressable
           accessibilityRole="button"
-          accessibilityLabel="Back to My Bites"
+          accessibilityLabel="Back to My Rumbly"
           onPress={() => navigation.goBack()}
           style={styles.backButton}
         >
@@ -64,14 +64,14 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   header: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm },
   backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontFamily: FONT_FAMILY.interRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
-  heading: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 22, color: COLORS.ink },
+  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
+  heading: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 22, color: COLORS.ink },
   content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
-  sectionLabel: { fontFamily: FONT_FAMILY.interBold, fontSize: 11, color: COLORS.muted, marginBottom: SPACING.sm },
+  sectionLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 11, color: COLORS.muted, marginBottom: SPACING.sm },
   earnedSection: { marginTop: SPACING.xl },
   earnedRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: SPACING.sm, borderTopWidth: 1, borderBottomWidth: 1, borderColor: COLORS.border },
   badge: { width: 42, height: 42, borderRadius: 21, backgroundColor: COLORS.goldLight, borderWidth: 1, borderColor: COLORS.gold, alignItems: 'center', justifyContent: 'center', marginRight: SPACING.md },
-  badgeStar: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 18, color: COLORS.gold },
-  earnedTitle: { fontFamily: FONT_FAMILY.frauncesSemiBold, fontSize: 17, color: COLORS.ink },
-  earnedMeta: { fontFamily: FONT_FAMILY.interRegular, fontSize: 12, color: COLORS.muted, marginTop: 1 },
+  badgeStar: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 18, color: COLORS.gold },
+  earnedTitle: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 17, color: COLORS.ink },
+  earnedMeta: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 12, color: COLORS.muted, marginTop: 1 },
 });

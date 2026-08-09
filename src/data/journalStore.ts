@@ -13,7 +13,7 @@ import type {
 } from './journal';
 import {
   createJournalEntryRecord,
-  countPendingJournalPhotoRecords,
+  countJournalPhotoRecords,
   deleteStagedJournalPhotoRecord,
   deleteJournalDraftRecord,
   deleteJournalEntryRecord,
@@ -21,14 +21,10 @@ import {
   getJournalDraftRecord,
   getLatestJournalDraftRecord,
   getJournalEntryRecord,
-  getJournalPhotoRecord,
   listJournalEntryRecords,
   listJournalOutboxRecords,
-  listJournalPhotoIdsForEntry,
   listJournalPhotoRecords,
   listStagedJournalPhotoRecords,
-  markJournalPhotoOrphanedRecord,
-  markJournalPhotoSyncedRecord,
   removeJournalOutboxOperationRecord,
   saveJournalDraftRecord,
   saveStagedJournalPhotoRecord,
@@ -180,9 +176,9 @@ export async function deleteLocalStagedJournalPhoto(
   return deleteStagedJournalPhotoRecord(asSqlDatabase(db), userId, photoId);
 }
 
-export async function countLocalPendingJournalPhotos(userId: string): Promise<number> {
+export async function countLocalJournalPhotos(userId: string): Promise<number> {
   const db = await getJournalDb();
-  return countPendingJournalPhotoRecords(asSqlDatabase(db), userId);
+  return countJournalPhotoRecords(asSqlDatabase(db), userId);
 }
 
 export async function listLocalJournalOutbox(
@@ -190,41 +186,6 @@ export async function listLocalJournalOutbox(
 ): Promise<JournalOutboxOperation[]> {
   const db = await getJournalDb();
   return listJournalOutboxRecords(asSqlDatabase(db), userId);
-}
-
-export async function getLocalJournalPhoto(
-  userId: string,
-  photoId: string,
-  includeDeleted = false
-): Promise<JournalPhoto | null> {
-  const db = await getJournalDb();
-  return getJournalPhotoRecord(asSqlDatabase(db), userId, photoId, includeDeleted);
-}
-
-export async function listLocalJournalPhotoIdsForEntry(
-  userId: string,
-  entryId: string
-): Promise<string[]> {
-  const db = await getJournalDb();
-  return listJournalPhotoIdsForEntry(asSqlDatabase(db), userId, entryId);
-}
-
-export async function markLocalJournalPhotoOrphaned(
-  userId: string,
-  photoId: string
-): Promise<void> {
-  const db = await getJournalDb();
-  await markJournalPhotoOrphanedRecord(asSqlDatabase(db), userId, photoId, new Date().toISOString());
-}
-
-export async function markLocalJournalPhotoSynced(
-  userId: string,
-  photoId: string,
-  displayPath: string,
-  thumbnailPath: string
-): Promise<void> {
-  const db = await getJournalDb();
-  await markJournalPhotoSyncedRecord(asSqlDatabase(db), userId, photoId, displayPath, thumbnailPath);
 }
 
 export async function setLocalJournalEntrySyncState(

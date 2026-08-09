@@ -180,7 +180,7 @@ export function MyActivityScreen({ navigation }: Props) {
         <View style={styles.headingRow}>
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="Back to My Bites"
+            accessibilityLabel="Back to My Rumbly"
             onPress={() => navigation.goBack()}
             style={styles.backButton}
           >
@@ -356,9 +356,9 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.md,
   },
   backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontFamily: FONT_FAMILY.interRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
+  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
   headingCopy: { flex: 1, gap: 2 },
-  heading: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
+  heading: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
   statsBand: {
     flexDirection: 'row',
     borderTopWidth: 1,
@@ -367,8 +367,8 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
   },
   stat: { flex: 1, alignItems: 'center' },
-  statValue: { fontFamily: FONT_FAMILY.frauncesSemiBold, fontSize: 22, color: COLORS.forest },
-  statLabel: { fontFamily: FONT_FAMILY.interMedium, fontSize: 11, color: COLORS.muted, marginTop: 1 },
+  statValue: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 22, color: COLORS.forest },
+  statLabel: { fontFamily: FONT_FAMILY.workSansMedium, fontSize: 11, color: COLORS.muted, marginTop: 1 },
   tabs: {
     flexDirection: 'row',
     marginHorizontal: SPACING.lg,
@@ -380,11 +380,11 @@ const styles = StyleSheet.create({
   },
   tab: { flex: 1, minHeight: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },
   tabActive: { backgroundColor: COLORS.forest },
-  tabLabel: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 12, color: COLORS.muted },
+  tabLabel: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 12, color: COLORS.muted },
   tabLabelActive: { color: COLORS.goldLight },
   collectionSection: { marginTop: SPACING.lg },
   collectionTitle: {
-    fontFamily: FONT_FAMILY.interSemiBold,
+    fontFamily: FONT_FAMILY.workSansSemiBold,
     fontSize: 17,
     color: COLORS.ink,
     paddingHorizontal: SPACING.lg,
@@ -403,9 +403,9 @@ const styles = StyleSheet.create({
   },
   rowPressed: { backgroundColor: COLORS.goldLight },
   rowCopy: { flex: 1, minWidth: 0 },
-  eventDate: { fontFamily: FONT_FAMILY.interRegular, fontSize: 11, color: COLORS.dim, marginTop: 2 },
-  rating: { fontFamily: FONT_FAMILY.interMedium, fontSize: 12, color: COLORS.gold, marginLeft: SPACING.sm },
-  chevron: { fontFamily: FONT_FAMILY.interRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
+  eventDate: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 11, color: COLORS.dim, marginTop: 2 },
+  rating: { fontFamily: FONT_FAMILY.workSansMedium, fontSize: 12, color: COLORS.gold, marginLeft: SPACING.sm },
+  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
   swipeableContainer: {
     overflow: 'visible',
   },

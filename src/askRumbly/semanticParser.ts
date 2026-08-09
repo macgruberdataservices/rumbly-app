@@ -52,6 +52,7 @@ const MEAL_PATTERNS = [
 ];
 
 const PROCESS_PATTERN = /\b(?:process|procedure|how (?:do|can|should) i|talk (?:to|with)|speak (?:to|with)|notify|tell (?:a|the)|ordering? allergy|special dietary request)\b/i;
+const KITCHEN_CONVERSATION_PATTERN = /\b(?:talk|speak|chat)\s+(?:to|with|through)\s+(?:a\s+)?(?:chef|manager|cast member|someone|anyone)\b/i;
 const KITCHEN_PATTERN = /\b(?:dedicated,?\s+(?:(?:allergy[\s-]?(?:friendly )?)|(?:gluten[\s-]?free|gf) )?(?:kitchen|fryers?|equipment|prep area|facility|waffle iron)|shared (?:fryers?|equipment|oil)|same oil|separate (?:allergy[\s-]?(?:friendly )?)?(?:kitchen|fryers?|equipment|prep area|facility)|separate prep|swapped ingredients|without (?:needing )?(?:advance )?notice)\b/i;
 const CROSS_CONTACT_PATTERN = /\bcross[\s-]?(?:contact|contamination)\b|\bcontaminat(?:e|ed|ion)\b/i;
 const INGREDIENT_PATTERN = /\b(?:ingredients?|contain|made (?:with|from)|what(?:'s| is) in|avoid|free of|healthy|nutritious|nutrition(?:al)?|isn't fried|is not fried|not fried|keto(?:[ -]friendly)?|low[ -]carb|zero[ -]carb(?:ohydrate)?|sugar[ -]free|low[ -]glycemic)\b|\bis there\s+(?:soy|milk|dairy|egg|sesame|peanut|tree nut|fish|shellfish|gluten|wheat)\s+in\b/i;
@@ -214,6 +215,7 @@ function requestedClaim(query: string, allergenKeys: string[], hasAllergyContext
   if (OFFICIAL_POLICY_PATTERN.test(query)) return 'official_policy';
   if (CROSS_CONTACT_PATTERN.test(query)) return 'cross_contact';
   if (/\b(?:most thorough|most accommodating|best\b[\s\S]*\baccommodat)\b/i.test(query)) return 'editorial_judgment';
+  if (hasAllergyContext && KITCHEN_CONVERSATION_PATTERN.test(query)) return 'kitchen_process';
   if (hasAllergyContext && (PROCESS_PATTERN.test(query) || /\b(?:request to speak|handle|accommodat|doctor'?s note|in advance|need to tell|check the allergy)\b/i.test(query))) return 'official_policy';
   if (/\bhow can i see\b[\s\S]*\b(?:ingredients?|nutrition(?:al)?)\b/i.test(query)) return 'official_policy';
   if (hasAllergyContext && /\bwithout needing to talk\b/i.test(query)) return 'kitchen_process';
@@ -225,7 +227,7 @@ function requestedClaim(query: string, allergenKeys: string[], hasAllergyContext
   const hasObjectivePrice = /\b(?:under|below|less than|up to)\s*\$/i.test(query);
   const onlySoftSubjective = /\b(?:good|great|decent)\b/i.test(query) && !/\b(?:best|better|worst|fastest|shortest|recommend|reviews?|mistakes?|gotten worse|splurge)\b/i.test(query);
   const canIgnoreSoftSubjective = onlySoftSubjective
-    && ((hasObjectivePrice && !/\bgood value\b/i.test(query)) || allergenKeys.length > 0);
+    && (hasObjectivePrice || allergenKeys.length > 0);
   if ((EDITORIAL_PATTERN.test(query) && !canIgnoreSoftSubjective) || /^should i (?:eat|try|choose)\b/i.test(query.trim())) return 'editorial_judgment';
   if (/\b(?:spicy|spiciness|mild|hot and spicy)\b/i.test(query)) return 'sensory_attribute';
   if (LIVE_AVAILABILITY_PATTERN.test(query) && /\b(?:reservation|book|mobile[\s-]?order|walk[\s-]?up|wait ?list|wait times?|line time|huge wait|to[ -]?go)\b/i.test(query)) return 'live_availability';
@@ -255,7 +257,7 @@ function requestedAction(query: string, claimType: ClaimType, entities: LinkedEn
   if (claimType === 'official_policy' || claimType === 'kitchen_process' || claimType === 'cross_contact') return 'explain_process';
   if (/\b(?:compare|difference (?:in menu )?between)\b/i.test(query)) return 'compare';
   if (/\b(?:versus|vs\.?)\b/i.test(query) && entities.filter((entity) => entity.type === 'restaurant').length > 1) return 'compare';
-  if (/\b(?:what(?:'s| is) on the menu|show (?:me )?(?:the )?menu|open (?:the )?menu|(?:draft|beer|cocktail) list)\b/i.test(query) && hasRestaurant) return 'open_menu';
+  if (/\b(?:what(?:'s| is) on the menu|what\s+(?:does|do|did)\b[\s\S]*?\b(?:have|serve|sell|offer)\s+(?:on\s+)?(?:the\s+)?menu|show (?:me )?(?:the )?menu|open (?:the )?menu|(?:draft|beer|cocktail) list)\b/i.test(query) && hasRestaurant) return 'open_menu';
   if (hasRestaurant && /\b(?:atmosphere|food style)\b/i.test(query)) return 'open_menu';
   if (/\b(?:see|view)\b[\s\S]*\bmenu\b/i.test(query) && hasRestaurant) return 'open_menu';
   if (claimType === 'restaurant_hours') return hasRestaurant ? 'hours' : 'find';
@@ -421,7 +423,17 @@ function extractFoods(
     placeholders.forEach((phrase, token) => { restored = restored.replace(token, phrase); });
     return normalizeFoodTerm(restored);
   }).filter(Boolean);
-  const sourceIndex = query.toLowerCase().indexOf(capturedSource.toLowerCase());
+  // Prefer the last occurrence that is not part of a linked restaurant name.
+  // A venue such as "Plaza Ice Cream Parlor" repeats the requested food in
+  // its own name; binding the first occurrence would leave the actual food
+  // phrase unconsumed and incorrectly lower plan confidence.
+  const queryLower = query.toLowerCase();
+  const capturedLower = capturedSource.toLowerCase();
+  let sourceIndex = queryLower.lastIndexOf(capturedLower);
+  while (sourceIndex >= 0 && entities.some((entity) => sourceIndex < entity.end && entity.start < sourceIndex + capturedSource.length)) {
+    sourceIndex = queryLower.lastIndexOf(capturedLower, sourceIndex - 1);
+  }
+  if (sourceIndex < 0) sourceIndex = queryLower.indexOf(capturedLower);
   const spans = sourceIndex >= 0 ? [{ start: sourceIndex, end: sourceIndex + capturedSource.length, text: query.slice(sourceIndex, sourceIndex + capturedSource.length) }] : [];
   return { terms, mode, spans };
 }
@@ -527,6 +539,8 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     vocabulary
   );
   let foodTerms = foods.terms.filter((term) => normalizeForMatching(term) !== normalizeForMatching(cuisine.value ?? ''));
+  const goodValuePriceQuery = /\bgood\s+value\b/i.test(analysisText) && /\b(?:under|below|less than|up to)\s*\$/i.test(analysisText);
+  if (goodValuePriceQuery) foodTerms = foodTerms.filter((term) => normalizeForMatching(term) !== 'value');
   let fallbackFoodSpan: SourceSpan | undefined;
   if (foodTerms.length === 0 && allergens.keys.length > 0) {
     const match = analysisText.match(/\b(?:gluten|wheat|dairy|milk|egg|soy|nut|peanut|shellfish)[\s-]?free\s+([a-z]+(?:\s+(?!anywhere\b|at\b|in\b|near\b|or\b)[a-z]+)?)(?=\s+(?:anywhere|at|in|near|or am)\b|[?.!]*$)/i);
@@ -543,18 +557,21 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   const allergenBurgerBun = analysisText.match(/\bbuns?\s+options?\s+for\s+(?:the\s+)?burgers?\b/i);
   if (allergenBurgerBun && allergens.keys.length > 0) foodTerms = ['burger'];
   if (meals.includes('snack') && foodTerms.every((term) => /^snacks?$/.test(term))) foodTerms = [];
-  const allergenBurgerBun = analysisText.match(/\bbuns?\s+options?\s+for\s+(?:the\s+)?burgers?\b/i);
-  if (allergenBurgerBun && allergens.keys.length > 0) foodTerms = ['burger'];
+  // Menu-page requests are routing intents, not claims about a literal item
+  // called "on the menu". Drop any food-capture residue before execution so
+  // the proof layer validates the restaurant route rather than inventing a
+  // menu-item requirement.
+  if (action === 'open_menu') foodTerms = [];
   const operationSpans = [
     ...collectPatternSpans(analysisText, /\b(?:under|below|less than|up to)\s*\$\s*\d+(?:\.\d{1,2})?/gi),
     ...collectPatternSpans(analysisText, /\b(?:right now|currently|open now|today|tomorrow|this morning|rn)\b/gi),
     ...collectPatternSpans(analysisText, /\b(?:across all four parks|at Walt Disney World)\b/gi),
     ...collectPatternSpans(analysisText, /\b(?:difference in menu between|atmosphere and food style)\b/gi),
     ...collectPatternSpans(analysisText, /\bbuns?\s+options?\s+for\s+(?:the\s+)?burgers?\b/gi),
-    ...collectPatternSpans(analysisText, /\bbuns?\s+options?\s+for\s+(?:the\s+)?burgers?\b/gi),
     ...collectPatternSpans(analysisText, /\b(?:do not|don't|does not|doesn't|without)\s+(?:require|requiring|need|needing)?\s*(?:advance dining )?reservations?\s+for\s+walk[ -]in seating\b/gi),
     ...(proximityClose ? collectPatternSpans(analysisText, /\bclose(?=\s*[?.!]*$)/gi) : []),
-    ...(claimType === 'restaurant_hours' ? collectPatternSpans(analysisText, /\b(?:hours?|open|close|closing)\b/gi) : []),
+    ...(claimType === 'restaurant_hours' ? collectPatternSpans(analysisText, /\b(?:hours?|open|close|closing|when|what\s+time)\b/gi) : []),
+    ...(claimType === 'restaurant_location' ? collectPatternSpans(analysisText, /\bfar(?:\s+away)?\b/gi) : []),
     ...collectPatternSpans(analysisText, /\b(?:cart|stand|location)(?=\s+(?:at|in|near|around|by)?\s*[a-z]|\s*[?.!]*$)/gi),
     ...collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi),
     ...(fallbackFoodSpan ? [fallbackFoodSpan] : []),
@@ -573,6 +590,10 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   if (hungerOnly) {
     action = 'clarify';
     reasons.push('What kind of food are you in the mood for, and where would you like to search?');
+  }
+  if (goodValuePriceQuery) {
+    action = 'clarify';
+    reasons.push('I can apply the stated price limit, but the dataset cannot judge value. Which snack or location should I search?');
   }
   if (characterDetailSpans.length > 0) {
     action = 'clarify';

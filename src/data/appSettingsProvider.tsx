@@ -3,16 +3,19 @@
 // no account/auth dependency, so this can sit outside AuthProvider).
 
 import React, { createContext, useEffect, useState } from 'react';
+import type { Coordinates } from '../location/proximity';
 import {
   loadAllAllergyInSearch,
   loadFindFeedContentMode,
   loadFindFeedEnabled,
+  loadMockLocation,
   loadNativeInteractionsEnabled,
   loadShowAllergyFriendlyMenuItems,
   saveAllAllergyInSearch,
   saveAllergyAcknowledgement,
   saveFindFeedContentMode,
   saveFindFeedEnabled,
+  saveMockLocation,
   saveNativeInteractionsEnabled,
   saveShowAllergyFriendlyMenuItems,
   type FindFeedContentMode,
@@ -31,6 +34,8 @@ interface AppSettingsContextValue {
   setFindFeedContentMode: (value: FindFeedContentMode) => void;
   nativeInteractionsEnabled: boolean;
   setNativeInteractionsEnabled: (value: boolean) => void;
+  mockLocation: Coordinates | null;
+  setMockLocation: (value: Coordinates | null) => void;
   isSettingsReady: boolean;
 }
 
@@ -44,6 +49,7 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const [findFeedContentMode, setFindFeedContentModeState] =
     useState<FindFeedContentMode>('live');
   const [nativeInteractionsEnabled, setNativeInteractionsEnabledState] = useState(false);
+  const [mockLocation, setMockLocationState] = useState<Coordinates | null>(null);
   const [isSettingsReady, setIsSettingsReady] = useState(false);
 
   useEffect(() => {
@@ -54,13 +60,15 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
       loadFindFeedEnabled(),
       loadFindFeedContentMode(),
       loadNativeInteractionsEnabled(),
-    ]).then(([allergy, showAllergyMenuItems, feed, contentMode, nativeInteractions]) => {
+      loadMockLocation(),
+    ]).then(([allergy, showAllergyMenuItems, feed, contentMode, nativeInteractions, mockLoc]) => {
       if (cancelled) return;
       setAllAllergyInSearchState(allergy);
       setShowAllergyFriendlyMenuItemsState(showAllergyMenuItems);
       setFindFeedEnabledState(feed);
       setFindFeedContentModeState(contentMode);
       setNativeInteractionsEnabledState(nativeInteractions);
+      setMockLocationState(mockLoc);
       setIsSettingsReady(true);
     });
     return () => {
@@ -98,6 +106,11 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     saveNativeInteractionsEnabled(value).catch(() => {});
   };
 
+  const setMockLocation = (value: Coordinates | null) => {
+    setMockLocationState(value);
+    saveMockLocation(value).catch(() => {});
+  };
+
   return (
     <AppSettingsContext.Provider
       value={{
@@ -113,6 +126,8 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
         setFindFeedContentMode,
         nativeInteractionsEnabled,
         setNativeInteractionsEnabled,
+        mockLocation,
+        setMockLocation,
         isSettingsReady,
       }}
     >

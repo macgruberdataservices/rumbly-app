@@ -41,7 +41,7 @@ const styles = StyleSheet.create({
   },
   rowPressed: { backgroundColor: COLORS.goldLight },
   copy: { flex: 1, minWidth: 0 },
-  title: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 17, color: COLORS.ink },
+  title: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 17, color: COLORS.ink },
   destructive: { color: COLORS.gold },
-  chevron: { fontFamily: FONT_FAMILY.interRegular, fontSize: 27, color: COLORS.dim, marginLeft: SPACING.md },
+  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 27, color: COLORS.dim, marginLeft: SPACING.md },
 });

@@ -294,41 +294,14 @@ async function queueEntryOperation(
   );
 }
 
-async function queuePhotoOperation(
-  db: SqlDatabase,
-  photoId: string,
-  userId: string,
-  now: string
-): Promise<void> {
-  await db.runAsync(
-    `INSERT INTO journal_outbox (
-       operation_key, user_id, entity_type, entity_id, operation_type,
-       state, attempt_count, last_error, created_at, updated_at
-     ) VALUES (
-       $operation_key, $user_id, 'photo', $photo_id, 'photo_upsert',
-       'pending', 0, NULL, $now, $now
-     )
-     ON CONFLICT(operation_key) DO UPDATE SET
-       operation_type = 'photo_upsert',
-       state = 'pending',
-       attempt_count = 0,
-       last_error = NULL,
-       updated_at = excluded.updated_at;`,
-    {
-      $operation_key: `photo:${photoId}`,
-      $user_id: userId,
-      $photo_id: photoId,
-      $now: now,
-    }
-  );
-}
-
+// Photos are local-device-only storage now (see Docs/JOURNAL_BUILD_PLAN.md)
+// -- promoting/removing/reordering one is purely a local operation, with no
+// outbox entry and no effect on the entry's own sync_state. Only the entry
+// itself (queueEntryOperation, above) still needs to reach Supabase.
 async function promoteStagedPhotos(
   db: SqlDatabase,
-  input: Pick<CreateJournalEntryInput, 'id' | 'userId' | 'photoIds'>,
-  now: string
+  input: Pick<CreateJournalEntryInput, 'id' | 'userId' | 'photoIds'>
 ): Promise<void> {
-  let promotedAny = false;
   for (const [position, photoId] of input.photoIds.entries()) {
     const staged = await db.getFirstAsync<StagedJournalPhotoRow>(
       `SELECT * FROM journal_staged_photos
@@ -378,16 +351,6 @@ async function promoteStagedPhotos(
       'DELETE FROM journal_staged_photos WHERE id = $id AND user_id = $user_id;',
       { $id: staged.id, $user_id: staged.user_id }
     );
-    await queuePhotoOperation(db, staged.id, staged.user_id, now);
-    promotedAny = true;
-  }
-  if (promotedAny) {
-    await db.runAsync(
-      `UPDATE journal_entries
-       SET sync_state = 'pending_photos', updated_at = $now
-       WHERE id = $id AND user_id = $user_id;`,
-      { $now: now, $id: input.id, $user_id: input.userId }
-    );
   }
 }
 
@@ -408,12 +371,9 @@ async function reconcileUpdatedPhotos(
   for (const photo of existing) {
     if (selectedIds.has(photo.id)) continue;
     await db.runAsync(
-      `UPDATE journal_photos
-       SET deleted_at = $now, sync_state = 'pending'
-       WHERE id = $id AND user_id = $user_id;`,
+      `UPDATE journal_photos SET deleted_at = $now WHERE id = $id AND user_id = $user_id;`,
       { $now: now, $id: photo.id, $user_id: input.userId }
     );
-    await queuePhotoOperation(db, photo.id, input.userId, now);
   }
 
   for (const [position, photoId] of input.photoIds.entries()) {
@@ -421,7 +381,7 @@ async function reconcileUpdatedPhotos(
     if (!existingPhoto || existingPhoto.position === position) continue;
     await db.runAsync(
       `UPDATE journal_photos
-       SET position = $position, sync_state = 'pending'
+       SET position = $position
        WHERE id = $id AND user_id = $user_id AND entry_id = $entry_id
          AND deleted_at IS NULL;`,
       {
@@ -431,21 +391,9 @@ async function reconcileUpdatedPhotos(
         $entry_id: input.id,
       }
     );
-    await queuePhotoOperation(db, photoId, input.userId, now);
   }
 
-  await promoteStagedPhotos(db, input, now);
-  if (
-    existing.length !== input.photoIds.length
-    || existing.some((photo, position) => input.photoIds[position] !== photo.id)
-  ) {
-    await db.runAsync(
-      `UPDATE journal_entries
-       SET sync_state = 'pending_photos', updated_at = $now
-       WHERE id = $id AND user_id = $user_id;`,
-      { $now: now, $id: input.id, $user_id: input.userId }
-    );
-  }
+  await promoteStagedPhotos(db, input);
 }
 
 function assertSameCreate(existing: JournalEntryRow, input: CreateJournalEntryInput): void {
@@ -495,7 +443,7 @@ export async function createJournalEntryRecord(
       occurredAt: gotItOccurredAt(existing.visited_on),
       createdAt: existing.created_at,
     });
-    await promoteStagedPhotos(db, input, now);
+    await promoteStagedPhotos(db, input);
     // A retried save can arrive after a late autosave recreated the draft.
     // Successful entry creation always wins over that stale draft.
     await db.runAsync(
@@ -538,7 +486,7 @@ export async function createJournalEntryRecord(
       $now: now,
     }
   );
-  await promoteStagedPhotos(db, input, now);
+  await promoteStagedPhotos(db, input);
   await db.runAsync(
     'DELETE FROM journal_drafts WHERE id = $id AND user_id = $user_id;',
     { $id: input.id, $user_id: input.userId }
@@ -636,7 +584,7 @@ export async function deleteJournalEntryRecord(
   );
   await db.runAsync(
     `UPDATE journal_photos
-     SET deleted_at = COALESCE(deleted_at, $now), sync_state = 'pending'
+     SET deleted_at = COALESCE(deleted_at, $now)
      WHERE entry_id = $id AND user_id = $user_id;`,
     { $now: now, $id: entryId, $user_id: userId }
   );
@@ -725,61 +673,6 @@ export async function listJournalPhotoRecords(
   return rows.map(rowToPhoto);
 }
 
-export async function getJournalPhotoRecord(
-  db: SqlDatabase,
-  userId: string,
-  photoId: string,
-  includeDeleted = false
-): Promise<JournalPhoto | null> {
-  const row = await db.getFirstAsync<JournalPhotoRow>(
-    `SELECT * FROM journal_photos
-     WHERE id = $id AND user_id = $user_id
-       ${includeDeleted ? '' : 'AND deleted_at IS NULL'}
-     LIMIT 1;`,
-    { $id: photoId, $user_id: userId }
-  );
-  return row ? rowToPhoto(row) : null;
-}
-
-// Every photo id ever attached to an entry, including soft-deleted ones --
-// used by sync to find every storage object that must be removed when an
-// entry is deleted, since deleteJournalEntryRecord soft-deletes all of an
-// entry's photos in bulk without queuing a separate outbox operation per
-// photo (the single entry_delete operation covers all of them).
-export async function listJournalPhotoIdsForEntry(
-  db: SqlDatabase,
-  userId: string,
-  entryId: string
-): Promise<string[]> {
-  const rows = await db.getAllAsync<{ id: string }>(
-    `SELECT id FROM journal_photos WHERE user_id = $user_id AND entry_id = $entry_id;`,
-    { $user_id: userId, $entry_id: entryId }
-  );
-  return rows.map((row) => row.id);
-}
-
-export async function markJournalPhotoSyncedRecord(
-  db: SqlDatabase,
-  userId: string,
-  photoId: string,
-  displayPath: string,
-  thumbnailPath: string
-): Promise<void> {
-  await db.runAsync(
-    `UPDATE journal_photos
-     SET display_path = $display_path,
-         thumbnail_path = $thumbnail_path,
-         sync_state = 'synced'
-     WHERE id = $id AND user_id = $user_id;`,
-    {
-      $display_path: displayPath,
-      $thumbnail_path: thumbnailPath,
-      $id: photoId,
-      $user_id: userId,
-    }
-  );
-}
-
 export async function setJournalEntrySyncStateRecord(
   db: SqlDatabase,
   userId: string,
@@ -790,25 +683,6 @@ export async function setJournalEntrySyncStateRecord(
     `UPDATE journal_entries SET sync_state = $sync_state
      WHERE id = $id AND user_id = $user_id;`,
     { $sync_state: syncState, $id: entryId, $user_id: userId }
-  );
-}
-
-// A photo whose staged local file no longer exists (most commonly an iOS
-// sandbox container reassigned on a rebuild/reinstall, orphaning anything
-// staged before that point) can never be uploaded -- there are no bytes
-// left to recover. Soft-deleting it here is what stops sync from retrying
-// it forever and stops the app from trying to render a file that's gone.
-export async function markJournalPhotoOrphanedRecord(
-  db: SqlDatabase,
-  userId: string,
-  photoId: string,
-  now: string
-): Promise<void> {
-  await db.runAsync(
-    `UPDATE journal_photos
-     SET deleted_at = COALESCE(deleted_at, $now), sync_state = 'failed'
-     WHERE id = $id AND user_id = $user_id;`,
-    { $now: now, $id: photoId, $user_id: userId }
   );
 }
 
@@ -984,7 +858,11 @@ export async function deleteStagedJournalPhotoRecord(
   return result.changes > 0;
 }
 
-export async function countPendingJournalPhotoRecords(
+// Total local photo count -- staged (mid-draft, not yet attached to a saved
+// entry) plus active on saved entries. Photos are local-device-only storage
+// now, so this is just "how many photos does Journal have on this device,"
+// not a sync-pending count.
+export async function countJournalPhotoRecords(
   db: SqlDatabase,
   userId: string
 ): Promise<number> {
@@ -993,7 +871,7 @@ export async function countPendingJournalPhotoRecords(
        (SELECT COUNT(*) FROM journal_staged_photos WHERE user_id = $user_id)
        +
        (SELECT COUNT(*) FROM journal_photos
-        WHERE user_id = $user_id AND deleted_at IS NULL AND sync_state != 'synced')
+        WHERE user_id = $user_id AND deleted_at IS NULL)
      ) AS count;`,
     { $user_id: userId }
   );

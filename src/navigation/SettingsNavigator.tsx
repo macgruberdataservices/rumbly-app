@@ -3,6 +3,7 @@ import { AccountSettingsScreen } from '../screens/AccountSettingsScreen';
 import { AccountManagementScreen } from '../screens/AccountManagementScreen';
 import { ChangeEmailScreen } from '../screens/ChangeEmailScreen';
 import { ChangePasswordScreen } from '../screens/ChangePasswordScreen';
+import { DeleteAccountScreen } from '../screens/DeleteAccountScreen';
 import { GeneralSettingsScreen } from '../screens/GeneralSettingsScreen';
 import { DevelopmentSettingsScreen } from '../screens/DevelopmentSettingsScreen';
 import { ProfileSettingsScreen } from '../screens/ProfileSettingsScreen';
@@ -40,6 +41,11 @@ export function SettingsNavigator() {
       <Stack.Screen
         name="ChangePassword"
         component={ChangePasswordScreen}
+        options={{ animation: 'slide_from_right' }}
+      />
+      <Stack.Screen
+        name="DeleteAccount"
+        component={DeleteAccountScreen}
         options={{ animation: 'slide_from_right' }}
       />
       <Stack.Screen

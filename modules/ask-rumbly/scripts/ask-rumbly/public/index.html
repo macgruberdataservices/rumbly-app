@@ -1,0 +1,248 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Ask Rumbly -- local tester</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font-family: -apple-system, system-ui, sans-serif; max-width: 720px; margin: 40px auto; padding: 0 16px; }
+  h1 { font-size: 1.3rem; }
+  .row { display: flex; gap: 8px; margin: 16px 0; }
+  .query-wrap { position: relative; flex: 1; }
+  input[type=text] { box-sizing: border-box; width: 100%; font-size: 1rem; padding: 8px 10px; }
+  #suggestions { position: absolute; z-index: 10; top: calc(100% + 4px); left: 0; right: 0; border: 1px solid #888; border-radius: 8px; overflow: hidden; background: Canvas; box-shadow: 0 6px 18px color-mix(in srgb, #000 20%, transparent); }
+  #suggestions:empty { display: none; }
+  #suggestions button { display: flex; width: 100%; justify-content: space-between; gap: 12px; padding: 9px 10px; border: 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); background: none; text-align: left; }
+  #suggestions button:last-child { border-bottom: 0; }
+  #suggestions button.active, #suggestions button:hover { background: color-mix(in srgb, currentColor 10%, transparent); }
+  #suggestions small { color: #888; }
+  button { font-size: 1rem; padding: 8px 16px; cursor: pointer; }
+  select { font: inherit; padding: 8px; }
+  #examples { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 20px; }
+  #examples button { font-size: 0.8rem; padding: 4px 10px; background: none; border: 1px solid #888; border-radius: 12px; }
+  #status { color: #888; font-size: 0.9rem; min-height: 1.2em; }
+  .answer { font-size: 1.1rem; margin: 12px 0; padding: 12px; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); }
+  .answer.no-match, .answer.unsupported { opacity: 0.75; }
+  .clarification-options { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+  .result-actions { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0 12px; }
+  .result-actions a, .result-actions button { display: inline-block; padding: 7px 12px; border: 1px solid #888; border-radius: 16px; background: none; color: inherit; font: inherit; text-decoration: none; }
+  pre { font-size: 0.8rem; overflow-x: auto; background: color-mix(in srgb, currentColor 6%, transparent); padding: 10px; border-radius: 6px; }
+  .history-item { border-top: 1px solid color-mix(in srgb, currentColor 15%, transparent); padding: 10px 0; }
+</style>
+</head>
+<body>
+<h1>Ask Rumbly -- local tester</h1>
+<p id="status">Loading example queries...</p>
+<div id="examples"></div>
+<form id="askForm">
+  <div class="row">
+    <div class="query-wrap">
+      <input type="text" id="queryInput" placeholder="e.g. where's the cheapest hamburger" autocomplete="off" aria-autocomplete="list" aria-controls="suggestions" aria-expanded="false" autofocus>
+      <div id="suggestions" role="listbox"></div>
+    </div>
+    <select id="architecture" aria-label="Architecture">
+      <option value="semantic">Semantic + proof</option>
+      <option value="legacy">Legacy</option>
+    </select>
+    <button type="submit">Ask</button>
+  </div>
+</form>
+<div id="results"></div>
+
+<script>
+async function loadExamples() {
+  try {
+    const res = await fetch('/examples');
+    const data = await res.json();
+    const container = document.getElementById('examples');
+    const status = document.getElementById('status');
+    const allPrompts = [];
+    for (const [category, items] of Object.entries(data.categories || {})) {
+      for (const item of items) allPrompts.push({ category, prompt: item.prompt });
+    }
+    // A handful of representative examples, not the whole taxonomy -- click one to fill the box, doesn't auto-submit.
+    const sample = allPrompts.slice(0, 12);
+    for (const { category, prompt } of sample) {
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = prompt;
+      btn.title = category;
+      btn.onclick = () => { document.getElementById('queryInput').value = prompt; };
+      container.appendChild(btn);
+    }
+    status.textContent = allPrompts.length > 0
+      ? `${allPrompts.length} example queries available -- click one to fill the box, or type your own.`
+      : 'No example fixture is available; type your own query below.';
+  } catch (e) {
+    document.getElementById('status').textContent = 'Could not load examples (server may still be starting).';
+  }
+}
+loadExamples();
+
+const form = document.getElementById('askForm');
+const resultsEl = document.getElementById('results');
+const queryInput = document.getElementById('queryInput');
+const suggestionsEl = document.getElementById('suggestions');
+let suggestions = [];
+let activeSuggestion = -1;
+let suggestTimer = null;
+
+function hideSuggestions() {
+  suggestions = [];
+  activeSuggestion = -1;
+  suggestionsEl.replaceChildren();
+  queryInput.setAttribute('aria-expanded', 'false');
+}
+
+function chooseSuggestion(index) {
+  const suggestion = suggestions[index];
+  if (!suggestion) return;
+  const query = queryInput.value;
+  queryInput.value = query.slice(0, suggestion.replaceStart) + suggestion.label + query.slice(suggestion.replaceEnd);
+  const caret = suggestion.replaceStart + suggestion.label.length;
+  queryInput.setSelectionRange(caret, caret);
+  hideSuggestions();
+  queryInput.focus();
+}
+
+function renderSuggestions() {
+  suggestionsEl.replaceChildren();
+  suggestions.forEach((suggestion, index) => {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.role = 'option';
+    button.className = index === activeSuggestion ? 'active' : '';
+    button.setAttribute('aria-selected', String(index === activeSuggestion));
+    const label = document.createElement('span');
+    label.textContent = suggestion.label;
+    const type = document.createElement('small');
+    type.textContent = suggestion.type;
+    button.append(label, type);
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', () => chooseSuggestion(index));
+    suggestionsEl.appendChild(button);
+  });
+  queryInput.setAttribute('aria-expanded', String(suggestions.length > 0));
+}
+
+queryInput.addEventListener('input', () => {
+  clearTimeout(suggestTimer);
+  const query = queryInput.value;
+  suggestTimer = setTimeout(async () => {
+    try {
+      const res = await fetch(`/suggest?q=${encodeURIComponent(query)}`);
+      const data = await res.json();
+      if (queryInput.value !== query) return;
+      suggestions = data.suggestions || [];
+      activeSuggestion = -1;
+      renderSuggestions();
+    } catch {
+      hideSuggestions();
+    }
+  }, 90);
+});
+
+queryInput.addEventListener('keydown', (event) => {
+  if (event.key === 'Escape') return hideSuggestions();
+  if (suggestions.length === 0) return;
+  if (event.key === 'ArrowDown') {
+    event.preventDefault();
+    activeSuggestion = (activeSuggestion + 1) % suggestions.length;
+    renderSuggestions();
+  } else if (event.key === 'ArrowUp') {
+    event.preventDefault();
+    activeSuggestion = (activeSuggestion - 1 + suggestions.length) % suggestions.length;
+    renderSuggestions();
+  } else if (event.key === 'Enter' && activeSuggestion >= 0) {
+    event.preventDefault();
+    chooseSuggestion(activeSuggestion);
+  }
+});
+
+queryInput.addEventListener('blur', () => setTimeout(hideSuggestions, 100));
+
+form.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const query = document.getElementById('queryInput').value.trim();
+  if (!query) return;
+  hideSuggestions();
+  const mode = document.getElementById('architecture').value;
+  await sendQuestion({ query, mode }, query);
+});
+
+async function sendQuestion(payload, displayQuery) {
+  const status = document.getElementById('status');
+  status.textContent = 'Asking...';
+  try {
+    const started = performance.now();
+    const res = await fetch('/ask', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json();
+    const elapsed = Math.round(performance.now() - started);
+    status.textContent = `Answered in ${elapsed}ms (${data.architecture || 'local'} architecture).`;
+
+    const entry = document.createElement('div');
+    entry.className = 'history-item';
+    if (data.error) {
+      entry.innerHTML = `<strong>"${escapeHtml(displayQuery)}"</strong><pre>Error: ${escapeHtml(data.error)}</pre>`;
+    } else {
+      entry.innerHTML = `
+        <strong>"${escapeHtml(displayQuery)}"</strong>
+        <div class="answer ${data.result.kind}">${escapeHtml(data.result.text)}</div>
+        <pre>architecture: ${escapeHtml(data.architecture || 'unknown')}
+plan/classification: ${escapeHtml(JSON.stringify(data.classified))}
+result kind: ${data.result.kind}
+proof: ${escapeHtml(data.result.proof ? `${data.result.proof.status}; ${data.result.proof.witnesses.length} witness(es); ${data.result.proof.failures.length} failure(s)` : 'n/a')}</pre>
+      `;
+      if (data.result.kind === 'clarification') {
+        const options = document.createElement('div');
+        options.className = 'clarification-options';
+        for (const option of data.result.clarification?.options || []) {
+          if (!option.nextQuery) continue;
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = option.label;
+          button.onclick = () => sendQuestion({ classified: option.nextQuery }, `${displayQuery} → ${option.label}`);
+          options.appendChild(button);
+        }
+        entry.insertBefore(options, entry.querySelector('pre'));
+      }
+      if (data.result.actions?.length) {
+        const actions = document.createElement('div');
+        actions.className = 'result-actions';
+        for (const action of data.result.actions) {
+          if (action.kind === 'openDisney') {
+            const link = document.createElement('a');
+            link.href = action.url;
+            link.target = '_blank';
+            link.rel = 'noopener noreferrer';
+            link.textContent = action.label;
+            actions.appendChild(link);
+          } else if (action.kind === 'openRestaurant') {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.textContent = action.label;
+            button.onclick = () => {
+              status.textContent = `In the app, this opens restaurant: ${action.restaurantId}`;
+            };
+            actions.appendChild(button);
+          }
+        }
+        entry.insertBefore(actions, entry.querySelector('pre'));
+      }
+    }
+    resultsEl.prepend(entry);
+  } catch (err) {
+    status.textContent = 'Request failed -- is the server still running?';
+  }
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+</script>
+</body>
+</html>

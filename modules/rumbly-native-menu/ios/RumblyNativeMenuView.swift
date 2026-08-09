@@ -106,9 +106,17 @@ private final class NativeMenuModel: ObservableObject {
   @Published var scrollRequest: ScrollRequest?
   @Published var highlightedItemId: String?
   @Published var bottomInset: CGFloat = 0
+  // Floor under the scrollable content's own height -- see
+  // RumblyNativeMenu.types.ts's minContentHeight for why this exists (a
+  // short menu can't otherwise scroll far enough for the host screen's
+  // header-collapse and active-category sync, both scroll-position-driven,
+  // to ever reach the value they're waiting for).
+  @Published var minContentHeight: CGFloat = 0
   private(set) var activeCategory: String?
   private var scrollOriginY: CGFloat?
   private var lastScrollOffset: CGFloat = 0
+  private var contentHeight: CGFloat = 0
+  private var viewportHeight: CGFloat = 0
   private var targetAnchorId: String?
 
   var actionHandler: ((String, String, String) -> Void)?
@@ -222,6 +230,47 @@ private final class NativeMenuModel: ObservableObject {
     lastScrollOffset = offset
     scrollOffsetHandler?(offset)
   }
+
+  func setContentHeight(_ height: CGFloat) {
+    contentHeight = height
+  }
+
+  func setViewportHeight(_ height: CGFloat) {
+    viewportHeight = height
+  }
+
+  private var isScrolledToRealEnd: Bool {
+    contentHeight > 0 && viewportHeight > 0
+      && lastScrollOffset >= contentHeight - viewportHeight - 4
+  }
+
+  // A section header only registers as "current" once it's scrolled up
+  // near the top of the viewport (the <= 8 check below). That can never
+  // happen for the very LAST section if its own remaining content is
+  // shorter than the distance needed to push its header that far up --
+  // there's no next section to force it, so without this check the chip
+  // strip gets stuck on whatever was active before, even once the last
+  // section is clearly what's on screen (confirmed against a real long
+  // menu, 2026-08-05: Hollywood Brown Derby's final wine section never
+  // took over from the one before it). Once scroll has actually reached
+  // the real end of the content, the last section unambiguously IS what's
+  // being looked at regardless of where its header's minY landed, so that
+  // takes priority over the minY heuristic rather than leaving state stale.
+  func updateActiveCategory(fromCrossedPositions positions: [String: CGFloat]) {
+    guard !positions.isEmpty else { return }
+    if isScrolledToRealEnd, let lastCategory = sections.last?.title {
+      setActiveCategory(lastCategory)
+      return
+    }
+    let crossed = positions
+      .filter { $0.value <= 8 }
+      .max(by: { $0.value < $1.value })
+    if let category = crossed?.key {
+      setActiveCategory(category)
+    } else if activeCategory == nil, let firstCategory = sections.first?.title {
+      setActiveCategory(firstCategory)
+    }
+  }
 }
 
 public final class RumblyNativeMenuView: ExpoView {
@@ -287,6 +336,10 @@ public final class RumblyNativeMenuView: ExpoView {
   public func setBottomInset(_ bottomInset: Double) {
     model.bottomInset = CGFloat(max(0, bottomInset))
   }
+
+  public func setMinContentHeight(_ minContentHeight: Double) {
+    model.minContentHeight = CGFloat(max(0, minContentHeight))
+  }
 }
 
 private struct SectionPositionPreferenceKey: PreferenceKey {
@@ -302,6 +355,26 @@ private struct ScrollPositionPreferenceKey: PreferenceKey {
 
   static func reduce(value: inout CGFloat?, nextValue: () -> CGFloat?) {
     value = nextValue() ?? value
+  }
+}
+
+// Total height of the scrollable content and the visible viewport around
+// it -- together these let the model know when scrolling has reached the
+// real end, for the last-section edge case documented on
+// updateActiveCategory(fromCrossedPositions:) below.
+private struct ContentHeightPreferenceKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = nextValue()
+  }
+}
+
+private struct ViewportHeightPreferenceKey: PreferenceKey {
+  static var defaultValue: CGFloat = 0
+
+  static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+    value = nextValue()
   }
 }
 
@@ -387,7 +460,31 @@ private struct NativeMenuRootView: View {
       // scrollPosition requires the layout marked by scrollTargetLayout() to
       // be the ScrollView's content layout. Wrapping it in another VStack made
       // SwiftUI accept the requested ID without ever moving to that row.
+      // minHeight is a floor on the real content, not an added block -- it
+      // only pads a menu shorter than minContentHeight, and top-aligns so
+      // any padding lands below the real rows, not around them.
       menuRows
+        .frame(minHeight: model.minContentHeight, alignment: .top)
+        .background {
+          GeometryReader { contentGeometry in
+            Color.clear.preference(
+              key: ContentHeightPreferenceKey.self,
+              value: contentGeometry.size.height
+            )
+          }
+        }
+    }
+    .background {
+      // Measures the ScrollView's own rendered frame (the visible viewport),
+      // not its content -- same "background GeometryReader" technique as
+      // the content-height and section-position trackers, just aimed at a
+      // different view.
+      GeometryReader { viewportGeometry in
+        Color.clear.preference(
+          key: ViewportHeightPreferenceKey.self,
+          value: viewportGeometry.size.height
+        )
+      }
     }
     .background(Color.white)
     .coordinateSpace(name: "rumblyMenuList")
@@ -399,19 +496,18 @@ private struct NativeMenuRootView: View {
         model.setScrollPosition(minY)
       }
     }
+    .onPreferenceChange(ContentHeightPreferenceKey.self) { height in
+      model.setContentHeight(height)
+    }
+    .onPreferenceChange(ViewportHeightPreferenceKey.self) { height in
+      model.setViewportHeight(height)
+    }
     .onPreferenceChange(SectionPositionPreferenceKey.self) { positions in
-      guard !positions.isEmpty else { return }
       // LazyVStack only reports headings that currently have live views. Do
-      // not select a heading merely because it entered at the bottom.
-      let crossed = positions
-        .filter { $0.value <= 8 }
-        .max(by: { $0.value < $1.value })
-      if let category = crossed?.key {
-        model.setActiveCategory(category)
-      } else if model.activeCategory == nil,
-                let firstCategory = model.sections.first?.title {
-        model.setActiveCategory(firstCategory)
-      }
+      // not select a heading merely because it entered at the bottom -- see
+      // updateActiveCategory(fromCrossedPositions:) for the one deliberate
+      // exception (the real end of scrollable content).
+      model.updateActiveCategory(fromCrossedPositions: positions)
     }
   }
 
@@ -1136,12 +1232,16 @@ private struct NativeSearchItemRowRootView: View {
           ) else {
       return value
     }
-    value[range].backgroundColor = UIColor(
-      red: 0.74,
-      green: 0.90,
-      blue: 0.95,
+    // Color + extra weight on the matched run, not a background fill --
+    // matches the classic (non-native) row's HighlightedText treatment.
+    // Same gold used a few lines up for the rating text in this same row.
+    value[range].foregroundColor = UIColor(
+      red: 0.68,
+      green: 0.48,
+      blue: 0.08,
       alpha: 1
     )
+    value[range].font = UIFont.systemFont(ofSize: 16, weight: .heavy)
     return value
   }
 
@@ -1456,12 +1556,15 @@ private struct NativeSearchRestaurantRowRootView: View {
     else {
       return value
     }
-    value[range].backgroundColor = UIColor(
-      red: 0.74,
-      green: 0.90,
-      blue: 0.95,
+    // Same treatment as the item row's highlightedName -- color + extra
+    // weight on the match, not a background fill.
+    value[range].foregroundColor = UIColor(
+      red: 0.68,
+      green: 0.48,
+      blue: 0.08,
       alpha: 1
     )
+    value[range].font = UIFont.systemFont(ofSize: 17, weight: .heavy)
     return value
   }
 

@@ -1,0 +1,27 @@
+{
+  "casual": {
+    "sha256": "58ff6b30ab014bfb49b4eb76ca89f1e8dd0bdbe429c1c51d7b08c97832d0aaf0",
+    "expected": [
+      "execute", "unsupported", "execute", "clarify", "clarify", "execute", "execute", "clarify", "unsupported", "unsupported",
+      "unsupported", "unsupported", "unsupported", "unsupported", "execute", "unsupported", "clarify", "clarify", "unsupported", "clarify",
+      "unsupported", "unsupported", "unsupported", "unsupported", "unsupported", "unsupported", "execute", "unsupported", "unsupported", "unsupported",
+      "clarify", "unsupported", "unsupported", "unsupported", "execute", "clarify", "unsupported", "unsupported", "unsupported", "unsupported",
+      "execute", "unsupported", "unsupported", "unsupported", "clarify", "handoff", "unsupported", "unsupported", "unsupported", "unsupported"
+    ]
+  },
+  "structured": {
+    "sha256": "9dbc60757ce1b291f8fc329606a727fb62f8b5df501f91faa64f9bf9bbc65df8",
+    "expected": [
+      "execute", "clarify", "unsupported", "clarify", "execute", "unsupported", "clarify", "unsupported", "execute", "execute",
+      "unsupported", "execute", "clarify", "execute", "execute", "execute", "clarify", "unsupported", "unsupported", "unsupported",
+      "clarify", "execute", "unsupported", "execute", "handoff", "execute", "execute", "unsupported", "execute", "unsupported",
+      "execute", "clarify", "unsupported", "unsupported", "clarify", "unsupported", "execute", "clarify", "unsupported", "execute",
+      "execute", "execute", "execute", "execute", "execute", "unsupported", "unsupported", "handoff", "unsupported", "unsupported",
+      "execute", "unsupported", "clarify", "unsupported", "unsupported", "clarify", "unsupported", "execute", "clarify", "clarify",
+      "execute", "execute", "execute", "execute", "execute", "clarify", "execute", "unsupported", "execute", "unsupported",
+      "execute", "unsupported", "execute", "unsupported", "clarify", "unsupported", "execute", "unsupported", "clarify", "execute",
+      "unsupported", "unsupported", "unsupported", "execute", "unsupported", "unsupported", "execute", "unsupported", "execute", "unsupported",
+      "execute", "unsupported", "execute", "execute", "clarify", "unsupported", "handoff", "execute", "unsupported", "unsupported"
+    ]
+  }
+}

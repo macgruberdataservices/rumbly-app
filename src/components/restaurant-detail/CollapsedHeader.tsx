@@ -1,4 +1,4 @@
-import { Animated, Pressable, StyleSheet, Text } from 'react-native';
+import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HoursStatus } from '../../data/hoursStatus';
 import { COLORS, SPACING } from '../../theme/tokens';
@@ -38,19 +38,23 @@ export function CollapsedHeader({
             </Text>
           )}
         </Animated.View>
-        {/* No overflow menu items exist yet (Report Inaccurate etc. are
-            later milestones) — visual placeholder only, nothing behind it. */}
-        <Text style={styles.overflow}>•••</Text>
+        {/* No overflow menu -- there's nothing behind it to open. Kept as
+            an empty same-width spacer (not the backButton's mirror) so
+            titleBlock's centered text still centers on the real screen
+            middle, not the backButton-only remaining width. */}
+        <View style={styles.overflowSpacer} />
       </Animated.View>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  // Same tint as ExpandedHeader's infoCard, and no seam between them --
+  // the tinted "restaurant info" surface now runs continuously from the
+  // very top of the device (behind the status bar, via this SafeAreaView)
+  // down through the nav bar and the info card below it.
   safeArea: {
-    backgroundColor: COLORS.surface,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    backgroundColor: COLORS.goldLight,
   },
   container: {
     flexDirection: 'row',
@@ -83,11 +87,7 @@ const styles = StyleSheet.create({
   },
   statusOpen: { color: COLORS.pine },
   statusClosed: { color: COLORS.muted },
-  overflow: {
+  overflowSpacer: {
     width: 76,
-    textAlign: 'right',
-    color: COLORS.forest,
-    fontSize: 16,
-    paddingLeft: SPACING.sm,
   },
 });

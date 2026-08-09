@@ -238,7 +238,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   title: {
-    fontFamily: FONT_FAMILY.besleyBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 30,
     color: COLORS.ink,
   },

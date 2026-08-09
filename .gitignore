@@ -36,6 +36,10 @@ yarn-error.*
 # typescript
 *.tsbuildinfo
 
+# Ask Rumbly's off-app data snapshot is generated locally and is intentionally
+# never committed with the semantic runtime.
+modules/ask-rumbly/scripts/ask-rumbly/.cache/
+
 # generated native folders
 /ios
 /android

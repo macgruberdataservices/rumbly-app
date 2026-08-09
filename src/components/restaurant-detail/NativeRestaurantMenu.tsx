@@ -16,6 +16,7 @@ export interface NativeRestaurantMenuProps {
   targetAnchorId: string | null;
   highlightedItemId: string | null;
   bottomInset: number;
+  minContentHeight: number;
   onReady: () => void;
   onActiveCategoryChange: (category: string) => void;
   onScrollOffsetChange: (offsetY: number) => void;

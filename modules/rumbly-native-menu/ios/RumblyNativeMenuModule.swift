@@ -26,6 +26,11 @@ public final class RumblyNativeMenuModule: Module {
         view.setBottomInset(bottomInset)
       }
 
+      Prop("minContentHeight") {
+        (view: RumblyNativeMenuView, minContentHeight: Double) in
+        view.setMinContentHeight(minContentHeight)
+      }
+
       AsyncFunction("scrollToCategory") {
         (view: RumblyNativeMenuView, category: String) in
         view.scrollToCategory(category)

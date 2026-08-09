@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
   },
   heading: {
     flex: 1,
-    fontFamily: FONT_FAMILY.interSemiBold,
+    fontFamily: FONT_FAMILY.workSansSemiBold,
     fontSize: 20,
     lineHeight: 24,
     letterSpacing: 0,
@@ -296,19 +296,19 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   changesTitle: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 17,
     color: COLORS.ink,
   },
   changesDescription: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 12,
     lineHeight: 16,
     color: COLORS.muted,
     marginTop: 1,
   },
   chevron: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 25,
     color: COLORS.dim,
     marginLeft: SPACING.sm,

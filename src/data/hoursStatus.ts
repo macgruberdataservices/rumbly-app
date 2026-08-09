@@ -81,3 +81,44 @@ export function getTodayStatus(hoursData: HoursData | null, restaurantId: string
   }
   return { kind: 'open', label: `Open till ${to12Hour(day.close)}`, todayLabel };
 }
+
+// Ask Rumbly gap (owner-reported 2026-07-31): "what time does Casey's
+// Corner open tomorrow" always answered with TODAY's hours -- not because
+// tomorrow's data was missing, but because nothing ever asked for it.
+// hoursData.days is already an 8-day rolling window (days[0] = today,
+// days[1] = tomorrow, ...), but getTodayStatus() above always reads
+// index 0 and every real call site (RestaurantDetailScreen, RestaurantCard,
+// NativeRestaurantResultRow, filters.ts's "Open Now" filter) only ever
+// means "right now" -- none of them pass a day, so getTodayStatus's
+// signature/behavior is left untouched rather than risk changing what
+// those screens show. This is a separate function for a specific future
+// day instead. No "now" comparison applies to a day that hasn't started
+// yet -- there's no elapsed time within that day to compare against, so
+// this only ever reports the day's full scheduled hours (or closed/
+// refurbishment), never "Opens at"/"Now Closed"/"Open till."
+export function getStatusForDayOffset(hoursData: HoursData | null, restaurantId: string, dayOffset: number): HoursStatus {
+  if (dayOffset === 0) return getTodayStatus(hoursData, restaurantId);
+  if (!hoursData) {
+    return { kind: 'unknown', label: 'Hours unavailable offline', todayLabel: 'Hours unavailable offline' };
+  }
+  const dayKey = hoursData.days[dayOffset];
+  if (!dayKey) {
+    return { kind: 'unknown', label: 'Hours not available that far out', todayLabel: 'Hours not available that far out' };
+  }
+  const day = hoursData.restaurants[restaurantId]?.[dayKey];
+  if (!day) {
+    return { kind: 'none', label: '', todayLabel: '' };
+  }
+  if ('refurbishment_flag' in day && day.refurbishment_flag) {
+    return {
+      kind: 'refurbishment',
+      label: 'Temporarily closed for refurbishment',
+      todayLabel: 'Temporarily closed for refurbishment',
+    };
+  }
+  if ('closed_flag' in day && day.closed_flag) {
+    return { kind: 'closed', label: 'Closed', todayLabel: 'Closed' };
+  }
+  const label = `Open ${to12Hour(day.open)} - ${to12Hour(day.close)}`;
+  return { kind: 'open', label, todayLabel: label };
+}

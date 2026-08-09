@@ -196,10 +196,9 @@ function ContentCard({
   const now = Date.now();
   const startsAt = Date.parse(content.startsAt);
   const endsAt = content.endsAt ? Date.parse(content.endsAt) : null;
-  const previewStatus = !content.active
-    ? 'INACTIVE'
-    : content.editorialStatus !== 'published'
-      ? content.editorialStatus.toLocaleUpperCase()
+  const previewStatus =
+    content.contentState === 'inactive' || content.contentState === 'waiting'
+      ? content.contentState.toLocaleUpperCase()
       : startsAt > now
         ? 'SCHEDULED'
         : endsAt !== null && endsAt <= now
@@ -229,11 +228,25 @@ function ContentCard({
         </View>
       )}
       <View style={styles.contentCopy}>
-        {content.eyebrow && <Text style={styles.eyebrow}>{content.eyebrow.toUpperCase()}</Text>}
-        <Text style={styles.contentTitle}>{content.title}</Text>
-        {content.summary && <Text style={styles.contentSummary}>{content.summary}</Text>}
+        {content.eyebrow && (
+          <Text style={styles.eyebrow} numberOfLines={1}>
+            {content.eyebrow.toUpperCase()}
+          </Text>
+        )}
+        <Text style={styles.contentTitle} numberOfLines={2} ellipsizeMode="tail">
+          {content.title}
+        </Text>
+        {content.summary && (
+          <Text style={styles.contentSummary} numberOfLines={3} ellipsizeMode="tail">
+            {content.summary}
+          </Text>
+        )}
         <View style={styles.contentFooter}>
-          {content.attribution && <Text style={styles.attribution}>{content.attribution}</Text>}
+          {content.attribution && (
+            <Text style={styles.attribution} numberOfLines={1}>
+              {content.attribution}
+            </Text>
+          )}
           <Text style={styles.openLabel}>
             {content.destinationType === 'external_url' ? 'OPEN ↗' : 'OPEN ›'}
           </Text>
@@ -564,7 +577,7 @@ const styles = StyleSheet.create({
   },
   sectionHeadingCopy: { flex: 1, minWidth: 0 },
   sectionTitle: {
-    fontFamily: FONT_FAMILY.besleyBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 21,
     color: COLORS.ink,
   },
@@ -669,7 +682,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.cream,
   },
   venueInitialText: {
-    fontFamily: FONT_FAMILY.besleyBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 20,
     color: COLORS.ink,
   },
@@ -724,7 +737,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
   cardChevron: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 22,
     lineHeight: 20,
     color: COLORS.forest,
@@ -756,7 +769,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.pineLight,
   },
   contentPlaceholderMark: {
-    fontFamily: FONT_FAMILY.besleyBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 44,
     color: COLORS.ink,
     opacity: 0.68,
@@ -786,7 +799,7 @@ const styles = StyleSheet.create({
     color: COLORS.forest,
   },
   contentTitle: {
-    fontFamily: FONT_FAMILY.besleyBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 18,
     color: COLORS.ink,
     marginTop: 2,

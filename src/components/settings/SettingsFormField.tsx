@@ -19,14 +19,14 @@ export function SettingsFormField({ label, ...props }: TextInputProps & { label:
 const styles = StyleSheet.create({
   field: { marginBottom: SPACING.lg },
   label: {
-    fontFamily: FONT_FAMILY.interSemiBold,
+    fontFamily: FONT_FAMILY.workSansSemiBold,
     fontSize: 12,
     color: COLORS.muted,
     marginBottom: SPACING.xs,
   },
   input: {
     minHeight: 46,
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 15,
     color: COLORS.ink,
     borderWidth: 1,

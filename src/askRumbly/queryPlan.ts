@@ -17,6 +17,8 @@ export type ClaimType =
   | 'restaurant_hours'
   | 'restaurant_location'
   | 'venue_amenity'
+  | 'sensory_attribute'
+  | 'price_comparison'
   | 'ingredient_content'
   | 'allergy_safety'
   | 'cross_contact'
@@ -49,7 +51,8 @@ export type RestaurantFeature =
   | 'quick_service'
   | 'character_dining'
   | 'festival_booth'
-  | 'resort_bar';
+  | 'resort_bar'
+  | 'wait_time';
 
 export interface QueryPlan {
   version: 1;

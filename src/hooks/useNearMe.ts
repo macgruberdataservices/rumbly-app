@@ -1,4 +1,4 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import * as Location from 'expo-location';
 import type { Coordinates } from '../location/proximity';
 
@@ -8,15 +8,35 @@ export type NearMeEnableResult = Exclude<NearMeStatus, 'idle' | 'requesting'>;
 const LAST_KNOWN_MAX_AGE_MS = 5 * 60 * 1000;
 const LAST_KNOWN_REQUIRED_ACCURACY_METERS = 1000;
 
-export function useNearMe(initialOrigin: Coordinates | null = null) {
-  const [origin, setOrigin] = useState<Coordinates | null>(initialOrigin);
-  const [status, setStatus] = useState<NearMeStatus>(initialOrigin ? 'active' : 'idle');
+// `override`, when set, is a developer-chosen fake coordinate (Development
+// settings, owner account only -- see useIsDevOwner.ts) that short-circuits
+// real GPS entirely: every consumer of this hook's `origin` (Find Feed's
+// nearby rails, walking distances, search's "near me" sort/grouping) sees
+// the fake coordinate transparently, with no special-casing anywhere else.
+export function useNearMe(
+  initialOrigin: Coordinates | null = null,
+  override: Coordinates | null = null
+) {
+  const [origin, setOrigin] = useState<Coordinates | null>(override ?? initialOrigin);
+  const [status, setStatus] = useState<NearMeStatus>(
+    override ?? initialOrigin ? 'active' : 'idle'
+  );
   const requestIdRef = useRef(0);
 
+  // A fake location set (or cleared) in Development settings takes effect
+  // immediately, without requiring a separate tap on the Near Me toggle.
+  useEffect(() => {
+    if (!override) return;
+    requestIdRef.current += 1;
+    setOrigin(override);
+    setStatus('active');
+  }, [override]);
+
   const getPermissionStatus = useCallback(async () => {
+    if (override) return Location.PermissionStatus.GRANTED;
     const permission = await Location.getForegroundPermissionsAsync();
     return permission.status;
-  }, []);
+  }, [override]);
 
   const disable = useCallback(() => {
     requestIdRef.current += 1;
@@ -26,6 +46,13 @@ export function useNearMe(initialOrigin: Coordinates | null = null) {
 
   const enable = useCallback(async (): Promise<NearMeEnableResult> => {
     const requestId = ++requestIdRef.current;
+
+    if (override) {
+      setOrigin(override);
+      setStatus('active');
+      return 'active';
+    }
+
     setStatus('requesting');
 
     try {
@@ -72,7 +99,7 @@ export function useNearMe(initialOrigin: Coordinates | null = null) {
       if (requestId === requestIdRef.current) setStatus('error');
       return 'error';
     }
-  }, []);
+  }, [override]);
 
   return {
     origin,

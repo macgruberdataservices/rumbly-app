@@ -38,6 +38,7 @@ function activity(overrides = {}) {
   return {
     lovedRestaurants: [],
     lovedItems: [],
+    neededRestaurants: [],
     neededItems: [],
     gotItHistory: [],
     totalGotItCount: 0,
@@ -152,6 +153,75 @@ test('Need It nearby is location-gated and sorted by distance', () => {
   assert.ok(nearby);
   assert.equal(nearby.items[0].kind, 'item');
   assert.equal(nearby.items[0].item.item_id, 'near-item');
+});
+
+test('Need It nearby only includes items within actual walking distance, not anywhere within the old 5-mile radius', () => {
+  const restaurants = [
+    restaurant('close', { lat: 28.403 }), // ~0.21 mi from origin
+    restaurant('too-far', { lat: 28.412 }), // ~0.83 mi -- inside the old 5 mi cutoff, outside the new 0.5 mi one
+  ];
+  const nearby = buildFindFeed({
+    ...base,
+    origin: { latitude: 28.4, longitude: -81.5 },
+    restaurants,
+    searchIndex: [
+      item('close', 'close-item', 'Snacks'),
+      item('too-far', 'too-far-item', 'Snacks'),
+    ],
+    activity: activity({
+      neededItems: [
+        event({ restaurantId: 'close', itemId: 'close-item', activityType: 'need_it' }),
+        event({ restaurantId: 'too-far', itemId: 'too-far-item', activityType: 'need_it' }),
+      ],
+    }),
+  }).find((module) => module.key === 'nearby_need_it');
+  assert.ok(nearby);
+  const itemIds = nearby.items
+    .filter((recommendation) => recommendation.kind === 'item')
+    .map((recommendation) => recommendation.item.item_id);
+  assert.ok(itemIds.includes('close-item'), 'something ~0.2 mi away still counts as nearby');
+  assert.equal(itemIds.includes('too-far-item'), false, '~0.8 mi away no longer counts as nearby');
+});
+
+test('Need It nearby surfaces a restaurant-level Need It via a representative item, without duplicating a restaurant that already has an item-level entry', () => {
+  const restaurants = [
+    restaurant('whole-place', { lat: 28.4005, lng: -81.5 }),
+    restaurant('both', { lat: 28.401, lng: -81.5 }),
+  ];
+  const searchIndex = [
+    item('whole-place', 'signature-dish', 'Entrees'),
+    item('both', 'picked-item', 'Snacks'),
+    item('both', 'other-item', 'Snacks'),
+  ];
+  const nearby = buildFindFeed({
+    ...base,
+    origin: { latitude: 28.4, longitude: -81.5 },
+    restaurants,
+    searchIndex,
+    activity: activity({
+      neededRestaurants: [
+        event({ restaurantId: 'whole-place', activityType: 'need_it' }),
+        event({ restaurantId: 'both', activityType: 'need_it' }),
+      ],
+      neededItems: [
+        event({ restaurantId: 'both', itemId: 'picked-item', activityType: 'need_it' }),
+      ],
+    }),
+  }).find((module) => module.key === 'nearby_need_it');
+  assert.ok(nearby);
+  const restaurantIds = nearby.items
+    .filter((recommendation) => recommendation.kind === 'item')
+    .map((recommendation) => recommendation.restaurant.restaurant_id);
+  assert.ok(restaurantIds.includes('whole-place'), 'a restaurant-level Need It now appears nearby');
+  assert.equal(
+    restaurantIds.filter((id) => id === 'both').length,
+    1,
+    'a restaurant with both an item-level and restaurant-level Need It only appears once'
+  );
+  const bothEntry = nearby.items.find(
+    (recommendation) => recommendation.kind === 'item' && recommendation.restaurant.restaurant_id === 'both'
+  );
+  assert.equal(bothEntry.item.item_id, 'picked-item', 'the item-level entry wins over a synthesized representative');
 });
 
 test('the entire feed can be gated by an entitlement', () => {
@@ -339,6 +409,52 @@ test('What’s nearby requires taste relevance and the current meal period', () 
   assert.equal(nearby.items.length, 1);
   assert.equal(nearby.items[0].kind, 'item');
   assert.equal(nearby.items[0].item.item_id, 'lunch-burger');
+});
+
+test('What’s nearby treats snack/lounge periods as always available, and Late Night Dining as the dinner bucket', () => {
+  const restaurants = [
+    restaurant('rated'),
+    restaurant('snack-near', { lat: 28.4005 }),
+    restaurant('late-night-near', { lat: 28.4006 }),
+  ];
+  const searchIndex = [
+    item('rated', 'rated-burger', 'Burgers'),
+    item('snack-near', 'snack-burger', 'Burgers', { dining_period: 'Snack' }),
+    item('late-night-near', 'late-burger', 'Burgers', { dining_period: 'Late Night Dining' }),
+  ];
+  const activityInput = activity({
+    gotItHistory: [event({
+      restaurantId: 'rated',
+      itemId: 'rated-burger',
+      activityType: 'got_it',
+      rating: 5,
+    })],
+  });
+  const common = {
+    ...base,
+    origin: { latitude: 28.4, longitude: -81.5 },
+    restaurants,
+    searchIndex,
+    activity: activityInput,
+  };
+
+  const morning = buildFindFeed({ ...common, now: new Date(2026, 6, 27, 8, 0, 0) })
+    .find((module) => module.key === 'nearby_for_you');
+  assert.ok(morning);
+  const morningIds = morning.items
+    .filter((recommendation) => recommendation.kind === 'item')
+    .map((recommendation) => recommendation.item.item_id);
+  assert.ok(morningIds.includes('snack-burger'), 'Snack items show at any hour');
+  assert.equal(morningIds.includes('late-burger'), false, 'Late Night Dining stays out of the breakfast bucket');
+
+  const evening = buildFindFeed({ ...common, now: new Date(2026, 6, 27, 19, 0, 0) })
+    .find((module) => module.key === 'nearby_for_you');
+  assert.ok(evening);
+  const eveningIds = evening.items
+    .filter((recommendation) => recommendation.kind === 'item')
+    .map((recommendation) => recommendation.item.item_id);
+  assert.ok(eveningIds.includes('snack-burger'), 'Snack items still show in the evening');
+  assert.ok(eveningIds.includes('late-burger'), 'Late Night Dining matches the dinner bucket');
 });
 
 test('What’s nearby is hidden without an enabled location origin', () => {

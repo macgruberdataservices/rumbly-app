@@ -21,7 +21,11 @@ const DEFAULT_CONFIGS: FeedConfig[] = [
     requiredEntitlement: null,
     settings: { profile_window_days: 180, refresh_interval_minutes: 60 },
   },
-  { moduleKey: 'nearby_need_it', enabled: true, sortOrder: 10, maxItems: 5, requiredEntitlement: null, settings: { max_distance_miles: 5 } },
+  // 0.5 mi, not the old 5 mi -- matches FEET_DISPLAY_THRESHOLD_MILES in
+  // proximity.ts, the app's own definition of "close enough that miles
+  // isn't the useful unit." 5 mi meant "nearby" could mean anywhere on
+  // Disney property; this keeps it to things actually within walking reach.
+  { moduleKey: 'nearby_need_it', enabled: true, sortOrder: 10, maxItems: 5, requiredEntitlement: null, settings: { max_distance_miles: 0.5 } },
   {
     moduleKey: 'nearby_for_you',
     enabled: true,
@@ -161,12 +165,32 @@ function activeMealPeriod(now: Date): { key: 'breakfast' | 'lunch' | 'dinner'; l
   return { key: 'dinner', label: 'dinner' };
 }
 
+// Venue types that aren't scoped to a breakfast/lunch/dinner seating window
+// -- a snack cart or pool bar serves whenever it's open, not during "the
+// dinner window" specifically. Without this, real dining_period values like
+// "Snack" and "Bar – Lounge" never matched any period and those items
+// were permanently invisible to "What's nearby" (~22% of the catalog,
+// confirmed against production menu data, Snack alone being the largest
+// single bucket -- a bad miss for a snack-discovery app).
+function isAlwaysAvailablePeriod(value: string): boolean {
+  return (
+    value.includes('snack')
+    || value.includes('lounge')
+    || value.includes('pool bar')
+    || value.includes('coffee')
+    || value.includes('special')
+  );
+}
+
 function matchesMealPeriod(item: SearchIndexEntry, period: ReturnType<typeof activeMealPeriod>): boolean {
   const value = item.dining_period.toLocaleLowerCase();
-  if (value.includes('all day')) return true;
+  if (value.includes('all day') || isAlwaysAvailablePeriod(value)) return true;
   if (period.key === 'breakfast') return value.includes('breakfast') || value.includes('brunch');
   if (period.key === 'lunch') return value.includes('lunch') || value.includes('brunch');
-  return value.includes('dinner');
+  // "Late Night Dining" deliberately matches here too -- "dining" isn't
+  // "dinner" as a substring, and dinner (4pm onward, no upper bound) is the
+  // only bucket active late at night anyway.
+  return value.includes('dinner') || value.includes('late night');
 }
 
 function itemRecommendation(
@@ -370,7 +394,7 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
   const nearbyConfig = configByKey.get('nearby_need_it')!;
   if (input.origin && available(nearbyConfig, input.isEntitled)) {
     const maxDistance = numberSetting(nearbyConfig, 'max_distance_miles', 5);
-    const items = input.activity.neededItems
+    const itemCandidates = input.activity.neededItems
       .map((event) => {
         const key = event.itemId ? getItemIdentityKey(event.restaurantId, event.itemId) : '';
         const item = itemByKey.get(key);
@@ -380,11 +404,46 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
         if (distance === null || distance > maxDistance) return null;
         return itemRecommendation('nearby_need_it', item, restaurant, 'On your Need It list nearby', input.origin);
       })
-      .filter((item): item is FeedItemRecommendation => item !== null)
+      .filter((entry): entry is FeedItemRecommendation => entry !== null);
+
+    // A restaurant-level Need It ("I want to go here", no specific dish
+    // picked -- the header's Love/Need button) previously never surfaced
+    // here at all, even standing next to the place. Represent it with its
+    // best-matching quality menu item so it renders like every other card
+    // in this rail. Skip restaurants that already have an item-level Need
+    // It entry so the same place doesn't show twice.
+    const restaurantsWithItemNeedIt = new Set(
+      itemCandidates.map((entry) => entry.restaurant.restaurant_id)
+    );
+    const restaurantCandidates = (input.activity.neededRestaurants ?? [])
+      .filter((event) => !restaurantsWithItemNeedIt.has(event.restaurantId))
+      .flatMap((event) => {
+        const restaurant = restaurantById.get(event.restaurantId);
+        if (!restaurant) return [];
+        const distance = distanceToRestaurant(input.origin, restaurant);
+        if (distance === null || distance > maxDistance) return [];
+        const representative = input.searchIndex
+          .filter((candidate) =>
+            candidate.restaurant_id === event.restaurantId && recommendationQuality(candidate)
+          )
+          .sort((left, right) => candidateScore(right, restaurant) - candidateScore(left, restaurant))[0];
+        if (!representative) return [];
+        return [
+          itemRecommendation(
+            'nearby_need_it',
+            representative,
+            restaurant,
+            'On your Need It list nearby',
+            input.origin
+          ),
+        ];
+      });
+
+    const items = [...itemCandidates, ...restaurantCandidates]
       .sort((left, right) => (left.distanceMiles ?? Infinity) - (right.distanceMiles ?? Infinity))
-      .filter((item, index, items) =>
-        items.findIndex((candidate) =>
-          canonicalItemName(candidate.item.item) === canonicalItemName(item.item.item)
+      .filter((entry, index, entries) =>
+        entries.findIndex((candidate) =>
+          canonicalItemName(candidate.item.item) === canonicalItemName(entry.item.item)
         ) === index
       )
       .slice(0, nearbyConfig.maxItems);
@@ -650,6 +709,7 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
       })
       .slice(0, seasonalConfig.maxItems);
     if (items.length > 0) {
+      registerItems(items);
       modules.push({
         key: 'seasonal',
         title: 'Seasonal now',

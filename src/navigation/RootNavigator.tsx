@@ -7,6 +7,7 @@ import { BlurView } from 'expo-blur';
 import { FindNavigator, type FindStackParamList } from './FindNavigator';
 import { ExploreNavigator, type ExploreStackParamList } from './ExploreNavigator';
 import { MyRumblyNavigator, type MyRumblyStackParamList } from './MyRumblyNavigator';
+import { AskRumblyNavigator, type AskRumblyStackParamList } from './AskRumblyNavigator';
 import { SettingsNavigator } from './SettingsNavigator';
 import { JournalComposerScreen } from '../screens/journal/JournalComposerScreen';
 import type { AppRootStackParamList } from './journalTypes';
@@ -15,6 +16,7 @@ import { COLORS, SPACING } from '../theme/tokens';
 export type RootTabParamList = {
   Find: NavigatorScreenParams<FindStackParamList>;
   Explore: NavigatorScreenParams<ExploreStackParamList>;
+  AskRumbly: NavigatorScreenParams<AskRumblyStackParamList>;
   // Nested params so screens in other tabs (Find, Explore) can jump
   // straight to a specific My Rumbly screen -- e.g. AccountSettings,
   // via useOpenAccountSettings -- rather than only landing on its home.
@@ -52,9 +54,22 @@ function MyRumblyIcon({ color }: { color: string }) {
   );
 }
 
+function AskRumblyIcon({ color }: { color: string }) {
+  return (
+    <View style={styles.iconFrame}>
+      <View style={[styles.askBubble, { borderColor: color }]}>
+        <View style={[styles.askDot, { backgroundColor: color }]} />
+        <View style={[styles.askDot, { backgroundColor: color }]} />
+        <View style={[styles.askDot, { backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
 function TabIcon({ routeName, color }: { routeName: keyof RootTabParamList; color: string }) {
   if (routeName === 'Find') return <FindIcon color={color} />;
   if (routeName === 'Explore') return <ExploreIcon color={color} />;
+  if (routeName === 'AskRumbly') return <AskRumblyIcon color={color} />;
   return <MyRumblyIcon color={color} />;
 }
 
@@ -121,6 +136,7 @@ function MainTabs() {
           component={FindNavigator}
         />
         <Tab.Screen name="Explore" component={ExploreNavigator} />
+        <Tab.Screen name="AskRumbly" component={AskRumblyNavigator} options={{ title: 'Ask Rumbly' }} />
         <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Rumbly' }} />
     </Tab.Navigator>
   );
@@ -206,5 +222,21 @@ const styles = StyleSheet.create({
     borderTopRightRadius: 9,
     borderWidth: 2,
     borderBottomWidth: 0,
+  },
+  askBubble: {
+    width: 23,
+    height: 17,
+    borderRadius: 8,
+    borderWidth: 2,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 3,
+    position: 'relative',
+  },
+  askDot: {
+    width: 3,
+    height: 3,
+    borderRadius: 2,
   },
 });

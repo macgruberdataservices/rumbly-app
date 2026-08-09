@@ -1,18 +1,17 @@
 import { useCallback, useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
-import { useFonts, Inter_400Regular, Inter_500Medium, Inter_600SemiBold, Inter_700Bold } from '@expo-google-fonts/inter';
-import {
-  Fraunces_400Regular,
-  Fraunces_400Regular_Italic,
-  Fraunces_500Medium,
-  Fraunces_600SemiBold,
-  Fraunces_700Bold,
-} from '@expo-google-fonts/fraunces';
+import { useFonts } from 'expo-font';
 import { Yellowtail_400Regular } from '@expo-google-fonts/yellowtail';
-import { Besley_700Bold } from '@expo-google-fonts/besley';
+import {
+  Piazzolla_700Bold,
+  Piazzolla_800ExtraBold,
+  Piazzolla_400Regular_Italic,
+} from '@expo-google-fonts/piazzolla';
 import {
   WorkSans_400Regular,
+  WorkSans_500Medium,
+  WorkSans_600SemiBold,
   WorkSans_700Bold,
   WorkSans_800ExtraBold,
 } from '@expo-google-fonts/work-sans';
@@ -30,18 +29,13 @@ SplashScreen.preventAutoHideAsync().catch(() => {});
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
-    Inter_400Regular,
-    Inter_500Medium,
-    Inter_600SemiBold,
-    Inter_700Bold,
-    Fraunces_400Regular,
-    Fraunces_400Regular_Italic,
-    Fraunces_500Medium,
-    Fraunces_600SemiBold,
-    Fraunces_700Bold,
     Yellowtail_400Regular,
-    Besley_700Bold,
+    Piazzolla_700Bold,
+    Piazzolla_800ExtraBold,
+    Piazzolla_400Regular_Italic,
     WorkSans_400Regular,
+    WorkSans_500Medium,
+    WorkSans_600SemiBold,
     WorkSans_700Bold,
     WorkSans_800ExtraBold,
   });

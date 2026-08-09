@@ -3,16 +3,17 @@ import { findMatchRange } from '../search/highlight';
 import { COLORS } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 
-// Default highlight is a font-family swap to the Fraunces bold variant
-// (not RN's generic fontWeight: 'bold', which custom-loaded Google Fonts
-// mostly ignore since each weight is its own named family) plus a color
-// accent — weight *and* color together, per the search spec's "in
-// addition to color" requirement. Both current call sites (ItemResultRow,
-// RestaurantCard) share the same Fraunces-based text.restaurantName base
+// Default highlight is a font-family swap to Piazzolla bold (the app's one
+// heading/display voice, per theme/typography.ts's rule-set) -- not RN's
+// generic fontWeight: 'bold', which custom-loaded Google Fonts mostly
+// ignore since each weight is its own named family -- plus a color accent:
+// weight *and* color together, per the search spec's "in addition to
+// color" requirement. Both current call sites (ItemResultRow,
+// RestaurantCard) share the same WorkSans-based text.restaurantName base
 // style, so one default covers both; pass highlightStyle to override for
 // a different base font.
 const DEFAULT_HIGHLIGHT_STYLE: TextStyle = {
-  fontFamily: FONT_FAMILY.frauncesBold,
+  fontFamily: FONT_FAMILY.piazzollaBold,
   color: COLORS.gold,
 };
 

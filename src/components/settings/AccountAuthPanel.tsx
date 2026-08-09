@@ -1,8 +1,10 @@
 import { useState } from 'react';
-import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Linking, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useAuth } from '../../hooks/useAuth';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
+
+const PRIVACY_POLICY_URL = 'https://cqsnluidczyitdwansey.supabase.co/functions/v1/privacy-policy';
 
 export function AccountAuthPanel({
   supportingText = "Sign in to sync this device's activity.",
@@ -72,6 +74,9 @@ export function AccountAuthPanel({
           {mode === 'signIn' ? "Don't have an account? Create one" : 'Already have an account? Sign in'}
         </Text>
       </Pressable>
+      <Pressable onPress={() => Linking.openURL(PRIVACY_POLICY_URL)} accessibilityRole="link">
+        <Text style={styles.privacyLinkLabel}>Privacy Policy</Text>
+      </Pressable>
     </View>
   );
 }
@@ -79,7 +84,7 @@ export function AccountAuthPanel({
 const styles = StyleSheet.create({
   supportingText: { marginBottom: SPACING.md },
   input: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 15,
     color: COLORS.ink,
     borderWidth: 1,
@@ -90,7 +95,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     backgroundColor: COLORS.surface,
   },
-  error: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
+  error: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
   primaryButton: {
     backgroundColor: COLORS.pine,
     borderRadius: RADII.sm,
@@ -100,6 +105,14 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   primaryButtonDisabled: { opacity: 0.5 },
-  primaryButtonLabel: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 14, color: COLORS.surface },
-  switchModeLabel: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.muted, textAlign: 'center' },
+  primaryButtonLabel: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 14, color: COLORS.surface },
+  switchModeLabel: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.muted, textAlign: 'center' },
+  privacyLinkLabel: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12,
+    color: COLORS.muted,
+    textAlign: 'center',
+    textDecorationLine: 'underline',
+    marginTop: SPACING.md,
+  },
 });

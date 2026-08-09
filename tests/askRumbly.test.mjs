@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { loadData } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/data.ts';
-import { answerQuery } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/executor.ts';
-import { classifyRuleBased } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/rule_classifier.ts';
-import { suggestEntities } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/entity_suggestions.ts';
+import { loadData } from '../modules/ask-rumbly/scripts/ask-rumbly/data.ts';
+import { answerQuery } from '../modules/ask-rumbly/scripts/ask-rumbly/executor.ts';
+import { classifyRuleBased } from '../modules/ask-rumbly/scripts/ask-rumbly/rule_classifier.ts';
+import { suggestEntities } from '../modules/ask-rumbly/scripts/ask-rumbly/entity_suggestions.ts';
 import { itemMatchesDietary } from '../src/search/filters.ts';
 
 const data = await loadData();
@@ -105,9 +105,11 @@ test('restaurant item checks only return items with direct food evidence', () =>
   assert.doesNotMatch(result.text, /Chicken Sandwich/i);
 });
 
-test('fuzzy edit distance alone cannot turn an unrelated word into food', () => {
+test('fuzzy edit distance cannot add unrelated Pancho matches', () => {
   const { result } = ask('where can i get a pancho?');
-  assert.equal(result.kind, 'no-match');
+  assert.equal(result.kind, 'answer');
+  assert.match(result.text, /Jock Lindsey's Hangar Bar[^;]*Pancho's Margarita/i);
+  assert.doesNotMatch(result.text, /California Grill|Frontera Cocina/i);
 });
 
 test('singular place-serves phrasing resolves item synonyms', () => {

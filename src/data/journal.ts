@@ -4,10 +4,12 @@
 
 export const MAX_JOURNAL_PHOTOS = 6;
 
+// Photos are local-device-only storage (see Docs/JOURNAL_BUILD_PLAN.md) --
+// nothing about them affects an entry's own sync state, so there is no
+// 'pending_photos' step between the entry pushing and being fully synced.
 export type JournalEntrySyncState =
   | 'draft'
   | 'pending_entry'
-  | 'pending_photos'
   | 'synced'
   | 'failed';
 
@@ -69,9 +71,8 @@ export interface StagedJournalPhoto {
 }
 
 export interface JournalStorageReport {
-  pendingBytes: number;
-  downloadedCacheBytes: number;
-  pendingPhotoCount: number;
+  photoBytes: number;
+  photoCount: number;
 }
 
 export interface JournalEntryWithPhotos {
@@ -124,18 +125,19 @@ export interface JournalEntryQuery extends JournalDateRange {
   includeDeleted?: boolean;
 }
 
-export type JournalOutboxOperationType =
-  | 'entry_upsert'
-  | 'entry_delete'
-  | 'photo_upsert'
-  | 'photo_delete';
+// Photos never leave the device, so the outbox only ever queues entry-level
+// operations now (see Docs/JOURNAL_BUILD_PLAN.md). The local journal_outbox
+// table's schema still technically permits 'photo'/'photo_upsert'/
+// 'photo_delete' values from before this change; the app just never writes
+// them going forward.
+export type JournalOutboxOperationType = 'entry_upsert' | 'entry_delete';
 
 export type JournalOutboxState = 'pending' | 'processing' | 'failed';
 
 export interface JournalOutboxOperation {
   operationKey: string;
   userId: string;
-  entityType: 'entry' | 'photo';
+  entityType: 'entry';
   entityId: string;
   operationType: JournalOutboxOperationType;
   state: JournalOutboxState;

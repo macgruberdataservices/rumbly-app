@@ -9,14 +9,10 @@ import {
   getJournalDraftRecord,
   getLatestJournalDraftRecord,
   getJournalEntryRecord,
-  getJournalPhotoRecord,
   listJournalEntryRecords,
   listJournalOutboxRecords,
-  listJournalPhotoIdsForEntry,
   listJournalPhotoRecords,
   listStagedJournalPhotoRecords,
-  markJournalPhotoOrphanedRecord,
-  markJournalPhotoSyncedRecord,
   removeJournalOutboxOperationRecord,
   saveJournalDraftRecord,
   saveStagedJournalPhotoRecord,
@@ -394,7 +390,7 @@ test('drafts round-trip photo IDs and are removed by successful entry creation',
   assert.equal(await getJournalDraftRecord(db, 'user-1', 'entry-1'), null);
 });
 
-test('successful entry creation promotes staged variants and queues photo upload', async (t) => {
+test('successful entry creation promotes staged variants locally without touching sync', async (t) => {
   const db = await makeDatabase(t);
   await saveStagedJournalPhotoRecord(db, {
     id: 'photo-1',
@@ -428,13 +424,13 @@ test('successful entry creation promotes staged variants and queues photo upload
     }
   );
   const entry = await getJournalEntryRecord(db, 'user-1', 'entry-1');
-  assert.equal(entry.syncState, 'pending_photos');
+  assert.equal(entry.syncState, 'pending_entry');
   const listedPhotos = await listJournalPhotoRecords(db, 'user-1', 'entry-1');
   assert.equal(listedPhotos[0].localThumbnailUri, 'file:///pending/thumbnail.jpg');
   const outbox = await listJournalOutboxRecords(db, 'user-1');
   assert.deepEqual(
-    outbox.map((operation) => operation.operationKey).sort(),
-    ['entry:entry-1', 'photo:photo-1']
+    outbox.map((operation) => operation.operationKey),
+    ['entry:entry-1']
   );
 });
 
@@ -491,7 +487,6 @@ test('editing an entry can retain, add, and remove photos atomically', async (t)
     "SELECT deleted_at, sync_state FROM journal_photos WHERE id = 'photo-1';"
   );
   assert.equal(removed.deleted_at, '2026-07-30T16:01:00.000Z');
-  assert.equal(removed.sync_state, 'pending');
   assert.deepEqual(await listStagedJournalPhotoRecords(db, 'user-1', 'entry-1'), []);
 });
 
@@ -624,8 +619,23 @@ test('invalid dates, ratings, and photo counts are rejected before persistence',
   assert.equal(count.count, 0);
 });
 
-test('Phase 8 sync support: photo lookups, sync-state writes, and outbox completion', async (t) => {
+test('photos never produce their own outbox entry, even when edited alongside other fields', async (t) => {
   const db = await makeDatabase(t);
+  await createInTransaction(db, entryInput({ photoIds: [] }));
+
+  // The entry's own create already queued and can be marked synced --
+  // simulating what journalSync.ts does on a successful push.
+  const [createOp] = await listJournalOutboxRecords(db, 'user-1');
+  assert.equal(createOp.operationKey, 'entry:entry-1');
+  await removeJournalOutboxOperationRecord(db, createOp.operationKey);
+  await setJournalEntrySyncStateRecord(db, 'user-1', 'entry-1', 'synced');
+  assert.equal((await getJournalEntryRecord(db, 'user-1', 'entry-1')).syncState, 'synced');
+
+  // updateJournalEntryRecord always requeues the entry itself regardless of
+  // what changed (it's a general edit call, not photo-specific) -- the
+  // point being verified here is that attaching a photo in that same edit
+  // never ALSO produces a second, photo-level outbox entry, since photos
+  // are local-device-only storage with nothing to sync.
   await saveStagedJournalPhotoRecord(db, {
     id: 'photo-1',
     userId: 'user-1',
@@ -639,125 +649,28 @@ test('Phase 8 sync support: photo lookups, sync-state writes, and outbox complet
     thumbnailBytes: 24000,
     createdAt: CREATED_AT,
   });
-  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
-
-  const beforeUpload = await getJournalPhotoRecord(db, 'user-1', 'photo-1');
-  assert.equal(beforeUpload.syncState, 'staged');
-  assert.equal(beforeUpload.displayPath, null);
-
-  await markJournalPhotoSyncedRecord(
-    db,
-    'user-1',
-    'photo-1',
-    'user-1/entry-1/photo-1/display.jpg',
-    'user-1/entry-1/photo-1/thumbnail.jpg'
-  );
-  const afterUpload = await getJournalPhotoRecord(db, 'user-1', 'photo-1');
-  assert.equal(afterUpload.syncState, 'synced');
-  assert.equal(afterUpload.displayPath, 'user-1/entry-1/photo-1/display.jpg');
-  assert.equal(afterUpload.thumbnailPath, 'user-1/entry-1/photo-1/thumbnail.jpg');
-
-  await setJournalEntrySyncStateRecord(db, 'user-1', 'entry-1', 'synced');
-  const entry = await getJournalEntryRecord(db, 'user-1', 'entry-1');
-  assert.equal(entry.syncState, 'synced');
+  await db.withExclusiveTransactionAsync(async (transaction) => {
+    await updateJournalEntryRecord(
+      transaction,
+      {
+        id: 'entry-1',
+        userId: 'user-1',
+        visitedOn: '2026-07-29',
+        mealPeriodSnapshot: 'Lunch',
+        note: 'Added a photo',
+        rating: 5,
+        photoIds: ['photo-1'],
+      },
+      '2026-07-30T16:01:00.000Z'
+    );
+  });
 
   const outboxOperations = await listJournalOutboxRecords(db, 'user-1');
   assert.deepEqual(
-    outboxOperations.map((operation) => operation.operationKey).sort(),
-    ['entry:entry-1', 'photo:photo-1']
+    outboxOperations.map((operation) => operation.operationKey),
+    ['entry:entry-1']
   );
-  for (const operation of outboxOperations) {
-    await removeJournalOutboxOperationRecord(db, operation.operationKey);
-  }
-  assert.deepEqual(await listJournalOutboxRecords(db, 'user-1'), []);
-});
-
-test('getJournalPhotoRecord only returns a soft-deleted photo when includeDeleted is set', async (t) => {
-  const db = await makeDatabase(t);
-  await saveStagedJournalPhotoRecord(db, {
-    id: 'photo-1',
-    userId: 'user-1',
-    draftId: 'entry-1',
-    position: 0,
-    displayUri: 'file:///pending/display.jpg',
-    thumbnailUri: 'file:///pending/thumbnail.jpg',
-    width: 1200,
-    height: 900,
-    displayBytes: 450000,
-    thumbnailBytes: 24000,
-    createdAt: CREATED_AT,
-  });
-  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
-  await db.runAsync(
-    "UPDATE journal_photos SET deleted_at = $deleted_at WHERE id = 'photo-1';",
-    { $deleted_at: '2026-07-30T16:00:00.000Z' }
-  );
-
-  assert.equal(await getJournalPhotoRecord(db, 'user-1', 'photo-1'), null);
-  const found = await getJournalPhotoRecord(db, 'user-1', 'photo-1', true);
-  assert.equal(found.id, 'photo-1');
-  assert.equal(found.deletedAt, '2026-07-30T16:00:00.000Z');
-});
-
-test('listJournalPhotoIdsForEntry includes soft-deleted photos for storage cleanup', async (t) => {
-  const db = await makeDatabase(t);
-  await db.runAsync(
-    `INSERT INTO journal_entries (
-       id, user_id, client_id, restaurant_id, restaurant_name_snapshot,
-       visited_on, sync_state, created_at, updated_at
-     ) VALUES (
-       'entry-1', 'user-1', 'client-1', 'restaurant-a', 'Restaurant A',
-       '2026-07-29', 'synced', $created_at, $created_at
-     );`,
-    { $created_at: CREATED_AT }
-  );
-  await db.runAsync(
-    `INSERT INTO journal_photos (
-       id, user_id, entry_id, position, width, height, created_at
-     ) VALUES (
-       'photo-1', 'user-1', 'entry-1', 0, 200, 200, $created_at
-     );`,
-    { $created_at: CREATED_AT }
-  );
-  await db.runAsync(
-    `INSERT INTO journal_photos (
-       id, user_id, entry_id, position, width, height, created_at, deleted_at
-     ) VALUES (
-       'photo-2', 'user-1', 'entry-1', 1, 200, 200, $created_at, $created_at
-     );`,
-    { $created_at: CREATED_AT }
-  );
-
-  const ids = await listJournalPhotoIdsForEntry(db, 'user-1', 'entry-1');
-  assert.deepEqual(ids.sort(), ['photo-1', 'photo-2']);
-});
-
-test('markJournalPhotoOrphanedRecord soft-deletes a photo whose local file is gone', async (t) => {
-  const db = await makeDatabase(t);
-  await saveStagedJournalPhotoRecord(db, {
-    id: 'photo-1',
-    userId: 'user-1',
-    draftId: 'entry-1',
-    position: 0,
-    displayUri: 'file:///stale-container/display.jpg',
-    thumbnailUri: 'file:///stale-container/thumbnail.jpg',
-    width: 1200,
-    height: 900,
-    displayBytes: 450000,
-    thumbnailBytes: 24000,
-    createdAt: CREATED_AT,
-  });
-  await createInTransaction(db, entryInput({ photoIds: ['photo-1'] }));
-
-  await markJournalPhotoOrphanedRecord(db, 'user-1', 'photo-1', '2026-07-30T16:00:00.000Z');
-
-  assert.equal(await getJournalPhotoRecord(db, 'user-1', 'photo-1'), null);
-  const orphaned = await getJournalPhotoRecord(db, 'user-1', 'photo-1', true);
-  assert.equal(orphaned.deletedAt, '2026-07-30T16:00:00.000Z');
-  assert.equal(orphaned.syncState, 'failed');
-  // Excluded from the active photo list a sync pass uses to decide whether
-  // an entry is fully synced, the same way a normal removal is.
-  assert.deepEqual(await listJournalPhotoRecords(db, 'user-1', 'entry-1'), []);
+  assert.equal(outboxOperations[0].operationType, 'entry_upsert');
 });
 
 test('failJournalOutboxOperationRecord retries quietly, then surfaces as failed', async (t) => {

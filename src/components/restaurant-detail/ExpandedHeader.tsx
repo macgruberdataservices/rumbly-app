@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Linking, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Linking, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Swipeable } from 'react-native-gesture-handler';
 import * as Haptics from 'expo-haptics';
 import type { Restaurant } from '../../data/types';
@@ -17,10 +17,22 @@ import {
   unregisterSwipeable,
 } from '../swipeableCoordinator';
 import { COLORS, RADII, SPACING } from '../../theme/tokens';
-import { text } from '../../theme/typography';
+import { FONT_FAMILY, text } from '../../theme/typography';
+
+// COLORS has no true green -- forest/pine both currently resolve to a pale
+// blue (see theme/tokens.ts), too low-contrast for "open now," the one
+// status on this screen that most benefits from an unambiguous color.
+// Scoped locally rather than added to the shared token file, which is out
+// of scope for a header layout pass.
+const OPEN_STATUS_COLOR = '#3B6D11';
 
 function priceLabel(r: Restaurant): string {
-  return r.price_tier_display || (r.price_tier ? '$'.repeat(r.price_tier) : '');
+  if (r.price_tier) return '$'.repeat(r.price_tier);
+  // price_tier_display carries a full disclaimer clause (e.g. "$$$ ($35 to
+  // $59.99 per adult)") -- fine detail for a detail sheet, too dense for
+  // the compact header fact line. Only the leading $ glyphs belong here.
+  const match = r.price_tier_display?.match(/^\$+/);
+  return match ? match[0] : '';
 }
 
 function hasDiningPlan(r: Restaurant): boolean {
@@ -28,75 +40,144 @@ function hasDiningPlan(r: Restaurant): boolean {
 }
 
 // Hand-drawn View-shape icons matching RootNavigator.tsx's tab-bar icon
-// technique (small fixed frame + 1-2 border-trick children, no icon
-// library) -- placeholder style for now, a real icon set can replace
-// these later without changing the pill row's layout/behavior.
+// technique exactly (fixed square frame + 1-2 border-trick children, no
+// icon library) -- same scale as the tab bar (22-24px frame) since these
+// now render icon-over-label like a tab, not inline-before-text like the
+// old pill row.
+function DirectionsIcon({ color }: { color: string }) {
+  return (
+    <View style={actionIconStyles.frame}>
+      <View style={[actionIconStyles.pinShape, { borderColor: color }]}>
+        <View style={[actionIconStyles.pinDot, { backgroundColor: color }]} />
+      </View>
+    </View>
+  );
+}
+
+function JournalIcon({ color }: { color: string }) {
+  return (
+    <View style={actionIconStyles.frame}>
+      <View style={[actionIconStyles.bookCover, { borderColor: color }]} />
+      <View style={[actionIconStyles.bookSpine, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
 function ReservationsIcon({ color }: { color: string }) {
   return (
-    <View style={pillIconStyles.frame}>
-      <View style={[pillIconStyles.clockFace, { borderColor: color }]} />
-      <View style={[pillIconStyles.clockHand, { backgroundColor: color }]} />
+    <View style={actionIconStyles.frame}>
+      <View style={[actionIconStyles.clockFace, { borderColor: color }]} />
+      <View style={[actionIconStyles.clockHand, { backgroundColor: color }]} />
     </View>
   );
 }
 
 function WalkUpIcon({ color }: { color: string }) {
   return (
-    <View style={pillIconStyles.frame}>
-      <View style={[pillIconStyles.listBar, { backgroundColor: color }]} />
-      <View style={[pillIconStyles.listBar, { backgroundColor: color, marginTop: 2 }]} />
-      <View style={[pillIconStyles.listBar, { backgroundColor: color, marginTop: 2 }]} />
+    <View style={actionIconStyles.frame}>
+      <View style={[actionIconStyles.listBar, { backgroundColor: color }]} />
+      <View style={[actionIconStyles.listBar, { backgroundColor: color, marginTop: 3 }]} />
+      <View style={[actionIconStyles.listBar, { backgroundColor: color, marginTop: 3 }]} />
     </View>
   );
 }
 
 function MobileOrderIcon({ color }: { color: string }) {
   return (
-    <View style={pillIconStyles.frame}>
-      <View style={[pillIconStyles.phoneOutline, { borderColor: color }]} />
-      <View style={[pillIconStyles.phoneButton, { backgroundColor: color }]} />
+    <View style={actionIconStyles.frame}>
+      <View style={[actionIconStyles.phoneOutline, { borderColor: color }]} />
+      <View style={[actionIconStyles.phoneButton, { backgroundColor: color }]} />
     </View>
   );
 }
 
-const pillIconStyles = StyleSheet.create({
+function DiningPlanIcon({ color }: { color: string }) {
+  return (
+    <View style={actionIconStyles.frame}>
+      <View style={[actionIconStyles.cardShape, { borderColor: color }]} />
+      <View style={[actionIconStyles.cardStripe, { backgroundColor: color }]} />
+    </View>
+  );
+}
+
+const actionIconStyles = StyleSheet.create({
   frame: {
-    width: 14,
-    height: 14,
+    width: 22,
+    height: 22,
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: SPACING.xs,
+  },
+  pinShape: {
+    width: 14,
+    height: 18,
+    borderWidth: 2,
+    borderTopLeftRadius: 8,
+    borderTopRightRadius: 8,
+    borderBottomLeftRadius: 8,
+    transform: [{ rotate: '45deg' }],
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pinDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    transform: [{ rotate: '-45deg' }],
+  },
+  bookCover: {
+    width: 14,
+    height: 17,
+    borderWidth: 2,
+    borderRadius: 3,
+  },
+  bookSpine: {
+    position: 'absolute',
+    width: 2,
+    height: 13,
   },
   clockFace: {
-    width: 11,
-    height: 11,
-    borderRadius: 6,
-    borderWidth: 1.5,
+    width: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 2,
   },
   clockHand: {
     position: 'absolute',
-    width: 1.5,
-    height: 4,
+    width: 2,
+    height: 6,
     borderRadius: 1,
-    top: 2,
+    top: 3,
   },
   listBar: {
-    width: 10,
-    height: 1.5,
+    width: 15,
+    height: 2,
     borderRadius: 1,
   },
   phoneOutline: {
-    width: 8,
-    height: 13,
-    borderRadius: 2,
-    borderWidth: 1.5,
+    width: 12,
+    height: 19,
+    borderRadius: 3,
+    borderWidth: 2,
   },
   phoneButton: {
     position: 'absolute',
-    width: 1.5,
-    height: 1.5,
+    width: 2,
+    height: 2,
     borderRadius: 1,
-    bottom: 2.5,
+    bottom: 3.5,
+  },
+  cardShape: {
+    width: 17,
+    height: 13,
+    borderRadius: 3,
+    borderWidth: 2,
+  },
+  cardStripe: {
+    position: 'absolute',
+    width: 11,
+    height: 2,
+    borderRadius: 1,
+    top: 9,
   },
 });
 
@@ -109,9 +190,11 @@ export function ExpandedHeader({
   hoursStatus: HoursStatus;
   onCapabilityPress: (kind: CapabilityKind) => void;
 }) {
-  const serviceLine = [restaurant.experience_type || restaurant.service_style, priceLabel(restaurant)]
-    .filter(Boolean)
-    .join(' · ');
+  // Service style now lives in the kicker above the name instead of here,
+  // so this narrows to just price -- otherwise it'd say "Quick Service"
+  // twice on the same header.
+  const kicker = restaurant.experience_type || restaurant.service_style;
+  const serviceLine = priceLabel(restaurant);
 
   const hasDirections = restaurant.lat !== null && restaurant.lng !== null;
 
@@ -187,6 +270,27 @@ export function ExpandedHeader({
     Linking.openURL(url);
   };
 
+  // One flat list so the fact line can put a "·" between whichever facts
+  // actually exist, rather than hand-wiring a separator before every
+  // possible combination of hours/address/service/rating.
+  const factSegments: Array<{
+    key: string;
+    tone: 'open' | 'closed' | 'muted' | 'gold';
+    label: string;
+    dot?: boolean;
+  }> = [];
+  if (hoursStatus.todayLabel) {
+    factSegments.push({
+      key: 'hours',
+      tone: hoursStatus.kind === 'open' ? 'open' : 'closed',
+      label: hoursStatus.todayLabel,
+      dot: true,
+    });
+  }
+  factSegments.push({ key: 'address', tone: 'muted', label: restaurantLocationLabel(restaurant) });
+  if (serviceLine) factSegments.push({ key: 'service', tone: 'muted', label: serviceLine });
+  if (ratingAverageLabel) factSegments.push({ key: 'rating', tone: 'gold', label: ratingAverageLabel });
+
   const renderRightActions = () => (
     <View style={styles.actionsRow}>
       {needItEnabled && (
@@ -256,76 +360,120 @@ export function ExpandedHeader({
           containerStyle={styles.swipeableContainer}
         >
           <View style={[styles.infoCard, slideActive && styles.infoCardSliding]}>
-            <View style={styles.restaurantTitleRow}>
-              <Text style={[text.restaurantName, styles.restaurantTitle]} numberOfLines={2}>
-                {restaurant.restaurant}
+            {/* Visual-only hint that this card swipes left to reveal Love
+                It / Need It / Got It -- there's otherwise zero affordance
+                that the gesture exists. */}
+            <View style={styles.dragHint} />
+            {!!kicker && (
+              <Text style={styles.kicker} numberOfLines={1}>
+                {kicker.toUpperCase()}
               </Text>
-              {hasDirections && (
-                <Pressable
-                  style={styles.mapPinButton}
-                  onPress={openDirections}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Directions to ${restaurant.restaurant}`}
-                  hitSlop={8}
-                >
-                  <View style={styles.mapPin}>
-                    <View style={styles.mapPinDot} />
-                  </View>
-                </Pressable>
-              )}
+            )}
+            <Text style={styles.restaurantTitle} numberOfLines={2}>
+              {restaurant.restaurant}
+            </Text>
+            <View style={styles.factLine}>
+              {factSegments.map((segment, index) => (
+                <View key={segment.key} style={styles.factGroup}>
+                  {index > 0 && <Text style={[styles.factText, styles.factTextMuted]}>·</Text>}
+                  {segment.dot && (
+                    <View
+                      style={[
+                        styles.statusDot,
+                        segment.tone === 'open' ? styles.statusDotOpen : styles.statusDotClosed,
+                      ]}
+                    />
+                  )}
+                  <Text
+                    style={[
+                      styles.factText,
+                      segment.dot && styles.factTextStrong,
+                      segment.tone === 'open' && styles.factTextOpen,
+                      segment.tone === 'gold' && styles.factTextGold,
+                      (segment.tone === 'muted' || segment.tone === 'closed') && styles.factTextMuted,
+                    ]}
+                  >
+                    {segment.label}
+                  </Text>
+                </View>
+              ))}
             </View>
-            <Text style={text.bodyMuted}>{restaurantLocationLabel(restaurant)}</Text>
-
-            {!!hoursStatus.todayLabel && (
-              <Text style={[text.body, hoursStatus.kind === 'open' ? styles.openLabel : styles.closedLabel]}>
-                {hoursStatus.todayLabel}
-              </Text>
-            )}
-            {!!serviceLine && <Text style={text.bodyMuted}>{serviceLine}</Text>}
-            {!!ratingAverageLabel && (
-              <Text style={[text.body, styles.ratingAverage]}>{ratingAverageLabel}</Text>
-            )}
           </View>
         </Swipeable>
 
-        <View style={styles.pillRow}>
-          {journalEnabled && (
-            <Pressable
-              style={styles.pill}
-              onPress={() =>
-                openJournalComposer({
-                  restaurantId: restaurant.restaurant_id,
-                  restaurantNameSnapshot: restaurant.restaurant,
-                })
-              }
-              accessibilityRole="button"
-            >
-              <Text style={text.chip}>＋ Journal</Text>
-            </Pressable>
-          )}
-          {restaurant.accepts_reservations && (
-            <Pressable style={styles.pill} onPress={() => openRestaurantInOfficialApp(restaurant)}>
-              <ReservationsIcon color={COLORS.ink} />
-              <Text style={text.chip}>Reservations</Text>
-            </Pressable>
-          )}
-          {restaurant.has_walkup_list && (
-            <Pressable style={styles.pill} onPress={() => openRestaurantInOfficialApp(restaurant)}>
-              <WalkUpIcon color={COLORS.ink} />
-              <Text style={text.chip}>Walk-up List</Text>
-            </Pressable>
-          )}
-          {hasMobileOrder(restaurant) && (
-            <Pressable style={styles.pill} onPress={() => openMobileOrderInOfficialApp(restaurant)}>
-              <MobileOrderIcon color={COLORS.ink} />
-              <Text style={text.chip}>Mobile Ordering</Text>
-            </Pressable>
-          )}
-          {hasDiningPlan(restaurant) && (
-            <Pressable style={styles.pill} onPress={() => onCapabilityPress('diningPlan')}>
-              <Text style={text.chip}>Dining Plan</Text>
-            </Pressable>
-          )}
+        <View style={styles.capabilityRowContainer}>
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            contentContainerStyle={styles.capabilityRow}
+          >
+            {hasDirections && (
+              <Pressable
+                style={({ pressed }) => [styles.capabilityTile, pressed && styles.capabilityTilePressed]}
+                onPress={openDirections}
+                accessibilityRole="button"
+                accessibilityLabel={`Directions to ${restaurant.restaurant}`}
+              >
+                <DirectionsIcon color={COLORS.ink} />
+                <Text style={styles.capabilityTileLabel} numberOfLines={1}>Directions</Text>
+              </Pressable>
+            )}
+            {journalEnabled && (
+              <Pressable
+                style={({ pressed }) => [styles.capabilityTile, pressed && styles.capabilityTilePressed]}
+                onPress={() =>
+                  openJournalComposer({
+                    restaurantId: restaurant.restaurant_id,
+                    restaurantNameSnapshot: restaurant.restaurant,
+                  })
+                }
+                accessibilityRole="button"
+              >
+                <JournalIcon color={COLORS.ink} />
+                <Text style={styles.capabilityTileLabel} numberOfLines={1}>Journal</Text>
+              </Pressable>
+            )}
+            {restaurant.accepts_reservations && (
+              <Pressable
+                style={({ pressed }) => [styles.capabilityTile, pressed && styles.capabilityTilePressed]}
+                onPress={() => openRestaurantInOfficialApp(restaurant)}
+                accessibilityRole="button"
+              >
+                <ReservationsIcon color={COLORS.ink} />
+                <Text style={styles.capabilityTileLabel} numberOfLines={1}>Reservations</Text>
+              </Pressable>
+            )}
+            {restaurant.has_walkup_list && (
+              <Pressable
+                style={({ pressed }) => [styles.capabilityTile, pressed && styles.capabilityTilePressed]}
+                onPress={() => openRestaurantInOfficialApp(restaurant)}
+                accessibilityRole="button"
+              >
+                <WalkUpIcon color={COLORS.ink} />
+                <Text style={styles.capabilityTileLabel} numberOfLines={1}>Walk-up List</Text>
+              </Pressable>
+            )}
+            {hasMobileOrder(restaurant) && (
+              <Pressable
+                style={({ pressed }) => [styles.capabilityTile, pressed && styles.capabilityTilePressed]}
+                onPress={() => openMobileOrderInOfficialApp(restaurant)}
+                accessibilityRole="button"
+              >
+                <MobileOrderIcon color={COLORS.ink} />
+                <Text style={styles.capabilityTileLabel} numberOfLines={1}>Mobile Ordering</Text>
+              </Pressable>
+            )}
+            {hasDiningPlan(restaurant) && (
+              <Pressable
+                style={({ pressed }) => [styles.capabilityTile, pressed && styles.capabilityTilePressed]}
+                onPress={() => onCapabilityPress('diningPlan')}
+                accessibilityRole="button"
+              >
+                <DiningPlanIcon color={COLORS.ink} />
+                <Text style={styles.capabilityTileLabel} numberOfLines={1}>Dining Plan</Text>
+              </Pressable>
+            )}
+          </ScrollView>
         </View>
       </View>
       {gotItEvent && (
@@ -354,79 +502,119 @@ const styles = StyleSheet.create({
   swipeableContainer: {
     overflow: 'visible',
   },
+  // Tinted background sets this off as one distinct "restaurant info" zone,
+  // separate from the capability row below it and from the menu-nav tabs
+  // further down -- see capabilityRow's borderTopColor for the boundary on
+  // the other side.
   infoCard: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: COLORS.goldLight,
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.lg,
-    paddingBottom: SPACING.md,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.sm,
+  },
+  dragHint: {
+    position: 'absolute',
+    right: 8,
+    top: '50%',
+    marginTop: -14,
+    width: 4,
+    height: 28,
+    borderRadius: 2,
+    backgroundColor: COLORS.gold,
+    opacity: 0.45,
   },
   infoCardSliding: {
-    backgroundColor: COLORS.goldLight,
+    backgroundColor: COLORS.pineLight,
     borderTopRightRadius: RADII.xl,
     borderBottomRightRadius: RADII.xl,
   },
-  restaurantTitleRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: SPACING.sm,
+  // Kicker (service style, e.g. "QUICK SERVICE") anchors the name with
+  // something to lead into it, and the name itself steps up to ExtraBold
+  // at a meaningfully bigger size than a generic sectionTitle -- both
+  // needed together (owner decision, 2026-08-05): at 22px Bold, this read
+  // as just another heading rather than the one name the whole page is
+  // about.
+  kicker: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 11,
+    letterSpacing: 0.7,
+    color: COLORS.forest,
   },
   restaurantTitle: {
-    flexShrink: 1,
-    fontSize: 22,
-    lineHeight: 27,
+    fontFamily: FONT_FAMILY.piazzollaExtraBold,
+    fontSize: 32,
+    lineHeight: 36,
+    color: COLORS.ink,
+    marginTop: 2,
   },
-  mapPinButton: {
-    width: 32,
-    height: 32,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapPin: {
-    width: 19,
-    height: 24,
-    borderWidth: 2,
-    borderColor: COLORS.pine,
-    borderTopLeftRadius: 10,
-    borderTopRightRadius: 10,
-    borderBottomLeftRadius: 10,
-    transform: [{ rotate: '45deg' }],
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapPinDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: COLORS.pine,
-    transform: [{ rotate: '-45deg' }],
-  },
-  openLabel: {
-    color: COLORS.pine,
-    marginTop: SPACING.xs,
-  },
-  closedLabel: {
-    color: COLORS.muted,
-    marginTop: SPACING.xs,
-  },
-  ratingAverage: {
-    color: COLORS.gold,
-    marginTop: SPACING.xs,
-  },
-  pillRow: {
+  factLine: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: SPACING.sm,
-    marginTop: SPACING.md,
-    paddingHorizontal: SPACING.lg,
+    alignItems: 'center',
+    rowGap: SPACING.xs,
+    marginTop: SPACING.xs,
   },
-  pill: {
+  factGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.xl,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    gap: 6,
+  },
+  statusDot: {
+    width: 7,
+    height: 7,
+    borderRadius: 3.5,
+  },
+  statusDotOpen: {
+    backgroundColor: OPEN_STATUS_COLOR,
+  },
+  statusDotClosed: {
+    backgroundColor: COLORS.dim,
+  },
+  factText: {
+    fontFamily: text.bodyMuted.fontFamily,
+    fontSize: 13,
+  },
+  factTextStrong: {
+    fontFamily: text.chip.fontFamily,
+  },
+  factTextOpen: {
+    color: OPEN_STATUS_COLOR,
+  },
+  factTextMuted: {
+    color: COLORS.muted,
+  },
+  factTextGold: {
+    color: COLORS.gold,
+  },
+  // Border lives on this wrapper, not on the ScrollView's own
+  // contentContainerStyle -- content-container width follows the content
+  // (however many capability icons this restaurant actually has), so a
+  // restaurant with only 3-4 icons left a divider line that stopped
+  // partway across the screen instead of spanning full width. Matches
+  // CategoryNavigator's own container/content split for the same reason.
+  capabilityRowContainer: {
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  capabilityRow: {
+    flexDirection: 'row',
+    gap: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
+  },
+  capabilityTile: {
+    alignItems: 'center',
+  },
+  capabilityTilePressed: {
+    opacity: 0.6,
+  },
+  capabilityTileLabel: {
+    marginTop: 2,
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 10.5,
+    lineHeight: 13,
+    color: COLORS.ink,
+    textAlign: 'center',
   },
   actionsRow: {
     flexDirection: 'row',

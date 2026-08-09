@@ -685,7 +685,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
           <Text style={styles.title}>Journal unavailable</Text>
           <Text style={styles.unavailableBody}>
             {!user
-              ? 'Sign in from My Bites to use your private Journal.'
+              ? 'Sign in from My Rumbly to use your private Journal.'
               : 'Journal is not enabled for this account yet.'}
           </Text>
           <Pressable
@@ -1155,7 +1155,7 @@ const styles = StyleSheet.create({
   },
   cancelLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 14, color: COLORS.muted },
   headerTitle: { flex: 1, alignItems: 'center' },
-  title: { fontFamily: FONT_FAMILY.frauncesSemiBold, fontSize: 19, color: COLORS.ink },
+  title: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 19, color: COLORS.ink },
   draftStatus: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 10.5, color: COLORS.muted },
   saveButton: { borderRadius: RADII.sm, backgroundColor: COLORS.pine },
   saveLabel: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 13, color: COLORS.ink },
@@ -1175,7 +1175,7 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     flex: 1,
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 18,
     color: COLORS.ink,
   },
@@ -1189,7 +1189,7 @@ const styles = StyleSheet.create({
   targetCopy: { flex: 1, gap: 2 },
   targetTitle: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 15, color: COLORS.ink },
   placeholder: { flex: 1, fontFamily: FONT_FAMILY.workSansRegular, fontSize: 15, color: COLORS.dim },
-  chevron: { fontFamily: FONT_FAMILY.interRegular, fontSize: 27, color: COLORS.forest },
+  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 27, color: COLORS.forest },
   helpText: { ...text.bodyMuted, marginTop: SPACING.sm, lineHeight: 18 },
   dateRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center' },
   iosDatePicker: { width: '100%', height: 210 },
@@ -1214,7 +1214,7 @@ const styles = StyleSheet.create({
     borderBottomColor: COLORS.border,
   },
   dateModalTitle: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 18,
     color: COLORS.ink,
   },
@@ -1334,7 +1334,7 @@ const styles = StyleSheet.create({
   },
   pickerTitle: {
     flex: 1,
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 22,
     color: COLORS.ink,
   },

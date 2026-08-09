@@ -1,5 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { AccessibilityInfo, Animated, Dimensions, Platform, SectionList, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  AccessibilityInfo,
+  Animated,
+  Dimensions,
+  type NativeScrollEvent,
+  type NativeSyntheticEvent,
+  Platform,
+  SectionList,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { RestaurantDetailRouteParams } from '../navigation/browseTypes';
 import { useDataProvider } from '../hooks/useDataProvider';
@@ -20,7 +32,7 @@ import {
 } from '../components/restaurant-detail/NativeRestaurantMenu';
 import { MenuItemRow } from '../components/MenuItemRow';
 import { closeOpenSwipeable } from '../components/swipeableCoordinator';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { COLORS, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { recordRecommendationEvent } from '../recommendations/remote';
 
@@ -225,19 +237,46 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
     []
   );
 
-  // Drives the header-collapse animation only — section-sync uses
+  // Drives the header-collapse animation — section-sync otherwise uses
   // onViewableItemsChanged below, not scroll position math. (An earlier
   // version tried computing the active section from each section
   // header's onLayout `y`, but SectionList/VirtualizedList wraps every
   // section in its own internal cell, so that `y` is relative to that
   // cell — always ~0 — not the scrollable content. onViewableItemsChanged
   // is RN's actual built-in mechanism for "what's currently visible.")
+  //
+  // The listener below is the one exception: onViewableItemsChanged only
+  // flips to a new section once one of ITS items is "viewable" at all
+  // (itemVisiblePercentThreshold: 1 — a single visible pixel counts), so a
+  // last section shorter than the screen can leave a sliver of the
+  // second-to-last section's last item still technically viewable at the
+  // very top of the viewport even once you've scrolled to the true
+  // bottom — "viewable" picks whichever section is first in list order,
+  // so the chip strip gets stuck one section behind forever, since
+  // there's no section after the last one to force it forward. Confirmed
+  // against a real long menu, 2026-08-05 (Hollywood Brown Derby's final
+  // wine section never took over from the one before it). Once scroll
+  // has actually reached the real end of the content, the last section
+  // unambiguously IS what's being looked at, so that takes priority.
   const scrollHandler = useMemo(
     () =>
       Animated.event([{ nativeEvent: { contentOffset: { y: scrollY } } }], {
         useNativeDriver: false,
+        listener: (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+          if (isProgrammaticScrollRef.current) return;
+          const { contentOffset, layoutMeasurement, contentSize } = event.nativeEvent;
+          const isAtRealEnd =
+            contentSize.height > 0
+            && contentOffset.y + layoutMeasurement.height >= contentSize.height - 4;
+          const lastIndex = sections.length - 1;
+          if (isAtRealEnd && lastIndex >= 0 && lastIndex !== activeIndexRef.current) {
+            activeIndexRef.current = lastIndex;
+            setActiveCategoryIndex(lastIndex);
+            scrollChipIntoView(lastIndex);
+          }
+        },
       }),
-    [scrollY]
+    [scrollY, sections.length, scrollChipIntoView]
   );
 
   // Stable refs (not useCallback) so identity never changes across
@@ -416,6 +455,16 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   // this clip collapses all the way to 0 (not COLLAPSED_HEADER_HEIGHT,
   // which would leave a redundant empty gap under the persistent bar).
   const collapseRange = Math.max(expandedHeaderHeight - COLLAPSED_HEADER_HEIGHT, 1);
+  // A short menu (few items, few categories) can have less real scrollable
+  // content than collapseRange -- scrollY then physically can't reach the
+  // value the collapse animation needs, so it gets stuck mid-transition
+  // forever, and CategoryNavigator's scroll-driven active-chip sync never
+  // gets far enough to reach later categories either (same root cause:
+  // both are driven by scroll position, neither checks there's enough
+  // scrollable distance to reach it). minHeight is a floor, not an
+  // addition -- it only pads a menu that's actually this short; a normal
+  // menu already taller than a screen is untouched.
+  const minScrollableContentHeight = Dimensions.get('window').height + collapseRange;
   const headerHeightAnim = scrollY.interpolate({
     inputRange: [0, collapseRange],
     outputRange: [expandedHeaderHeight, 0],
@@ -469,13 +518,13 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
               onPress={() => setSelectedPeriod(period)}
               style={[styles.periodChip, period === selectedPeriod && styles.periodChipActive]}
             >
-              {period}
+              {period.toUpperCase()}
             </Text>
           ))}
         </View>
       ) : periods.length === 1 ? (
         <View style={styles.periodRow}>
-          <Text style={text.bodyMuted}>{periods[0]} Menu</Text>
+          <Text style={[styles.periodChip, styles.periodChipActive]}>{periods[0].toUpperCase()}</Text>
         </View>
       ) : null}
 
@@ -506,6 +555,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
           targetAnchorId={nativeTargetAnchorId}
           highlightedItemId={highlightedItemId}
           bottomInset={insets.bottom}
+          minContentHeight={minScrollableContentHeight}
           onReady={() => setNativeMenuReady(true)}
           onActiveCategoryChange={onNativeActiveCategoryChange}
           onScrollOffsetChange={(offsetY) => {
@@ -541,7 +591,10 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
               });
             }, 100);
           }}
-          contentContainerStyle={{ paddingBottom: insets.bottom }}
+          contentContainerStyle={{
+            paddingBottom: insets.bottom,
+            minHeight: minScrollableContentHeight,
+          }}
           renderSectionHeader={({ section }) => (
             <View style={styles.sectionHeader}>
               <Text style={text.categoryHeader}>{section.title.toUpperCase()}</Text>
@@ -579,28 +632,32 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
   },
+  // Underline tabs, deliberately not the same filled-pill shape as
+  // CategoryNavigator directly below -- these are two different kinds of
+  // control (which meal period vs. jump to a menu section) and looking
+  // identical was making the header read as one undifferentiated stack of
+  // pills.
   periodRow: {
     flexDirection: 'row',
-    gap: SPACING.sm,
+    gap: SPACING.lg,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
+    paddingTop: SPACING.sm,
     backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.border,
   },
   periodChip: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.xl,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
     fontFamily: text.chip.fontFamily,
     fontSize: 13,
-    color: COLORS.ink,
-    overflow: 'hidden',
+    letterSpacing: 0.4,
+    color: COLORS.dim,
+    paddingBottom: SPACING.sm,
+    borderBottomWidth: 2,
+    borderBottomColor: 'transparent',
   },
   periodChipActive: {
-    backgroundColor: COLORS.forest,
-    color: COLORS.goldLight,
-    borderColor: COLORS.forest,
+    color: COLORS.ink,
+    borderBottomColor: COLORS.ink,
   },
   sectionList: {
     flex: 1,

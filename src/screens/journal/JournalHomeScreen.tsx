@@ -359,7 +359,7 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.pine,
   },
   addButtonLabel: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 27,
     lineHeight: 30,
     color: COLORS.ink,
@@ -372,7 +372,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.xs,
   },
   title: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 34,
     lineHeight: 40,
     color: COLORS.ink,
@@ -454,12 +454,12 @@ const styles = StyleSheet.create({
   },
   placeHeaderCopy: { flex: 1, gap: 2 },
   placeName: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 20,
     color: COLORS.ink,
   },
   chevron: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 30,
     color: COLORS.forest,
   },
@@ -479,7 +479,7 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
   },
   smallChevron: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 24,
     color: COLORS.dim,
   },
@@ -498,7 +498,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.xl,
   },
   emptyTitle: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 22,
     color: COLORS.ink,
     marginBottom: SPACING.sm,

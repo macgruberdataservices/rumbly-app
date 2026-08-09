@@ -23,6 +23,6 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.md,
   },
   backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontFamily: FONT_FAMILY.interRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
-  title: { flex: 1, fontFamily: FONT_FAMILY.interSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
+  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
+  title: { flex: 1, fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
 });

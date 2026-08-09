@@ -44,6 +44,13 @@ export interface RumblyNativeMenuViewProps extends ViewProps {
   targetAnchorId?: string | null;
   highlightedItemId?: string | null;
   bottomInset?: number;
+  // Floor under the scrollable content's own height (RN's contentContainerStyle
+  // minHeight equivalent) -- a short menu can have less real scrollable content
+  // than the host screen's header-collapse animation needs to reach, which
+  // leaves the collapse (and the active-category sync below) stuck mid-way
+  // forever since scrollY can never physically get there. A floor here, not an
+  // addition: it only pads a menu that's actually this short.
+  minContentHeight?: number;
   onAction?: (
     event: NativeSyntheticEvent<{
       action: NativeMenuAction;

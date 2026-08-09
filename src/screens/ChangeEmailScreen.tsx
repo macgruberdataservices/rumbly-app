@@ -67,8 +67,8 @@ export function ChangeEmailScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   content: { paddingHorizontal: SPACING.lg },
-  label: { fontFamily: FONT_FAMILY.interSemiBold, fontSize: 12, color: COLORS.muted, marginBottom: SPACING.xs },
+  label: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 12, color: COLORS.muted, marginBottom: SPACING.xs },
   currentValue: { marginBottom: SPACING.xl },
-  error: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
-  success: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.pine, marginBottom: SPACING.md },
+  error: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
+  success: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.pine, marginBottom: SPACING.md },
 });

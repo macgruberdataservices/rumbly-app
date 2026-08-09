@@ -93,7 +93,7 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.sm,
   },
   title: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 24,
     color: COLORS.ink,
   },
@@ -115,7 +115,7 @@ const styles = StyleSheet.create({
     minWidth: 0,
   },
   chevron: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 25,
     color: COLORS.dim,
   },

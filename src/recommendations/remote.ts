@@ -29,10 +29,8 @@ interface FeedContentRow {
   item_id: string | null;
   challenge_id: string | null;
   attribution: string | null;
-  sort_priority: number;
   required_entitlement: string | null;
-  active: boolean;
-  editorial_status: CuratedFeedContent['editorialStatus'];
+  content_state: CuratedFeedContent['contentState'];
   starts_at: string;
   ends_at: string | null;
 }
@@ -80,17 +78,16 @@ export async function loadRemoteFeedData(
   let contentQuery = contentClient
     .from('feed_content')
     .select(
-      'id, slug, eyebrow, title, summary, image_url, destination_type, external_url, restaurant_id, item_id, challenge_id, attribution, sort_priority, required_entitlement, active, editorial_status, starts_at, ends_at'
+      'id, slug, eyebrow, title, summary, image_url, destination_type, external_url, restaurant_id, item_id, challenge_id, attribution, required_entitlement, content_state, starts_at, ends_at'
     )
-    .order('sort_priority', { ascending: false });
+    .order('starts_at', { ascending: false });
 
   // Content administrators can read every row through RLS so the dashboard can
   // edit drafts. Live mode adds the same visibility constraints normal users
   // receive from RLS; preview mode deliberately leaves those rows visible.
   if (contentVisibility === 'live') {
     contentQuery = contentQuery
-      .eq('active', true)
-      .eq('editorial_status', 'published')
+      .in('content_state', ['scheduled', 'live'])
       .lte('starts_at', nowIso)
       .or(`ends_at.is.null,ends_at.gt.${nowIso}`);
   }
@@ -135,10 +132,8 @@ export async function loadRemoteFeedData(
       itemId: row.item_id,
       challengeId: row.challenge_id,
       attribution: row.attribution,
-      sortPriority: row.sort_priority,
       requiredEntitlement: row.required_entitlement,
-      active: row.active,
-      editorialStatus: row.editorial_status,
+      contentState: row.content_state,
       startsAt: row.starts_at,
       endsAt: row.ends_at,
     })),

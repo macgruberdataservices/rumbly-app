@@ -34,7 +34,7 @@ export function MyRumblyNavigator() {
       screenOptions={{
         headerStyle: { backgroundColor: COLORS.forest },
         headerTintColor: COLORS.goldLight,
-        headerTitleStyle: { fontFamily: FONT_FAMILY.frauncesSemiBold },
+        headerTitleStyle: { fontFamily: FONT_FAMILY.piazzollaBold },
         contentStyle: { backgroundColor: COLORS.surface },
       }}
     >

@@ -115,7 +115,7 @@ export function ProfileSettingsScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
-  email: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.muted, marginBottom: SPACING.xl },
-  error: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
-  success: { fontFamily: FONT_FAMILY.interRegular, fontSize: 13, color: COLORS.pine, marginBottom: SPACING.md },
+  email: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.muted, marginBottom: SPACING.xl },
+  error: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
+  success: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.pine, marginBottom: SPACING.md },
 });

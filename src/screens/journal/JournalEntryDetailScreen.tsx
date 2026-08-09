@@ -355,7 +355,7 @@ const styles = StyleSheet.create({
     gap: SPACING.sm,
   },
   restaurantName: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 18,
     color: COLORS.ink,
   },
@@ -380,7 +380,7 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
   },
   sectionTitle: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 19,
     color: COLORS.ink,
   },
@@ -392,7 +392,7 @@ const styles = StyleSheet.create({
   },
   emptyText: { ...text.bodyMuted, fontStyle: 'italic' },
   emptyTitle: {
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 20,
     color: COLORS.ink,
   },
@@ -474,7 +474,7 @@ const styles = StyleSheet.create({
   previousPhoto: { left: SPACING.sm },
   nextPhoto: { right: SPACING.sm },
   photoArrowLabel: {
-    fontFamily: FONT_FAMILY.interRegular,
+    fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 48,
     lineHeight: 50,
     color: COLORS.surface,

@@ -812,7 +812,7 @@ const styles = StyleSheet.create({
   },
   previewTitle: {
     marginTop: SPACING.xs,
-    fontFamily: FONT_FAMILY.frauncesSemiBold,
+    fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 23,
     color: COLORS.ink,
   },

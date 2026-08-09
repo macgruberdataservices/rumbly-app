@@ -3,12 +3,12 @@ import test from 'node:test';
 
 import { assessPlanCapability } from '../src/askRumbly/capabilityRegistry.ts';
 import { parseQueryPlan } from '../src/askRumbly/semanticParser.ts';
-import { loadData } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/data.ts';
-import { buildParserVocabulary } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/parser_vocabulary.ts';
-import { compileQueryPlan } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/plan_compiler.ts';
-import { answerQuery } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/executor.ts';
-import { executeQueryPlan } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/typed_plan_executor.ts';
-import { itemProvesFoodTerm } from '../modules/rumbly-foundation-models/scripts/ask-rumbly/result_proof.ts';
+import { loadData } from '../modules/ask-rumbly/scripts/ask-rumbly/data.ts';
+import { buildParserVocabulary } from '../modules/ask-rumbly/scripts/ask-rumbly/parser_vocabulary.ts';
+import { compileQueryPlan } from '../modules/ask-rumbly/scripts/ask-rumbly/plan_compiler.ts';
+import { answerQuery } from '../modules/ask-rumbly/scripts/ask-rumbly/executor.ts';
+import { executeQueryPlan } from '../modules/ask-rumbly/scripts/ask-rumbly/typed_plan_executor.ts';
+import { itemProvesFoodTerm } from '../modules/ask-rumbly/scripts/ask-rumbly/result_proof.ts';
 import { THEME_PARK_ORDER } from '../src/data/locationNames.ts';
 
 const data = await loadData();
@@ -335,9 +335,14 @@ test('food-specific allergy matching retains direct-label visibility after prefi
 });
 
 test('casual discourse is consumed without weakening the dining request', () => {
-  const turkey = execute('yo where can i get a turkey leg rn');
+  // Keep this parser/discourse regression independent of the wall clock;
+  // the separate open-now tests cover the time constraint against the live
+  // hours snapshot.
+  const turkey = execute('yo where can i get a turkey leg');
   assert.deepEqual(turkey.plan.subject.foodTerms, ['turkey leg']);
   assert.equal(turkey.result.kind, 'answer');
+  const rightNow = parse('yo where can i get a turkey leg rn').plan;
+  assert.equal(rightNow.diagnostics.meaningfulUnconsumedText, '');
 
   const allergy = execute("we need gluten free asap my wife's celiac");
   assert.equal(allergy.plan.diagnostics.confidence, 'high');
@@ -426,7 +431,7 @@ test('budget result lists exclude obvious modifiers, toppings, and add-ons', () 
 });
 
 test('temporal and location suffixes cannot leak into the food witness', () => {
-  const { plan, result } = execute('Where is the closest place to buy a classic Dole Whip right now in Magic Kingdom?');
+  const { plan, result } = execute('Where is the closest place to buy a classic Dole Whip today in Magic Kingdom?');
   assert.deepEqual(plan.subject.foodTerms, ['dole whip']);
   assert.equal(result.kind, 'answer');
   assert.equal(result.proof.status, 'proven');
@@ -533,6 +538,24 @@ test('restaurant-scoped negative menu checks return a clean current-data no-matc
   assert.match(result.text, /^No verified match:/);
   assert.match(result.text, /current menu data/i);
   assert.doesNotMatch(result.text, /partial match|couldn't verify/i);
+});
+
+test('restaurant-scoped ice-cream checks recognize scoop-service menu vocabulary', () => {
+  const { plan, result } = execute('does salt and straw serve ice cream?');
+  assert.equal(plan.subject.restaurantIds[0], 'salt-straw');
+  assert.equal(result.kind, 'answer');
+  assert.match(result.text, /Salt & Straw/i);
+  assert.match(result.text, /(?:Single|Double) Scoop/i);
+  assert.equal(result.proof.status, 'proven');
+});
+
+test('corndog spelling resolves corn-dog menu categories', () => {
+  const { plan, result } = execute('where can i get a corndog?');
+  assert.deepEqual(plan.subject.foodTerms, ['corndog']);
+  assert.equal(result.kind, 'answer');
+  assert.match(result.text, /Blue Ribbon Corn Dogs/i);
+  assert.doesNotMatch(result.text, /Street Corn Hot Dog/i);
+  assert.equal(result.proof.status, 'proven');
 });
 
 test('named restaurant feature checks report yes or no without filtering the restaurant away', () => {

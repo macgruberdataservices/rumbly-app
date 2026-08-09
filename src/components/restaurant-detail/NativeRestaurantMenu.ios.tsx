@@ -39,6 +39,7 @@ export const NativeRestaurantMenu = forwardRef<
     targetAnchorId,
     highlightedItemId,
     bottomInset,
+    minContentHeight,
     onReady,
     onActiveCategoryChange,
     onScrollOffsetChange,
@@ -180,6 +181,7 @@ export const NativeRestaurantMenu = forwardRef<
         targetAnchorId={targetAnchorId}
         highlightedItemId={highlightedItemId}
         bottomInset={bottomInset}
+        minContentHeight={minContentHeight}
         onReady={onReady}
         onActiveCategoryChange={({ nativeEvent }) => {
           onActiveCategoryChange(nativeEvent.category);

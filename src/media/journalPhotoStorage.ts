@@ -163,17 +163,11 @@ function directoryBytes(directory: Directory): number {
   );
 }
 
-export function getJournalFileStorageReport(): {
-  pendingBytes: number;
-  downloadedCacheBytes: number;
-} {
-  return {
-    pendingBytes: directoryBytes(new Directory(Paths.document, 'journal', 'pending')),
-    downloadedCacheBytes: directoryBytes(new Directory(Paths.cache, 'journal')),
-  };
-}
-
-export function clearDownloadedJournalPhotoCache(): void {
-  const cache = new Directory(Paths.cache, 'journal');
-  if (cache.exists) cache.delete();
+// Photos are local-device-only storage (see Docs/JOURNAL_BUILD_PLAN.md) --
+// this is the entirety of what Journal photos cost in on-device space,
+// not a "pending sync" figure. There is no separate downloaded/cached
+// copy: nothing is ever fetched from anywhere, so there's nothing to
+// distinguish from primary storage or a cache-clear action to offer.
+export function getJournalPhotoStorageBytes(): number {
+  return directoryBytes(new Directory(Paths.document, 'journal', 'pending'));
 }
