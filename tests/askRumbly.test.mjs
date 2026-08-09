@@ -6,6 +6,7 @@ import { answerQuery } from '../modules/ask-rumbly/scripts/ask-rumbly/executor.t
 import { classifyRuleBased } from '../modules/ask-rumbly/scripts/ask-rumbly/rule_classifier.ts';
 import { suggestEntities } from '../modules/ask-rumbly/scripts/ask-rumbly/entity_suggestions.ts';
 import { itemMatchesDietary } from '../src/search/filters.ts';
+import { dedupeByItemIdentity } from '../src/data/itemIdentity.ts';
 
 const data = await loadData();
 
@@ -21,6 +22,18 @@ test('core cheapest query requires burger evidence', () => {
   assert.doesNotMatch(result.text, /hashbrown/i);
   assert.ok(result.restaurantIds?.length === 1);
   assert.ok(result.itemIds?.length === 1);
+});
+
+test('presentation collapses repeated meal-period rows to one item identity', () => {
+  const rows = [
+    { restaurant_id: 'plaza-restaurant', item_id: '411396133', dining_period: 'Lunch' },
+    { restaurant_id: 'plaza-restaurant', item_id: '411396133', dining_period: 'Dinner' },
+    { restaurant_id: 'cosmic-rays-starlight-cafe', item_id: '411396133', dining_period: 'Lunch' },
+  ];
+  assert.deepEqual(
+    dedupeByItemIdentity(rows).map(({ restaurant_id, item_id }) => `${restaurant_id}:${item_id}`),
+    ['plaza-restaurant:411396133', 'cosmic-rays-starlight-cafe:411396133'],
+  );
 });
 
 test('nearest and cheapest compare every evidence-backed burger candidate', () => {

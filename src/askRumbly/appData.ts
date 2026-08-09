@@ -35,11 +35,15 @@ export function buildAskRumblyData(
   restaurants: Restaurant[],
   menuItems: MenuItem[],
   hoursData: HoursData | null,
+  searchIndex?: SearchIndexEntry[],
 ): AskRumblyData {
   return {
     restaurants,
     menuItems,
     hoursData,
-    searchIndex: menuItems.map(toSearchIndexEntry),
+    // Prefer the app's already-published slim index. Rebuilding a second
+    // 45k-row projection from full SQLite records is needlessly expensive on
+    // a phone; the fallback keeps this adapter useful in isolated tests.
+    searchIndex: searchIndex ?? menuItems.map(toSearchIndexEntry),
   };
 }

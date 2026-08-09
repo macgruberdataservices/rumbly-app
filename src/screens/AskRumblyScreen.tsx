@@ -19,7 +19,9 @@ import { RestaurantCard } from '../components/RestaurantCard';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useNearMe } from '../hooks/useNearMe';
 import { getAllMenuItems } from '../data/db';
-import type { MenuItem, Restaurant } from '../data/types';
+import { loadSearchIndex } from '../search/searchIndexLoader';
+import type { MenuItem, Restaurant, SearchIndexEntry } from '../data/types';
+import { dedupeByItemIdentity } from '../data/itemIdentity';
 import { distanceToRestaurant } from '../location/proximity';
 import { suggestEntities, type EntitySuggestion } from '../../modules/ask-rumbly/scripts/ask-rumbly/entity_suggestions';
 import { buildAskRumblyData } from '../askRumbly/appData';
@@ -63,7 +65,8 @@ export function AskRumblyScreen({ navigation }: Props) {
   const { restaurants, hoursData, isLoading, lastSyncedAt, error: dataError } = useDataProvider();
   const { origin, status: locationStatus, enable: enableLocation } = useNearMe();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
-  const [menuLoading, setMenuLoading] = useState(true);
+  const [searchIndex, setSearchIndex] = useState<SearchIndexEntry[]>([]);
+  const [menuLoading, setMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
   const [query, setQuery] = useState(DEFAULT_QUERY);
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
@@ -73,29 +76,19 @@ export function AskRumblyScreen({ navigation }: Props) {
   const [isAsking, setIsAsking] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
 
+  // Keep the expensive full-menu read off the launch/tab-mount path. The
+  // restaurant list powers autocomplete immediately; the SQLite rows and
+  // slim search index are loaded only when the guest submits a question.
   useEffect(() => {
-    if (isLoading || restaurants.length === 0) return;
-    let cancelled = false;
-    setMenuLoading(true);
+    if (lastSyncedAt === null) return;
+    setMenuItems([]);
+    setSearchIndex([]);
     setMenuError(null);
-    getAllMenuItems()
-      .then((items) => {
-        if (!cancelled) setMenuItems(items);
-      })
-      .catch((loadError) => {
-        if (!cancelled) setMenuError(loadError instanceof Error ? loadError.message : String(loadError));
-      })
-      .finally(() => {
-        if (!cancelled) setMenuLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [isLoading, lastSyncedAt, restaurants.length]);
+  }, [lastSyncedAt]);
 
   const askData = useMemo(
-    () => buildAskRumblyData(restaurants, menuItems, hoursData),
-    [hoursData, menuItems, restaurants],
+    () => buildAskRumblyData(restaurants, menuItems, hoursData, searchIndex),
+    [hoursData, menuItems, restaurants, searchIndex],
   );
 
   const suggestions = useMemo<EntitySuggestion[]>(() => {
@@ -109,10 +102,10 @@ export function AskRumblyScreen({ navigation }: Props) {
     const restaurantIds = new Set(result.restaurantIds ?? []);
     const itemKeys = new Set(result.itemKeys ?? []);
     const itemIds = new Set(result.itemIds ?? []);
-    return menuItems.filter((item) => {
+    return dedupeByItemIdentity(menuItems.filter((item) => {
       const key = `${item.restaurant_id}:${item.item_id}`;
       return itemKeys.has(key) || (itemIds.has(item.item_id) && restaurantIds.has(item.restaurant_id));
-    });
+    }));
   }, [menuItems, response]);
 
   const restaurantResults = useMemo(() => {
@@ -122,15 +115,29 @@ export function AskRumblyScreen({ navigation }: Props) {
     return restaurants.filter((restaurant) => ids.has(restaurant.restaurant_id));
   }, [restaurants, response]);
 
-  const submitQuery = useCallback(() => {
+  const submitQuery = useCallback(async () => {
     const trimmed = query.trim();
-    if (!trimmed || isAsking || menuLoading || isLoading) return;
+    if (!trimmed || isAsking || isLoading || restaurants.length === 0) return;
     Keyboard.dismiss();
     setIsAsking(true);
     setRequestError(null);
     setSubmittedQuery(trimmed);
     try {
-      const next = runAskRumbly(trimmed, askData, origin ?? undefined);
+      let dataForQuery = askData;
+      if (menuItems.length === 0 || searchIndex.length === 0) {
+        setMenuLoading(true);
+        setMenuError(null);
+        const [items, index] = await Promise.all([getAllMenuItems(), loadSearchIndex()]);
+        dataForQuery = buildAskRumblyData(
+          restaurants,
+          items,
+          hoursData,
+          index.length > 0 ? index : undefined,
+        );
+        setMenuItems(items);
+        setSearchIndex(dataForQuery.searchIndex);
+      }
+      const next = runAskRumbly(trimmed, dataForQuery, origin ?? undefined);
       if ('safety' in next.result && next.result.safety?.kind === 'allergy') {
         setPendingResponse(next);
         setAcknowledgementVisible(true);
@@ -141,9 +148,10 @@ export function AskRumblyScreen({ navigation }: Props) {
       setRequestError(askError instanceof Error ? askError.message : String(askError));
       setResponse(null);
     } finally {
+      setMenuLoading(false);
       setIsAsking(false);
     }
-  }, [askData, isAsking, isLoading, menuLoading, origin, query]);
+  }, [askData, hoursData, isAsking, isLoading, menuItems.length, origin, query, restaurants, searchIndex.length]);
 
   const chooseSuggestion = useCallback((suggestion: EntitySuggestion) => {
     setQuery((current) => `${current.slice(0, suggestion.replaceStart)}${suggestion.label}${current.slice(suggestion.replaceEnd)}`);
@@ -174,7 +182,7 @@ export function AskRumblyScreen({ navigation }: Props) {
   }, []);
 
   const result = response?.result;
-  const isReady = !isLoading && !menuLoading && menuError === null && dataError === null;
+  const isReady = !isLoading && menuError === null && dataError === null;
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -236,11 +244,13 @@ export function AskRumblyScreen({ navigation }: Props) {
             {isAsking ? <ActivityIndicator color={COLORS.surface} /> : <Text style={styles.askButtonText}>Ask</Text>}
           </Pressable>
 
-          {!isReady && (
+          {(!isReady || menuLoading) && (
             <View style={styles.statusBox}>
               <ActivityIndicator color={COLORS.forest} />
               <Text style={[text.bodyMuted, styles.statusText]}>
-                {dataError ?? menuError ?? (isLoading ? 'Loading Rumbly dining data…' : 'Preparing menu search…')}
+                {menuLoading
+                  ? 'Preparing menu search…'
+                  : dataError ?? menuError ?? (isLoading ? 'Loading Rumbly dining data…' : 'Preparing menu search…')}
               </Text>
             </View>
           )}
