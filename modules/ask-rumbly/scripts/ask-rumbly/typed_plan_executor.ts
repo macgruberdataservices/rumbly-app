@@ -225,9 +225,12 @@ function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates, trac
       : plan.constraints.distanceOperation === 'nearest'
         ? `Nearest verified menu item${winners.length === 1 ? '' : 's'}`
         : `${sorted.length} matching menu item${sorted.length === 1 ? '' : 's'}`}: ${lines.join('; ')}${remaining > 0 ? `; and ${remaining} tied` : ''}.${plantNote}`,
-    restaurantIds: Array.from(new Set(shown.map((row) => row.restaurant.restaurant_id))),
-    itemIds: shown.map((row) => row.item.item_id),
-    itemKeys: shown.map((row) => `${row.item.restaurant_id}:${row.item.item_id}`),
+    // Keep the prose compact, but preserve every verified winner for native
+    // presentation. The app owns its own initial-card limit and can expand the
+    // complete set without re-running or weakening the proof boundary.
+    restaurantIds: Array.from(new Set(winners.map((row) => row.restaurant.restaurant_id))),
+    itemIds: winners.map((row) => row.item.item_id),
+    itemKeys: winners.map((row) => `${row.item.restaurant_id}:${row.item.item_id}`),
     trace,
     safety: acknowledgement(plan),
   };
@@ -256,7 +259,8 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
     score: distance ?? Infinity,
     evidence: `${restaurant.restaurant}=${distance ?? 'unknown'}mi`,
   }));
-  const shown = plan.constraints.distanceOperation === 'nearest' ? rows.slice(0, 1) : rows.slice(0, 12);
+  const resultRows = plan.constraints.distanceOperation === 'nearest' ? rows.slice(0, 1) : rows;
+  const shown = resultRows.slice(0, 12);
   const labels = shown.map(({ restaurant, distance, hours }) => {
     const hoursLabel = plan.constraints.time === 'now' ? hours.label : hours.todayLabel;
     const schedule = wantsHours && hoursLabel ? ` — ${hoursLabel}` : '';
@@ -265,7 +269,7 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
   const result: UnprovenPlanExecution = {
     kind: 'answer',
     text: `${plan.constraints.distanceOperation === 'nearest' ? 'Nearest verified restaurant' : `${rows.length} matching restaurant${rows.length === 1 ? '' : 's'}`}: ${labels.join('; ')}${plan.constraints.distanceOperation !== 'nearest' && rows.length > shown.length ? `; and ${rows.length - shown.length} more` : ''}.`,
-    restaurantIds: shown.map(({ restaurant }) => restaurant.restaurant_id),
+    restaurantIds: resultRows.map(({ restaurant }) => restaurant.restaurant_id),
     trace,
   };
   return plan.constraints.distanceOperation === 'nearest' ? withObjectiveCandidates(result, objectiveCandidates) : result;
@@ -323,9 +327,9 @@ function nativeVerifiedFoodAnswer(
   });
   if (rows.length === 0) return null;
 
-  let chosen = (plan.constraints.priceOperation === 'cheapest' || plan.constraints.distanceOperation === 'nearest')
+  let resultRows = (plan.constraints.priceOperation === 'cheapest' || plan.constraints.distanceOperation === 'nearest')
     ? rows.slice(0, 1)
-    : rows.slice(0, 12);
+    : rows;
   if (plan.constraints.locationSet === 'theme_parks'
     && plan.constraints.priceOperation !== 'cheapest'
     && plan.constraints.distanceOperation !== 'nearest') {
@@ -333,9 +337,10 @@ function nativeVerifiedFoodAnswer(
       .map((park) => rows.find((row) => row.restaurant.park === park))
       .filter((row): row is (typeof rows)[number] => Boolean(row));
     const represented = new Set(representatives.map((row) => row.restaurant.restaurant_id));
-    chosen = [...representatives, ...rows.filter((row) => !represented.has(row.restaurant.restaurant_id))].slice(0, 12);
+    resultRows = [...representatives, ...rows.filter((row) => !represented.has(row.restaurant.restaurant_id))];
   }
-  const labels = chosen.map(({ restaurant, items, distance }) => {
+  const shown = resultRows.slice(0, 12);
+  const labels = shown.map(({ restaurant, items, distance }) => {
     const itemLabel = items.map((item) => `${item.item}${item.price_value > 0 ? ` (${item.price_display})` : ''}`).join(' + ');
     return `${restaurant.restaurant}${distance == null ? '' : ` (${formatProximityDistance(distance)})`} — ${itemLabel}`;
   });
@@ -344,14 +349,14 @@ function nativeVerifiedFoodAnswer(
     ? `Cheapest verified match for "${requested}": `
     : plan.constraints.distanceOperation === 'nearest'
       ? `Nearest verified match for "${requested}": `
-      : plan.action === 'check_menu' && chosen.length === 1
-    ? `Yes, ${chosen[0].restaurant.restaurant} has a verified match for "${requested}": `
+      : plan.action === 'check_menu' && resultRows.length === 1
+    ? `Yes, ${resultRows[0].restaurant.restaurant} has a verified match for "${requested}": `
     : `${rows.length} verified location${rows.length === 1 ? '' : 's'} for "${requested}": `;
-  const selectedItems = chosen.flatMap((row) => row.items);
+  const selectedItems = resultRows.flatMap((row) => row.items);
   const result: UnprovenPlanExecution = {
     kind: 'answer',
-    text: `${prefix}${labels.join('; ')}${plan.constraints.priceOperation !== 'cheapest' && plan.constraints.distanceOperation !== 'nearest' && rows.length > chosen.length ? `; and ${rows.length - chosen.length} more` : ''}.`,
-    restaurantIds: chosen.map((row) => row.restaurant.restaurant_id),
+    text: `${prefix}${labels.join('; ')}${plan.constraints.priceOperation !== 'cheapest' && plan.constraints.distanceOperation !== 'nearest' && resultRows.length > shown.length ? `; and ${resultRows.length - shown.length} more` : ''}.`,
+    restaurantIds: resultRows.map((row) => row.restaurant.restaurant_id),
     itemIds: selectedItems.map((item) => item.item_id),
     itemKeys: selectedItems.map((item) => `${item.restaurant_id}:${item.item_id}`),
     trace,

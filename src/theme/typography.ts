@@ -13,12 +13,12 @@
 //
 //   Yellowtail   -- the brand wordmark ONLY. Never body text, never a
 //                   heading, never anything a user reads as content.
-//   Piazzolla    -- the one heading/display voice. Section and page
+//   [heading]    -- the one heading/display voice. Section and page
 //                   titles, restaurant-detail's own name, and the
 //                   matched-substring accent in HighlightedText. Bold for
 //                   headings, Italic for the rare editorial aside (e.g.
 //                   `greeting`). If something needs emphasis and it isn't
-//                   Yellowtail's job, it's Piazzolla's. ExtraBold is a
+//                   Yellowtail's job, it's this face's. ExtraBold is a
 //                   deliberate exception reserved for exactly one spot --
 //                   restaurant-detail's own hero title (owner decision,
 //                   2026-08-05: a 22px Bold heading and THE single most
@@ -35,15 +35,26 @@
 // New screens reference these FONT_FAMILY keys (or, better, the `text.*`
 // presets below where one already fits) rather than inventing a local
 // style with a font this file doesn't know about.
+//
+// LIVE TRIAL (2026-08-09): swapping the heading voice from Piazzolla to
+// Fredoka (rounded sans) to test whether it reads as more "in sync" with
+// the app's rounded UI chrome and adds some whimsy. The piazzolla* KEY
+// NAMES are left unchanged on purpose — every call site references the key,
+// not the font string, so this is a one-file, one-line-per-role swap and
+// an equally cheap revert if Fredoka doesn't land. Piazzolla stays loaded
+// in App.tsx so reverting costs nothing. Fredoka ships no italic weight or
+// ExtraBold cut, so piazzollaItalic falls back to a synthetic italic
+// (fontStyle: 'italic' applied to a non-italic face) and piazzollaExtraBold
+// maps to Fredoka's heaviest static weight, 700 Bold.
 
 import { StyleSheet } from 'react-native';
 import { COLORS } from './tokens';
 
 export const FONT_FAMILY = {
   yellowtail: 'Yellowtail_400Regular',
-  piazzollaBold: 'Piazzolla_700Bold',
-  piazzollaExtraBold: 'Piazzolla_800ExtraBold',
-  piazzollaItalic: 'Piazzolla_400Regular_Italic',
+  piazzollaBold: 'Fredoka_600SemiBold',
+  piazzollaExtraBold: 'Fredoka_700Bold',
+  piazzollaItalic: 'Fredoka_500Medium', // synthetic italic — see LIVE TRIAL note above
   workSansRegular: 'WorkSans_400Regular',
   workSansMedium: 'WorkSans_500Medium',
   workSansSemiBold: 'WorkSans_600SemiBold',
@@ -87,6 +98,7 @@ export const text = StyleSheet.create({
   },
   greeting: {
     fontFamily: FONT_FAMILY.piazzollaItalic,
+    fontStyle: 'italic', // synthetic — Fredoka ships no dedicated italic cut, see LIVE TRIAL note up top
     fontSize: 20,
     color: COLORS.ink,
   },

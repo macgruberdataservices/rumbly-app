@@ -90,7 +90,7 @@ function MainTabs() {
           tabBarIcon: ({ color }) => <TabIcon routeName={route.name} color={color} />,
           tabBarActiveTintColor: COLORS.forest,
           tabBarInactiveTintColor: COLORS.muted,
-          tabBarLabelStyle: { fontSize: 12, fontWeight: '600' },
+          tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
           tabBarBackground: () => <BlurView intensity={78} tint="light" style={styles.tabBarBlur} />,
           tabBarStyle: {
             position: 'absolute',
@@ -101,12 +101,12 @@ function MainTabs() {
             // left/right aren't the same style keys, so both apply and
             // start/end wins the actual layout, which is exactly why an
             // earlier attempt at left/right silently had zero visual
-            // effect at any value. Wide margins on purpose -- a compact,
-            // content-hugging capsule centered on screen (see reference:
-            // NYT Games' Play/Friends/Me bar), not a nearly-edge-to-edge
-            // bar with a small gap.
-            start: 64,
-            end: 64,
+            // effect at any value. With four tabs, 64pt margins left only
+            // ~66pt per item on a standard iPhone and forced Ask Rumbly and
+            // My Rumbly to ellipsize. These margins keep the floating-pill
+            // treatment while giving every label enough room.
+            start: 20,
+            end: 20,
             bottom: insets.bottom + SPACING.sm,
             height: 62,
             // The base style (same file, above the tabBarStyle merge) also

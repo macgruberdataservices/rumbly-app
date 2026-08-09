@@ -270,6 +270,11 @@ function requestedAction(query: string, claimType: ClaimType, entities: LinkedEn
 
 function foodCapture(query: string): string {
   const patterns = [
+    // "Suggest a place get a burger" is ordinary discovery language, not
+    // a request for an editorial ranking. Guests often omit the optional
+    // "to" in this compact app-query form, so accept both versions.
+    /\b(?:suggest|suggests|suggested)\s+(?:me\s+)?(?:a\s+)?(?:place|restaurant|location|spot|stand|somewhere)\s+(?:to\s+)?(?:get|find|buy|order|grab|eat|have|try)\s+(.+?)\??$/i,
+    /\b(?:suggest|suggests|suggested)\s+(?:me\s+)?(?:a\s+)?(.+?)\s+(?:place|restaurant|spot)\??$/i,
     /\b(?:does|do|has|have)\b[\s\S]*?\b(?:have|serve|sell|offer)\s+(.+?)\??$/i,
     /\b(?:where|what place|which place|what restaurant|which restaurant|which locations?|which spots?|which stands?|what [\w-]+ (?:dining )?(?:option|location))[\s\S]*?\b(?:get|find|serves?|sells?|offers?|buy|order|grab|eat)\s+(.+?)\??$/i,
     /\bcan i\s+(?:get|find|buy|order|grab)\s+(.+?)\??$/i,
@@ -484,7 +489,7 @@ function meaningfulUnconsumed(query: string, spans: SourceSpan[]): string {
     .replace(/(?:^|\s)'(?:re|ve|ll|d|t)(?:\s|$)/gi, ' ')
     .replace(/(?:^|\s)-(?:\s|$)/g, ' ')
     .replace(/(?:^|\s)'?m(?:\s|$)/gi, ' ')
-    .replace(/\b(?:what|whats|where|which|who|how|does|do|is|are|am|can|could|would|should|i|im|my|me|we|our|son|wife|daughter|kid|yo|rn|asap|a|an|the|this|that|at|in|inside|near|around|by|to|for|of|on|with|and|or|as|about|through|before|please|tell|help|get|find|show|see|view|want|wanna|need|go|heading|later|place|places|location|locations|spot|spots|stand|stands|restaurant|restaurants|resort|dining|have|has|sell|sells|offer|offers|allow|allows|buy|order|grab|serve|serves|serving|eat|eating|food|foods|option|options|item|items|dish|dishes|meal|meals|anything|something|any|anywhere|there|right|now|today|tomorrow|tonight|morning|still|actually|also|too|again|standing|together|family|unique|year|available|advance|app|clearly|accommodate|accommodates|accommodation|accommodations|disney|list|lists|listed|label|labels|labeled|labelled|menu|allergy|allergies|allergic|allergen|allergens|safe|safely|safest|safety|best|better|worst|good|compare|cheapest|closest|nearest|open|broke|send|dreaming|per|person)\b/gi, ' ')
+    .replace(/\b(?:what|whats|where|which|who|how|does|do|is|are|am|can|could|would|should|i|im|my|me|we|our|son|wife|daughter|kid|yo|rn|asap|a|an|the|this|that|at|in|inside|near|around|by|to|for|of|on|with|and|or|as|about|through|before|please|tell|help|get|find|show|see|view|suggest|suggests|suggested|want|wanna|need|go|heading|later|place|places|location|locations|spot|spots|stand|stands|restaurant|restaurants|resort|dining|have|has|sell|sells|offer|offers|allow|allows|buy|order|grab|serve|serves|serving|eat|eating|food|foods|option|options|item|items|dish|dishes|meal|meals|anything|something|any|anywhere|there|right|now|today|tomorrow|tonight|morning|still|actually|also|too|again|standing|together|family|unique|year|available|advance|app|clearly|accommodate|accommodates|accommodation|accommodations|disney|list|lists|listed|label|labels|labeled|labelled|menu|allergy|allergies|allergic|allergen|allergens|safe|safely|safest|safety|best|better|worst|good|compare|cheapest|closest|nearest|open|broke|send|dreaming|per|person)\b/gi, ' ')
     .replace(/(?:^|\s)'(?:re|ve|ll|d|t)(?:\s|$)/gi, ' ')
     .replace(/(?:^|\s)&(?:\s|$)/g, ' ')
     .replace(/\s+/g, ' ')

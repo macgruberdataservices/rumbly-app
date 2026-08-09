@@ -9,6 +9,11 @@ import {
   Piazzolla_400Regular_Italic,
 } from '@expo-google-fonts/piazzolla';
 import {
+  Fredoka_500Medium,
+  Fredoka_600SemiBold,
+  Fredoka_700Bold,
+} from '@expo-google-fonts/fredoka';
+import {
   WorkSans_400Regular,
   WorkSans_500Medium,
   WorkSans_600SemiBold,
@@ -23,6 +28,7 @@ import { EntitlementsProvider } from './src/data/entitlementsProvider';
 import { ActivityProvider } from './src/data/activityProvider';
 import { JournalProvider } from './src/data/journalProvider';
 import { AppSettingsProvider } from './src/data/appSettingsProvider';
+import { NearMeProvider } from './src/data/nearMeProvider';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
@@ -33,6 +39,9 @@ export default function App() {
     Piazzolla_700Bold,
     Piazzolla_800ExtraBold,
     Piazzolla_400Regular_Italic,
+    Fredoka_500Medium,
+    Fredoka_600SemiBold,
+    Fredoka_700Bold,
     WorkSans_400Regular,
     WorkSans_500Medium,
     WorkSans_600SemiBold,
@@ -60,13 +69,15 @@ export default function App() {
         <AppSettingsProvider>
           <DataProvider>
             <AuthProvider>
-              <EntitlementsProvider>
-                <ActivityProvider>
-                  <JournalProvider>
-                    <RootNavigator />
-                  </JournalProvider>
-                </ActivityProvider>
-              </EntitlementsProvider>
+              <NearMeProvider>
+                <EntitlementsProvider>
+                  <ActivityProvider>
+                    <JournalProvider>
+                      <RootNavigator />
+                    </JournalProvider>
+                  </ActivityProvider>
+                </EntitlementsProvider>
+              </NearMeProvider>
             </AuthProvider>
           </DataProvider>
         </AppSettingsProvider>

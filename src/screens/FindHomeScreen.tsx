@@ -7,7 +7,6 @@ import {
   ActivityIndicator,
   Animated,
   Alert,
-  Easing,
   findNodeHandle,
   FlatList,
   Image,
@@ -28,9 +27,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { FindStackParamList } from '../navigation/FindNavigator';
 import type { RootTabParamList } from '../navigation/RootNavigator';
 import { SettingsButton } from '../components/settings/SettingsButton';
+import { NearMeButton } from '../components/NearMeButton';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useAppSettings } from '../hooks/useAppSettings';
-import { useIsDevOwner } from '../hooks/useIsDevOwner';
 import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
 import { useActivity } from '../hooks/useActivity';
 import { useSearch } from '../hooks/useSearch';
@@ -99,73 +98,6 @@ function FilterIcon({ active }: { active: boolean }) {
   );
 }
 
-function NearMeIcon({ active }: { active: boolean }) {
-  return (
-    <Image
-      source={require('../../assets/nearby-icon.png')}
-      style={styles.nearIcon}
-      resizeMode="contain"
-      tintColor={active ? COLORS.surface : COLORS.forest}
-    />
-  );
-}
-
-// Two rings pulsing outward on a stagger (each loop resets to scale 1 /
-// opacity 0.45 automatically -- Animated.loop's default
-// resetBeforeIteration) so a beat starts roughly every 800ms instead of
-// every 1600ms. Lives in its own wrapping View, rendered as a sibling
-// *before* the Near Me button rather than inside it, so the button's own
-// opaque fill paints over the rings within its bounds -- only the glow
-// that escapes past the button's circle is visible.
-function NearMePulse({ active }: { active: boolean }) {
-  const ring1 = useRef(new Animated.Value(0)).current;
-  const ring2 = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!active) return;
-    // .stop() below freezes each value wherever the animation happened to
-    // be, it doesn't rewind it -- so without this reset, reactivating
-    // replays from that stale leftover value (often already at 1, i.e.
-    // no visible motion at all) instead of a fresh 0 -> 1 sweep.
-    ring1.setValue(0);
-    ring2.setValue(0);
-    const pulse = (value: Animated.Value, delay: number) =>
-      Animated.loop(
-        Animated.sequence([
-          Animated.delay(delay),
-          Animated.timing(value, {
-            toValue: 1,
-            duration: 1600,
-            easing: Easing.out(Easing.ease),
-            useNativeDriver: true,
-          }),
-        ])
-      );
-    const loop1 = pulse(ring1, 0);
-    const loop2 = pulse(ring2, 800);
-    loop1.start();
-    loop2.start();
-    return () => {
-      loop1.stop();
-      loop2.stop();
-    };
-  }, [active, ring1, ring2]);
-
-  if (!active) return null;
-
-  const ringStyle = (value: Animated.Value) => ({
-    opacity: value.interpolate({ inputRange: [0, 1], outputRange: [0.45, 0] }),
-    transform: [{ scale: value.interpolate({ inputRange: [0, 1], outputRange: [1, 1.9] }) }],
-  });
-
-  return (
-    <View style={styles.nearPulseWrap} pointerEvents="none">
-      <Animated.View style={[styles.nearPulseRing, ringStyle(ring1)]} />
-      <Animated.View style={[styles.nearPulseRing, ringStyle(ring2)]} />
-    </View>
-  );
-}
-
 function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; areaLabel: string | null }) {
   return (
     <View style={styles.locationHeader}>
@@ -226,10 +158,8 @@ export function FindHomeScreen({ navigation, route }: Props) {
     findFeedEnabled,
     isSettingsReady,
     nativeInteractionsEnabled,
-    mockLocation,
   } = useAppSettings();
   const { user } = useAuth();
-  const isDevOwner = useIsDevOwner();
   const { lovedIds } = useActivity();
   const openAccountSettings = useOpenAccountSettings();
   const initialStateRef = useRef(resolveFindRestoreState(route.params?.state));
@@ -272,7 +202,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
     getPermissionStatus: getNearMePermissionStatus,
     enable: enableNearMe,
     disable: disableNearMe,
-  } = useNearMe(initialState.nearMeOrigin, isDevOwner ? mockLocation : null);
+  } = useNearMe(initialState.nearMeOrigin);
   const resultListRef = useRef<FlatList<ResultRow>>(null);
   const browseScrollRef = useRef<ScrollView>(null);
   const searchInputRef = useRef<TextInput>(null);
@@ -1146,32 +1076,11 @@ export function FindHomeScreen({ navigation, route }: Props) {
           )}
         </View>
 
-        <View style={styles.nearButtonShell}>
-          <NearMePulse active={nearMeActive && nearMeStatus !== 'requesting'} />
-          <Pressable
-            disabled={nearMeStatus === 'requesting'}
-            onPress={() => void handleNearMePress()}
-            accessibilityLabel={nearMeActive ? 'Turn off Near Me' : 'Show dining near me'}
-            accessibilityHint="Uses foreground location and Disney guest entrance coordinates"
-            accessibilityRole="button"
-            accessibilityState={{
-              selected: nearMeActive,
-              busy: nearMeStatus === 'requesting',
-              disabled: nearMeStatus === 'requesting',
-            }}
-            style={[
-              styles.iconButton,
-              nearMeActive && styles.iconButtonActive,
-              nearMeStatus === 'requesting' && styles.iconButtonBusy,
-            ]}
-          >
-            {nearMeStatus === 'requesting' ? (
-              <ActivityIndicator color={COLORS.forest} />
-            ) : (
-              <NearMeIcon active={nearMeActive} />
-            )}
-          </Pressable>
-        </View>
+        <NearMeButton
+          active={nearMeActive}
+          status={nearMeStatus}
+          onPress={() => void handleNearMePress()}
+        />
       </View>
 
       <Animated.View
@@ -1534,34 +1443,9 @@ const styles = StyleSheet.create({
     backgroundColor: COLORS.forest,
     borderColor: COLORS.forest,
   },
-  iconButtonBusy: {
-    opacity: 0.7,
-  },
   filterIcon: {
     width: 26,
     height: 26,
-  },
-  nearIcon: {
-    width: 26,
-    height: 26,
-  },
-  nearButtonShell: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nearPulseWrap: {
-    position: 'absolute',
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  nearPulseRing: {
-    position: 'absolute',
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: COLORS.gold,
   },
   filterBadge: {
     position: 'absolute',

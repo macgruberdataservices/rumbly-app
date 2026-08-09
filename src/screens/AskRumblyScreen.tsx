@@ -1,7 +1,8 @@
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   Keyboard,
   KeyboardAvoidingView,
   Linking,
@@ -15,6 +16,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AllergyAcknowledgementSheet } from '../components/AllergyAcknowledgementSheet';
+import { NearMeButton } from '../components/NearMeButton';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useNearMe } from '../hooks/useNearMe';
@@ -32,7 +34,59 @@ import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<AskRumblyStackParamList, 'AskRumblyHome'>;
 
-const DEFAULT_QUERY = 'Where can I get a burger?';
+const QUERY_STARTERS = [
+  { label: 'Where can I get a…', value: 'Where can I get a ' },
+  { label: 'What’s the closest…', value: "What's the closest " },
+  { label: 'Where is the cheapest…', value: 'Where is the cheapest ' },
+] as const;
+
+const INITIAL_RESULT_COUNT = 10;
+
+function DevelopmentDataDisclosure({
+  response,
+  expanded,
+  onToggle,
+}: {
+  response: AskRumblyResponse;
+  expanded: boolean;
+  onToggle: () => void;
+}) {
+  const { result } = response;
+  return (
+    <View style={styles.developmentSection}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityState={{ expanded }}
+        accessibilityLabel={`${expanded ? 'Hide' : 'Show'} development data`}
+        onPress={onToggle}
+        style={({ pressed }) => [styles.developmentHeader, pressed && styles.pressed]}
+      >
+        <Text style={styles.developmentTitle}>Development Data</Text>
+        <Text style={styles.developmentChevron}>{expanded ? '⌄' : '›'}</Text>
+      </Pressable>
+      {expanded ? (
+        <View style={styles.developmentBody}>
+          <Text style={styles.developmentLabel}>Raw answer</Text>
+          <Text selectable style={styles.developmentText}>{result.text}</Text>
+          <Text style={styles.developmentLabel}>Plan</Text>
+          <Text selectable style={styles.developmentCode}>{JSON.stringify(response.plan, null, 2)}</Text>
+          {'trace' in result && result.trace ? (
+            <>
+              <Text style={styles.developmentLabel}>Execution trace</Text>
+              <Text selectable style={styles.developmentCode}>{JSON.stringify(result.trace, null, 2)}</Text>
+            </>
+          ) : null}
+          {'proof' in result && result.proof ? (
+            <>
+              <Text style={styles.developmentLabel}>Proof</Text>
+              <Text selectable style={styles.developmentCode}>{JSON.stringify(result.proof, null, 2)}</Text>
+            </>
+          ) : null}
+        </View>
+      ) : null}
+    </View>
+  );
+}
 
 function MenuResultCard({
   item,
@@ -63,18 +117,28 @@ function MenuResultCard({
 
 export function AskRumblyScreen({ navigation }: Props) {
   const { restaurants, hoursData, isLoading, lastSyncedAt, error: dataError } = useDataProvider();
-  const { origin, status: locationStatus, enable: enableLocation } = useNearMe();
+  const {
+    origin,
+    status: locationStatus,
+    isActive: locationActive,
+    getPermissionStatus: getLocationPermissionStatus,
+    enable: enableLocation,
+    disable: disableLocation,
+  } = useNearMe();
   const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
   const [searchIndex, setSearchIndex] = useState<SearchIndexEntry[]>([]);
   const [menuLoading, setMenuLoading] = useState(false);
   const [menuError, setMenuError] = useState<string | null>(null);
-  const [query, setQuery] = useState(DEFAULT_QUERY);
+  const [query, setQuery] = useState('');
   const [submittedQuery, setSubmittedQuery] = useState<string | null>(null);
   const [response, setResponse] = useState<AskRumblyResponse | null>(null);
   const [pendingResponse, setPendingResponse] = useState<AskRumblyResponse | null>(null);
   const [acknowledgementVisible, setAcknowledgementVisible] = useState(false);
   const [isAsking, setIsAsking] = useState(false);
   const [requestError, setRequestError] = useState<string | null>(null);
+  const [developmentDataExpanded, setDevelopmentDataExpanded] = useState(false);
+  const [showAllResults, setShowAllResults] = useState(false);
+  const inputRef = useRef<TextInput>(null);
 
   // Keep the expensive full-menu read off the launch/tab-mount path. The
   // restaurant list powers autocomplete immediately; the SQLite rows and
@@ -90,6 +154,10 @@ export function AskRumblyScreen({ navigation }: Props) {
     () => buildAskRumblyData(restaurants, menuItems, hoursData, searchIndex),
     [hoursData, menuItems, restaurants, searchIndex],
   );
+  const restaurantsById = useMemo(
+    () => new Map(restaurants.map((restaurant) => [restaurant.restaurant_id, restaurant])),
+    [restaurants],
+  );
 
   const suggestions = useMemo<EntitySuggestion[]>(() => {
     if (!query.trim() || restaurants.length === 0) return [];
@@ -99,21 +167,28 @@ export function AskRumblyScreen({ navigation }: Props) {
   const itemResults = useMemo(() => {
     const result = response?.result;
     if (!result || result.kind !== 'answer') return [];
+    if (result.itemKeys?.length) {
+      const itemsByKey = new Map(menuItems.map((item) => [`${item.restaurant_id}:${item.item_id}`, item]));
+      return dedupeByItemIdentity(
+        result.itemKeys
+          .map((key) => itemsByKey.get(key))
+          .filter((item): item is MenuItem => Boolean(item)),
+      );
+    }
     const restaurantIds = new Set(result.restaurantIds ?? []);
-    const itemKeys = new Set(result.itemKeys ?? []);
     const itemIds = new Set(result.itemIds ?? []);
     return dedupeByItemIdentity(menuItems.filter((item) => {
-      const key = `${item.restaurant_id}:${item.item_id}`;
-      return itemKeys.has(key) || (itemIds.has(item.item_id) && restaurantIds.has(item.restaurant_id));
+      return itemIds.has(item.item_id) && restaurantIds.has(item.restaurant_id);
     }));
   }, [menuItems, response]);
 
   const restaurantResults = useMemo(() => {
     const result = response?.result;
     if (!result || result.kind !== 'answer') return [];
-    const ids = new Set(result.restaurantIds ?? []);
-    return restaurants.filter((restaurant) => ids.has(restaurant.restaurant_id));
-  }, [restaurants, response]);
+    return Array.from(new Set(result.restaurantIds ?? []))
+      .map((id) => restaurantsById.get(id))
+      .filter((restaurant): restaurant is Restaurant => Boolean(restaurant));
+  }, [restaurantsById, response]);
 
   const submitQuery = useCallback(async () => {
     const trimmed = query.trim();
@@ -122,6 +197,8 @@ export function AskRumblyScreen({ navigation }: Props) {
     setIsAsking(true);
     setRequestError(null);
     setSubmittedQuery(trimmed);
+    setDevelopmentDataExpanded(false);
+    setShowAllResults(false);
     try {
       let dataForQuery = askData;
       if (menuItems.length === 0 || searchIndex.length === 0) {
@@ -157,6 +234,79 @@ export function AskRumblyScreen({ navigation }: Props) {
     setQuery((current) => `${current.slice(0, suggestion.replaceStart)}${suggestion.label}${current.slice(suggestion.replaceEnd)}`);
   }, []);
 
+  const clearQuery = useCallback(() => {
+    setQuery('');
+    setSubmittedQuery(null);
+    setResponse(null);
+    setPendingResponse(null);
+    setRequestError(null);
+    setDevelopmentDataExpanded(false);
+    setShowAllResults(false);
+    inputRef.current?.focus();
+  }, []);
+
+  const chooseStarter = useCallback((value: string) => {
+    setQuery(value);
+    setSubmittedQuery(null);
+    setResponse(null);
+    setRequestError(null);
+    setDevelopmentDataExpanded(false);
+    setShowAllResults(false);
+    inputRef.current?.focus();
+  }, []);
+
+  const runLocationEnable = useCallback(async () => {
+    const outcome = await enableLocation();
+    if (outcome === 'active') return;
+    if (outcome === 'denied') {
+      Alert.alert(
+        'Location access is off',
+        'Enable foreground location in Settings to use Near Me. Rumbly never requests background location.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+        ]
+      );
+      return;
+    }
+    if (outcome === 'unavailable') {
+      Alert.alert(
+        'Location services are off',
+        'Turn on Location Services, then try Near Me again.',
+        [
+          { text: 'Not now', style: 'cancel' },
+          { text: 'Open Settings', onPress: () => void Linking.openSettings() },
+        ]
+      );
+      return;
+    }
+    Alert.alert('Location unavailable', 'Rumbly could not determine your location. Please try again.');
+  }, [enableLocation]);
+
+  const handleLocationPress = useCallback(async () => {
+    if (locationActive) {
+      disableLocation();
+      return;
+    }
+    try {
+      const permissionStatus = await getLocationPermissionStatus();
+      if (permissionStatus === 'undetermined') {
+        Alert.alert(
+          'Show nearby dining?',
+          'Rumbly uses your location only while the app is open and compares it with Disney guest entrances on your device. No paid routing service receives your location.',
+          [
+            { text: 'Not now', style: 'cancel' },
+            { text: 'Continue', onPress: () => void runLocationEnable() },
+          ]
+        );
+        return;
+      }
+      await runLocationEnable();
+    } catch {
+      Alert.alert('Location unavailable', 'Rumbly could not check location permission. Please try again.');
+    }
+  }, [disableLocation, getLocationPermissionStatus, locationActive, runLocationEnable]);
+
   const openRestaurant = useCallback(
     (restaurantId: string, item?: MenuItem) => {
       navigation.navigate('RestaurantDetail', {
@@ -183,6 +333,23 @@ export function AskRumblyScreen({ navigation }: Props) {
 
   const result = response?.result;
   const isReady = !isLoading && menuError === null && dataError === null;
+  const hasLinkedResults = itemResults.length > 0 || restaurantResults.length > 0;
+  const totalPossibilities = itemResults.length > 0 ? itemResults.length : restaurantResults.length;
+  const isProximityResult = response?.plan.constraints.distanceOperation === 'nearest';
+  const isCheapestResult = response?.plan.constraints.priceOperation === 'cheapest';
+  const visibleItemResults = showAllResults ? itemResults : itemResults.slice(0, INITIAL_RESULT_COUNT);
+  const visibleRestaurantResults = showAllResults
+    ? restaurantResults
+    : restaurantResults.slice(0, INITIAL_RESULT_COUNT);
+  const friendlyResultText = itemResults.length > 0
+    ? isProximityResult
+      ? "Here's a list of the closest menu items I found."
+      : isCheapestResult
+        ? "Here's a list of the cheapest menu items I found."
+        : "Here's a list of menu items I found."
+    : isProximityResult
+      ? "Here's a list of the closest places I found."
+      : "Here's a list of places I found.";
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -191,48 +358,91 @@ export function AskRumblyScreen({ navigation }: Props) {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
         >
-          <Text style={text.sectionTitle}>Ask Rumbly</Text>
+          <View style={styles.titleRow}>
+            <Text style={text.sectionTitle}>Ask Rumbly</Text>
+            <Text style={styles.betaLabel}>(Beta)</Text>
+          </View>
           <Text style={[text.bodyMuted, styles.intro]}>
             Ask about Disney food, restaurants, menus, prices, locations, hours, and published allergy labels.
           </Text>
 
-          <View style={styles.inputShell}>
-            <TextInput
-              value={query}
-              onChangeText={setQuery}
-              onSubmitEditing={submitQuery}
-              returnKeyType="search"
-              editable={isReady && !isAsking}
-              placeholder="Ask a dining question"
-              placeholderTextColor={COLORS.dim}
-              accessibilityLabel="Ask Rumbly question"
-              style={styles.input}
-            />
-            {suggestions.length > 0 && (
-              <View style={styles.suggestions}>
-                {suggestions.map((suggestion) => (
+          <ScrollView
+            horizontal
+            showsHorizontalScrollIndicator={false}
+            keyboardShouldPersistTaps="handled"
+            style={styles.starterScroll}
+            contentContainerStyle={styles.starterContent}
+          >
+            {QUERY_STARTERS.map((starter) => (
+              <Pressable
+                key={starter.value}
+                accessibilityRole="button"
+                accessibilityLabel={`Start question: ${starter.label}`}
+                onPress={() => chooseStarter(starter.value)}
+                style={({ pressed }) => [styles.starterPill, pressed && styles.starterPillPressed]}
+              >
+                <Text style={styles.starterLabel}>{starter.label}</Text>
+              </Pressable>
+            ))}
+          </ScrollView>
+
+          <View style={styles.queryRow}>
+            <View style={styles.inputShell}>
+              <View style={styles.inputControl}>
+                <TextInput
+                  ref={inputRef}
+                  value={query}
+                  onChangeText={setQuery}
+                  onSubmitEditing={submitQuery}
+                  returnKeyType="search"
+                  editable={isReady && !isAsking}
+                  placeholder="Ask a dining question"
+                  placeholderTextColor={COLORS.dim}
+                  accessibilityLabel="Ask Rumbly question"
+                  style={styles.input}
+                />
+                {query.length > 0 && (
                   <Pressable
-                    key={`${suggestion.type}:${suggestion.label}`}
-                    onPress={() => chooseSuggestion(suggestion)}
-                    style={({ pressed }) => [styles.suggestion, pressed && styles.pressed]}
+                    onPress={clearQuery}
+                    accessibilityLabel="Clear question"
+                    accessibilityRole="button"
+                    hitSlop={8}
+                    style={styles.clearButton}
                   >
-                    <Text style={text.body}>{suggestion.label}</Text>
-                    <Text style={text.bodyMuted}>{suggestion.type}</Text>
+                    <Text style={styles.clearButtonText}>×</Text>
                   </Pressable>
-                ))}
+                )}
               </View>
-            )}
+              {suggestions.length > 0 && (
+                <View style={styles.suggestions}>
+                  {suggestions.map((suggestion) => (
+                    <Pressable
+                      key={`${suggestion.type}:${suggestion.label}`}
+                      onPress={() => chooseSuggestion(suggestion)}
+                      style={({ pressed }) => [styles.suggestion, pressed && styles.pressed]}
+                    >
+                      <Text style={text.body}>{suggestion.label}</Text>
+                      <Text style={text.bodyMuted}>{suggestion.type}</Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+            </View>
+            <NearMeButton
+              active={locationActive}
+              status={locationStatus}
+              onPress={() => void handleLocationPress()}
+            />
           </View>
 
           <View style={styles.utilityRow}>
             <Text style={text.bodyMuted}>
-              {locationStatus === 'active' ? 'Using your location for distance questions.' : 'Enable Near Me for distance-aware answers.'}
+              {locationStatus === 'active'
+                ? 'Using the same Near Me location as Find.'
+                : locationStatus === 'requesting'
+                  ? 'Finding your current location…'
+                  : 'Tap the location icon for distance-aware answers.'}
             </Text>
-            {locationStatus !== 'active' && (
-              <Pressable onPress={() => void enableLocation()} accessibilityRole="button">
-                <Text style={styles.utilityAction}>Use Near Me</Text>
-              </Pressable>
-            )}
           </View>
 
           <Pressable
@@ -258,9 +468,11 @@ export function AskRumblyScreen({ navigation }: Props) {
           {submittedQuery && result && (
             <View style={styles.responseSection}>
               <Text style={styles.queryLabel}>{submittedQuery}</Text>
-              <View style={styles.responseBox}>
-                <Text style={text.body}>{result.text}</Text>
-              </View>
+              {!hasLinkedResults ? (
+                <View style={styles.responseBox}>
+                  <Text style={text.body}>{result.text}</Text>
+                </View>
+              ) : null}
 
               {result.kind === 'answer' && result.actions?.length ? (
                 <View style={styles.actionRow}>
@@ -280,11 +492,23 @@ export function AskRumblyScreen({ navigation }: Props) {
                 </View>
               ) : null}
 
-              {result.kind === 'answer' && itemResults.length > 0 && (
+              {result.kind === 'answer' && hasLinkedResults ? (
                 <View style={styles.resultGroup}>
-                  <Text style={styles.resultGroupTitle}>Menu matches</Text>
-                  {itemResults.slice(0, 12).map((item) => {
-                    const restaurant = restaurants.find((candidate) => candidate.restaurant_id === item.restaurant_id);
+                  <Text style={styles.possibilityCount}>
+                    Found {totalPossibilities} {totalPossibilities === 1 ? 'Possibility' : 'Possibilities'}
+                  </Text>
+                  <Text style={styles.resultIntro}>{friendlyResultText}</Text>
+
+                  {result.safety?.kind === 'allergy' ? (
+                    <View style={styles.allergyNotice}>
+                      <Text style={styles.allergyNoticeText}>
+                        Disney lists these as matching the requested allergy label(s). Rumbly does not interpret ingredients or determine safety. Menus and preparation can change—confirm with a Disney Cast Member before ordering.
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  {visibleItemResults.map((item) => {
+                    const restaurant = restaurantsById.get(item.restaurant_id);
                     if (!restaurant) return null;
                     return (
                       <MenuResultCard
@@ -295,13 +519,7 @@ export function AskRumblyScreen({ navigation }: Props) {
                       />
                     );
                   })}
-                </View>
-              )}
-
-              {result.kind === 'answer' && itemResults.length === 0 && restaurantResults.length > 0 && (
-                <View style={styles.resultGroup}>
-                  <Text style={styles.resultGroupTitle}>Places</Text>
-                  {restaurantResults.slice(0, 12).map((restaurant) => (
+                  {itemResults.length === 0 && visibleRestaurantResults.map((restaurant) => (
                     <RestaurantCard
                       key={restaurant.restaurant_id}
                       restaurant={restaurant}
@@ -309,8 +527,27 @@ export function AskRumblyScreen({ navigation }: Props) {
                       onPress={() => openRestaurant(restaurant.restaurant_id)}
                     />
                   ))}
+
+                  {!showAllResults && totalPossibilities > INITIAL_RESULT_COUNT ? (
+                    <Pressable
+                      accessibilityRole="button"
+                      accessibilityLabel={`See all ${totalPossibilities} possibilities`}
+                      onPress={() => setShowAllResults(true)}
+                      style={({ pressed }) => [styles.seeAllButton, pressed && styles.pressed]}
+                    >
+                      <Text style={styles.seeAllText}>See them all</Text>
+                    </Pressable>
+                  ) : null}
                 </View>
-              )}
+              ) : null}
+
+              {response ? (
+                <DevelopmentDataDisclosure
+                  response={response}
+                  expanded={developmentDataExpanded}
+                  onToggle={() => setDevelopmentDataExpanded((current) => !current)}
+                />
+              ) : null}
             </View>
           )}
 
@@ -329,19 +566,65 @@ export function AskRumblyScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: COLORS.surface },
   content: { padding: SPACING.lg, paddingBottom: 150 },
+  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm },
+  betaLabel: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 12,
+    color: COLORS.muted,
+  },
   intro: { marginTop: SPACING.sm, lineHeight: 18 },
-  inputShell: { marginTop: SPACING.xl, zIndex: 2 },
-  input: {
-    minHeight: 52,
+  starterScroll: { marginTop: SPACING.lg, marginHorizontal: -SPACING.lg },
+  starterContent: { paddingHorizontal: SPACING.lg, gap: SPACING.sm },
+  starterPill: {
     borderWidth: 1,
     borderColor: COLORS.borderMid,
-    borderRadius: RADII.md,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.cream,
     paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  starterPillPressed: { backgroundColor: COLORS.pineLight },
+  starterLabel: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 12,
+    color: COLORS.forest,
+  },
+  queryRow: {
+    marginTop: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: SPACING.sm,
+    zIndex: 2,
+  },
+  inputShell: { flex: 1 },
+  inputControl: {
+    minHeight: 44,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.xl,
+    paddingLeft: SPACING.lg,
+    paddingRight: SPACING.sm,
+    backgroundColor: COLORS.cream,
+  },
+  input: {
+    flex: 1,
     paddingVertical: SPACING.sm,
     fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 15,
     color: COLORS.ink,
-    backgroundColor: COLORS.surface,
+  },
+  clearButton: {
+    minWidth: 28,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 18,
+    color: COLORS.ink,
   },
   suggestions: {
     marginTop: SPACING.xs,
@@ -363,15 +646,6 @@ const styles = StyleSheet.create({
   },
   utilityRow: {
     marginTop: SPACING.sm,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: SPACING.md,
-  },
-  utilityAction: {
-    fontFamily: FONT_FAMILY.workSansExtraBold,
-    fontSize: 12,
-    color: COLORS.forest,
   },
   askButton: {
     minHeight: 50,
@@ -424,11 +698,34 @@ const styles = StyleSheet.create({
     color: COLORS.forest,
   },
   resultGroup: { marginTop: SPACING.xl },
-  resultGroupTitle: {
+  possibilityCount: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
-    fontSize: 12,
+    fontSize: 13,
+    color: COLORS.forest,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+  },
+  resultIntro: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 17,
+    lineHeight: 23,
     color: COLORS.ink,
-    marginBottom: SPACING.sm,
+    marginTop: SPACING.xs,
+    marginBottom: SPACING.md,
+  },
+  allergyNotice: {
+    padding: SPACING.md,
+    marginBottom: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.gold,
+    borderRadius: RADII.md,
+    backgroundColor: COLORS.goldLight,
+  },
+  allergyNoticeText: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12.5,
+    lineHeight: 18,
+    color: COLORS.ink,
   },
   menuResultCard: {
     padding: SPACING.md,
@@ -451,6 +748,72 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.forest,
     marginTop: SPACING.md,
+  },
+  seeAllButton: {
+    minHeight: 44,
+    marginTop: SPACING.sm,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.forest,
+    borderRadius: RADII.xl,
+  },
+  seeAllText: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 13,
+    color: COLORS.forest,
+  },
+  developmentSection: {
+    marginTop: SPACING.xl,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    borderRadius: RADII.md,
+    overflow: 'hidden',
+    backgroundColor: COLORS.cream,
+  },
+  developmentHeader: {
+    minHeight: 44,
+    paddingHorizontal: SPACING.md,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  developmentTitle: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 12.5,
+    color: COLORS.muted,
+  },
+  developmentChevron: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 22,
+    color: COLORS.muted,
+  },
+  developmentBody: {
+    padding: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    backgroundColor: COLORS.surface,
+  },
+  developmentLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 11,
+    textTransform: 'uppercase',
+    letterSpacing: 0.4,
+    color: COLORS.muted,
+    marginTop: SPACING.md,
+    marginBottom: SPACING.xs,
+  },
+  developmentText: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: COLORS.ink,
+  },
+  developmentCode: {
+    fontFamily: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+    fontSize: 10.5,
+    lineHeight: 15,
+    color: COLORS.ink,
   },
   errorText: {
     fontFamily: FONT_FAMILY.workSansRegular,

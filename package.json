@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "main": "index.ts",
   "dependencies": {
+    "@expo-google-fonts/fredoka": "^0.4.1",
     "@expo-google-fonts/piazzolla": "^0.4.2",
     "@expo-google-fonts/work-sans": "^0.4.2",
     "@expo-google-fonts/yellowtail": "^0.4.1",

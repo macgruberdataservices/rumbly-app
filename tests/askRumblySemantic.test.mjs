@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { assessPlanCapability } from '../src/askRumbly/capabilityRegistry.ts';
+import { runAskRumbly } from '../src/askRumbly/appExecutor.ts';
 import { parseQueryPlan } from '../src/askRumbly/semanticParser.ts';
 import { loadData } from '../modules/ask-rumbly/scripts/ask-rumbly/data.ts';
 import { buildParserVocabulary } from '../modules/ask-rumbly/scripts/ask-rumbly/parser_vocabulary.ts';
@@ -62,6 +63,37 @@ test('food conjunctions are compositional while known dish names stay atomic', (
   assert.deepEqual(parse('Where can I get pizza or burgers?').plan.subject, {
     foodTerms: ['pizza', 'burgers'], excludedFoodTerms: [], foodMode: 'any', restaurantIds: [],
   });
+});
+
+test('suggest phrasing is treated as objective food discovery', () => {
+  for (const question of [
+    'Suggest a place get a burger',
+    'Suggest a place to get a burger',
+    'Suggest a burger place',
+  ]) {
+    const { plan, result } = execute(question);
+    assert.equal(plan.action, 'find', question);
+    assert.equal(plan.claimType, 'menu_presence', question);
+    assert.deepEqual(plan.subject.foodTerms, ['burger'], question);
+    assert.equal(plan.diagnostics.confidence, 'high', question);
+    assert.equal(result.kind, 'answer', question);
+    assert.match(result.text, /burger/i, question);
+  }
+});
+
+test('in-app distance questions require the shared current location or an explicit area', () => {
+  const withoutLocation = runAskRumbly("What's the closest burger?", data);
+  assert.equal(withoutLocation.plan.action, 'clarify');
+  assert.equal(withoutLocation.result.kind, 'clarification');
+  assert.match(withoutLocation.result.text, /turn on the location button/i);
+
+  const withLocation = runAskRumbly(
+    "What's the closest burger?",
+    data,
+    { latitude: 28.4177, longitude: -81.5812 },
+  );
+  assert.equal(withLocation.plan.action, 'find');
+  assert.equal(withLocation.result.kind, 'answer');
 });
 
 test('cross-contact and kitchen-process questions cannot execute a menu search', () => {
@@ -418,6 +450,15 @@ test('all-four-parks scope excludes resorts and Disney Springs while representin
   const ids = new Set(result.restaurantIds);
   const parks = new Set(data.restaurants.filter((restaurant) => ids.has(restaurant.restaurant_id)).map((restaurant) => restaurant.park));
   assert.deepEqual(parks, new Set(THEME_PARK_ORDER));
+});
+
+test('verified list answers retain the full linked result set for native expansion', () => {
+  const { result } = execute('Where can I get ice cream?');
+  assert.equal(result.kind, 'answer');
+  assert.equal(result.proof.status, 'proven');
+  assert.ok(result.itemKeys.length > 12);
+  assert.ok(result.restaurantIds.length > 12);
+  assert.match(result.text, /and \d+ more/i);
 });
 
 test('budget result lists exclude obvious modifiers, toppings, and add-ons', () => {
