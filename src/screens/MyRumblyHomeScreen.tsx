@@ -1,4 +1,4 @@
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useRef } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
@@ -7,6 +7,7 @@ import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions';
 import { evaluateChallenge } from '../challenges/evaluate';
 import { SettingsButton } from '../components/settings/SettingsButton';
 import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import { scheduleAfterNavigation } from '../navigation/scheduleAfterNavigation';
 import { useActivity } from '../hooks/useActivity';
 import { useAuth } from '../hooks/useAuth';
 import { useDataProvider } from '../hooks/useDataProvider';
@@ -23,6 +24,7 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
   const { personalActivity, isActivityReady, reloadActivity } = useActivity();
   const { entries: journalEntries } = useJournal();
   const openAccountSettings = useOpenAccountSettings();
+  const activityRefreshScheduledAt = useRef(0);
   const progress = useMemo(
     () => evaluateChallenge(QUICK_FIVE_CHALLENGE, personalActivity.gotItHistory, restaurants),
     [personalActivity.gotItHistory, restaurants]
@@ -30,7 +32,20 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
 
   useFocusEffect(
     useCallback(() => {
-      reloadActivity().catch((error) => console.warn('My Rumbly refresh failed:', error));
+      // The activity read model fans out to several SQLite reads and updates
+      // a context consumed throughout the app. Starting that work inside the
+      // tab-focus callback competes with the native tab transition and can
+      // make leaving this tab feel sluggish. Refresh only when the current
+      // value is stale, and schedule the read after navigation interactions
+      // have settled. The provider's write paths already update local state
+      // immediately, so a short freshness window does not hide user actions.
+      const now = Date.now();
+      if (now - activityRefreshScheduledAt.current < 5_000) return;
+      activityRefreshScheduledAt.current = now;
+
+      return scheduleAfterNavigation(() => {
+        reloadActivity().catch((error) => console.warn('My Rumbly refresh failed:', error));
+      });
     }, [reloadActivity])
   );
 

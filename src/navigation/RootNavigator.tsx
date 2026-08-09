@@ -137,7 +137,11 @@ function MainTabs() {
         />
         <Tab.Screen name="Explore" component={ExploreNavigator} />
         <Tab.Screen name="AskRumbly" component={AskRumblyNavigator} options={{ title: 'Ask Rumbly' }} />
-        <Tab.Screen name="MyRumbly" component={MyRumblyNavigator} options={{ title: 'My Rumbly' }} />
+        <Tab.Screen
+          name="MyRumbly"
+          component={MyRumblyNavigator}
+          options={{ title: 'My Rumbly', freezeOnBlur: true }}
+        />
     </Tab.Navigator>
   );
 }

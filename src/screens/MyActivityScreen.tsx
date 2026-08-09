@@ -13,6 +13,7 @@ import {
 import { Swipeable } from 'react-native-gesture-handler';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
+import { scheduleAfterNavigation } from '../navigation/scheduleAfterNavigation';
 import type { PersonalActivityEvent } from '../data/activity';
 import type { Restaurant, SearchIndexEntry } from '../data/types';
 import { restaurantLocationLabel } from '../data/locationNames';
@@ -58,10 +59,16 @@ export function MyActivityScreen({ navigation }: Props) {
   } = useActivity();
   const [activeTab, setActiveTab] = useState<CollectionTab>('love');
   const [itemByKey, setItemByKey] = useState<Map<string, SearchIndexEntry>>(new Map());
+  const activityRefreshScheduledAt = useRef(0);
 
   useFocusEffect(
     useCallback(() => {
-      reloadActivity().catch((error) => console.warn('My Rumbly refresh failed:', error));
+      const now = Date.now();
+      if (now - activityRefreshScheduledAt.current < 5_000) return;
+      activityRefreshScheduledAt.current = now;
+      return scheduleAfterNavigation(() => {
+        reloadActivity().catch((error) => console.warn('My Rumbly refresh failed:', error));
+      });
     }, [reloadActivity])
   );
 
