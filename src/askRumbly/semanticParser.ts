@@ -275,6 +275,8 @@ function foodCapture(query: string): string {
     // Subjective ranking language still needs a concrete food object so the
     // app can transparently offer verified options without pretending it can
     // identify a winner.
+    /^(?:(?:where(?:'s| is)|what(?:'s| is)|which is)\s+)?(?:(?:the|your)\s+)?(?:best|top|highest[ -]rated|favorite|must[ -]eat)\s+(?:place|restaurant|location|spot|stand)\s+(?:for|with|to\s+(?:get|find|buy|order|grab|eat|try))\s+(.+?)\??$/i,
+    /^(?:(?:where(?:'s| is)|what(?:'s| is)|which is)\s+)?(?:(?:the|your)\s+)?(?:best|top|highest[ -]rated|favorite|must[ -]eat)\s+(.+?)\s+(?:place|restaurant|location|spot|stand)\??$/i,
     /\b(?:where(?:'s| is)|what(?:'s| is)|which is)\s+(?:(?:the|your)\s+)?(?:best|top|highest[ -]rated|favorite|must[ -]eat)\s+(.+?)\??$/i,
     /\bwhat\s+(.+?)\s+do you recommend\??$/i,
     /\brecommend\s+(?:me\s+)?(?!(?:(?:a|some)\s+)?(?:place|restaurant|location|spot|stand|somewhere)\b)(?:a\s+|some\s+)?(.+?)\??$/i,

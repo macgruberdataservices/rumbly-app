@@ -1,4 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+import { Platform } from 'react-native';
+import { publicSupabase } from '../data/supabaseClient';
 import type { AskRumblyResponse } from './appExecutor';
 import type { AskRumblyPresentation } from './presentation';
 
@@ -16,6 +19,7 @@ export interface AskRumblyNegativeFeedback {
   result: AskRumblyResponse['result'];
   adaptation?: AskRumblyResponse['adaptation'];
   dataLastSyncedAt: number | null;
+  uploadedAt?: string;
 }
 
 function isFeedbackEntry(value: unknown): value is AskRumblyNegativeFeedback {
@@ -55,6 +59,75 @@ export async function clearAskRumblyNegativeFeedback(): Promise<void> {
   await AsyncStorage.removeItem(STORAGE_KEY);
 }
 
+function remotePlatform(): 'ios' | 'android' | 'web' | 'unknown' {
+  if (Platform.OS === 'ios' || Platform.OS === 'android' || Platform.OS === 'web') return Platform.OS;
+  return 'unknown';
+}
+
+export function askRumblyFeedbackRemoteRow(entry: AskRumblyNegativeFeedback) {
+  return {
+    client_feedback_id: entry.id,
+    client_created_at: entry.createdAt,
+    schema_version: entry.schemaVersion,
+    question: entry.question,
+    response_title: entry.presentedResponse.title,
+    response_message: entry.presentedResponse.message,
+    presented_response: entry.presentedResponse,
+    result_kind: entry.resultKind,
+    plan: entry.plan,
+    result: entry.result,
+    adaptation: entry.adaptation ?? null,
+    data_last_synced_at: entry.dataLastSyncedAt === null
+      ? null
+      : new Date(entry.dataLastSyncedAt).toISOString(),
+    app_version: Constants.expoConfig?.version ?? null,
+    native_build_version: Constants.nativeBuildVersion ?? null,
+    platform: remotePlatform(),
+  };
+}
+
+async function markAskRumblyFeedbackUploaded(id: string): Promise<void> {
+  const entries = await loadAskRumblyNegativeFeedback();
+  const uploadedAt = new Date().toISOString();
+  const next = entries.map((entry) => entry.id === id ? { ...entry, uploadedAt } : entry);
+  await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+}
+
+export async function deliverAskRumblyNegativeFeedback(
+  entry: AskRumblyNegativeFeedback,
+): Promise<boolean> {
+  const { error } = await publicSupabase
+    .from('ask_rumbly_negative_feedback')
+    .insert(askRumblyFeedbackRemoteRow(entry));
+
+  // A response can reach Supabase even if the client misses the success
+  // response. The unique feedback id makes retries safe; a duplicate means
+  // this event is already available for review.
+  if (error && error.code !== '23505') return false;
+  try {
+    await markAskRumblyFeedbackUploaded(entry.id);
+  } catch {
+    // The server has the entry. If the local acknowledgement cannot be
+    // recorded, a later duplicate retry is harmless and will mark it then.
+  }
+  return true;
+}
+
+export async function syncPendingAskRumblyNegativeFeedback(): Promise<number> {
+  const entries = await loadAskRumblyNegativeFeedback();
+  let delivered = 0;
+  for (const entry of entries) {
+    if (entry.uploadedAt) continue;
+    try {
+      if (await deliverAskRumblyNegativeFeedback(entry)) delivered += 1;
+    } catch {
+      // Local storage remains the offline queue. A later Ask Rumbly mount
+      // retries pending entries without interrupting the guest experience.
+    }
+  }
+  return delivered;
+}
+
 export function createAskRumblyNegativeFeedback({
   question,
   response,
@@ -71,7 +144,7 @@ export function createAskRumblyNegativeFeedback({
   const timestamp = createdAt.toISOString();
   return {
     schemaVersion: 1,
-    id: String(createdAt.getTime()),
+    id: `${createdAt.getTime()}-${Math.random().toString(36).slice(2, 12)}`,
     createdAt: timestamp,
     question,
     presentedResponse: {
@@ -93,7 +166,7 @@ export function formatAskRumblyFeedbackExport(entries: AskRumblyNegativeFeedback
   return JSON.stringify({
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    note: 'Development-only Ask Rumbly thumbs-down feedback. No precise device location is recorded.',
+    note: 'Ask Rumbly thumbs-down feedback. No account identifier or precise device location is recorded.',
     entries,
   }, null, 2);
 }

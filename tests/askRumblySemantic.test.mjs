@@ -228,6 +228,19 @@ test('subjective food rankings transparently return verified options instead of 
     assert.equal(variant.result.kind, 'answer', question);
   }
 
+  for (const question of [
+    'Best place for a pretzel',
+    "Where's the best place to get a pretzel?",
+    'Best pretzel place',
+    'Where is your favorite spot for a pretzel?',
+  ]) {
+    const placeVariant = runAskRumbly(question, data);
+    assert.equal(placeVariant.adaptation?.kind, 'subjective_options', question);
+    assert.deepEqual(placeVariant.plan.subject.foodTerms, ['pretzel'], question);
+    assert.equal(placeVariant.result.kind, 'answer', question);
+    assert.ok((placeVariant.result.itemKeys?.length ?? 0) > 0, question);
+  }
+
   const nearby = runAskRumbly(
     'What is the best cinnamon roll?',
     data,

@@ -38,9 +38,11 @@ import {
 import {
   clearAskRumblyNegativeFeedback,
   createAskRumblyNegativeFeedback,
+  deliverAskRumblyNegativeFeedback,
   formatAskRumblyFeedbackExport,
   loadAskRumblyNegativeFeedback,
   saveAskRumblyNegativeFeedback,
+  syncPendingAskRumblyNegativeFeedback,
 } from '../askRumbly/developmentFeedback';
 import type { AskRumblyStackParamList } from '../navigation/AskRumblyNavigator';
 import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
@@ -199,6 +201,7 @@ export function AskRumblyScreen({ navigation }: Props) {
   const [showAllResults, setShowAllResults] = useState(false);
   const [responseRating, setResponseRating] = useState<'up' | 'down' | null>(null);
   const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+  const [feedbackDelivery, setFeedbackDelivery] = useState<'sent' | 'pending' | null>(null);
   const [negativeFeedbackCount, setNegativeFeedbackCount] = useState(0);
   const inputRef = useRef<TextInput>(null);
   const pendingLocationRetryRef = useRef<string | null>(null);
@@ -214,9 +217,11 @@ export function AskRumblyScreen({ navigation }: Props) {
   }, [lastSyncedAt]);
 
   useEffect(() => {
-    if (!__DEV__) return;
     loadAskRumblyNegativeFeedback()
-      .then((entries) => setNegativeFeedbackCount(entries.length))
+      .then((entries) => {
+        setNegativeFeedbackCount(entries.length);
+        void syncPendingAskRumblyNegativeFeedback();
+      })
       .catch(() => setNegativeFeedbackCount(0));
   }, []);
 
@@ -273,6 +278,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setDevelopmentDataExpanded(false);
     setShowAllResults(false);
     setResponseRating(null);
+    setFeedbackDelivery(null);
     try {
       let dataForQuery = askData;
       if (menuItems.length === 0 || searchIndex.length === 0) {
@@ -325,6 +331,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setDevelopmentDataExpanded(false);
     setShowAllResults(false);
     setResponseRating(null);
+    setFeedbackDelivery(null);
     inputRef.current?.focus();
   }, []);
 
@@ -336,6 +343,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setDevelopmentDataExpanded(false);
     setShowAllResults(false);
     setResponseRating(null);
+    setFeedbackDelivery(null);
     inputRef.current?.focus();
   }, []);
 
@@ -461,22 +469,21 @@ export function AskRumblyScreen({ navigation }: Props) {
   }, [isSavingFeedback, responseRating]);
 
   const rateResponseDown = useCallback(async () => {
-    // TEMPORARY (owner decision, 2026-08-10): the !__DEV__ guard that used
-    // to live here is gone on purpose, so TestFlight testers' thumbs-down
-    // actually saves -- restore it (or gate on useIsDevOwner) once real
-    // strangers can install the app and this local feedback log stops
-    // being something only the owner's own test devices write to.
     if (!response || !presentation || !submittedQuery || responseRating || isSavingFeedback) return;
     setIsSavingFeedback(true);
     try {
-      const count = await saveAskRumblyNegativeFeedback(createAskRumblyNegativeFeedback({
+      const entry = createAskRumblyNegativeFeedback({
         question: submittedQuery,
         response,
         presentation,
         dataLastSyncedAt: lastSyncedAt,
-      }));
+      });
+      const count = await saveAskRumblyNegativeFeedback(entry);
       setNegativeFeedbackCount(count);
       setResponseRating('down');
+      setFeedbackDelivery('pending');
+      const delivered = await deliverAskRumblyNegativeFeedback(entry);
+      setFeedbackDelivery(delivered ? 'sent' : 'pending');
     } catch {
       Alert.alert('Feedback was not saved', 'Rumbly could not write the development feedback log on this device.');
     } finally {
@@ -756,11 +763,18 @@ export function AskRumblyScreen({ navigation }: Props) {
                 <View style={styles.ratingSection}>
                   {responseRating ? (
                     <Text style={styles.ratingThanks}>
-                      {responseRating === 'down' ? 'Thanks — saved on this device for review.' : 'Thanks — that helps.'}
+                      {responseRating === 'down'
+                        ? feedbackDelivery === 'sent'
+                          ? 'Thanks — anonymous feedback sent for review.'
+                          : 'Thanks — saved and queued to send.'
+                        : 'Thanks — that helps.'}
                     </Text>
                   ) : (
                     <>
                       <Text style={styles.ratingPrompt}>Did this response help?</Text>
+                      <Text style={styles.ratingPrivacy}>
+                        Thumbs down sends the question and response diagnostics anonymously.
+                      </Text>
                       <View style={styles.ratingButtons}>
                         <Pressable
                           accessibilityRole="button"
@@ -1070,6 +1084,14 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.workSansMedium,
     fontSize: 12.5,
     color: COLORS.muted,
+  },
+  ratingPrivacy: {
+    ...text.bodyMuted,
+    maxWidth: 300,
+    marginTop: SPACING.xs,
+    fontSize: 11,
+    lineHeight: 15,
+    textAlign: 'center',
   },
   ratingButtons: {
     flexDirection: 'row',
