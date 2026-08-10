@@ -88,12 +88,18 @@ export async function saveFindFeedContentMode(value: FindFeedContentMode): Promi
   await AsyncStorage.setItem(FIND_FEED_CONTENT_MODE_KEY, value);
 }
 
-// Expo UI migration safety switch. Classic stays the default until each
-// native surface has passed device QA; every converted component must retain
-// its classic implementation while this pilot is active.
+// Expo UI migration safety switch. Every converted native surface must
+// retain its classic implementation so this can still be turned off if a
+// native surface regresses.
+//
+// Native is now the default for anyone with no stored preference yet
+// (owner decision, 2026-08-10 -- was Classic-by-default while the pilot
+// was still being device-QA'd). An explicit prior choice (someone who
+// toggled this off deliberately) is still honored either way -- only the
+// no-value-stored fallback changed.
 export async function loadNativeInteractionsEnabled(): Promise<boolean> {
   const raw = await AsyncStorage.getItem(NATIVE_INTERACTIONS_ENABLED_KEY);
-  return raw === 'true';
+  return raw === null ? true : raw === 'true';
 }
 
 export async function saveNativeInteractionsEnabled(value: boolean): Promise<void> {

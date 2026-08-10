@@ -98,10 +98,46 @@ function FilterIcon({ active }: { active: boolean }) {
   );
 }
 
+const DAYPART_GREETINGS = {
+  morning: [
+    'GOOD MORNING, SNACK SCOUT',
+    'RISE, SHINE & FIND THE PASTRIES',
+    'YOUR BREAKFAST QUEST AWAITS',
+    'MORNINGS ARE BETTER WITH SYRUP',
+    'FIRST COFFEE. THEN ADVENTURE.',
+  ],
+  afternoon: [
+    'GOOD AFTERNOON, TASTE EXPLORER',
+    'YOU\u2019VE EARNED A SNACK BREAK',
+    'THIS AFTERNOON NEEDS MORE CHEESE',
+    'MIDDAY MAGIC, SERVED FRESH',
+    'LET\u2019S FIND YOUR NEXT HAPPY BITE',
+  ],
+  evening: [
+    'GOOD EVENING, DINNER DREAMER',
+    'THE NIGHT IS YOUNG. ORDER DESSERT.',
+    'DINNER IS CALLING. LOUDLY.',
+    'SAVE ROOM FOR SOMETHING SPARKLY',
+    'YOUR NIGHTTIME FEAST AWAITS',
+  ],
+} as const;
+
+type Daypart = keyof typeof DAYPART_GREETINGS;
+const sessionGreetingIndexes: Partial<Record<Daypart, number>> = {};
+
+function daypartForHour(hour: number): Daypart {
+  if (hour < 12) return 'morning';
+  if (hour < 17) return 'afternoon';
+  return 'evening';
+}
+
 function daypartGreeting(hour: number): string {
-  if (hour < 12) return 'GOOD MORNING';
-  if (hour < 17) return 'GOOD AFTERNOON';
-  return 'GOOD EVENING';
+  const daypart = daypartForHour(hour);
+  const greetings = DAYPART_GREETINGS[daypart];
+  const existingIndex = sessionGreetingIndexes[daypart];
+  const index = existingIndex ?? Math.floor(Math.random() * greetings.length);
+  sessionGreetingIndexes[daypart] = index;
+  return greetings[index];
 }
 
 function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; areaLabel: string | null }) {
@@ -1011,91 +1047,93 @@ export function FindHomeScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.daylightHero}>
-        <View style={styles.headerRow}>
-          <Animated.View
-            style={[
-              styles.headerClip,
-              {
-                height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 108] }),
-                opacity: introReveal,
-                transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
-              },
-            ]}
-            pointerEvents="none"
-          >
-            <View style={styles.header}>
-              <Text style={styles.wordmark} accessibilityRole="header">
-                Rumbly<Text style={styles.wordmarkMark}>✦</Text>
-              </Text>
-              <Text style={styles.heroEyebrow}>{daypartGreeting(new Date().getHours())}, EXPLORER</Text>
-              <Text style={styles.heroTitle}>What sounds good today?</Text>
-            </View>
-          </Animated.View>
-          <Animated.View
-            style={[styles.settingsOverlay, { opacity: introReveal }]}
-            pointerEvents={isSearchActive ? 'none' : 'auto'}
-          >
-            <SettingsButton
-              onPress={openAccountSettings}
-              tintColor={DAYLIGHT.ocean}
-              pressedBackgroundColor="rgba(238, 184, 83, 0.28)"
-            />
-          </Animated.View>
-        </View>
-
-        <View style={styles.searchRow}>
-          <Pressable
-            onPress={handleFilterPress}
-            accessibilityLabel={filterPanelState === 'expanded' ? 'Close detailed filters' : 'Show detailed filters'}
-            accessibilityRole="button"
-            accessibilityState={{ expanded: filterPanelState === 'expanded' }}
-            style={[styles.iconButton, filterPanelState === 'expanded' && styles.iconButtonActive]}
-          >
-            <FilterIcon active={filterPanelState === 'expanded'} />
-            {activeFilterCount > 0 && (
-              <View style={styles.filterBadge}>
-                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+      <View style={styles.daylightHeroBackdrop}>
+        <View style={styles.daylightHero}>
+          <View style={styles.headerRow}>
+            <Animated.View
+              style={[
+                styles.headerClip,
+                {
+                  height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 108] }),
+                  opacity: introReveal,
+                  transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+                },
+              ]}
+              pointerEvents="none"
+            >
+              <View style={styles.header}>
+                <Text style={styles.wordmark} accessibilityRole="header">
+                  Rumbly<Text style={styles.wordmarkMark}>✦</Text>
+                </Text>
+                <Text style={styles.heroEyebrow}>{daypartGreeting(new Date().getHours())}</Text>
+                <Text style={styles.heroTitle}>What sounds good today?</Text>
               </View>
-            )}
-          </Pressable>
-
-          <View style={styles.searchInputShell}>
-            <TextInput
-              ref={searchInputRef}
-              style={styles.searchInput}
-              placeholder="Find your next bite"
-              placeholderTextColor={DAYLIGHT.muted}
-              value={query}
-              onChangeText={handleSearchChange}
-              onSubmitEditing={() => rememberQuery()}
-              onFocus={() => setSearchInputFocused(true)}
-              onBlur={() => setSearchInputFocused(false)}
-              autoFocus={initialState.searchInputFocused}
-              autoCorrect={false}
-              accessibilityLabel="Search food, drinks, or restaurants"
-              returnKeyType="search"
-            />
-            {(searchInputFocused || query.trim().length > 0) && (
-              <Pressable
-                onPressIn={handleClearSearch}
-                accessibilityLabel="Clear search"
-                accessibilityRole="button"
-                hitSlop={8}
-                style={styles.clearButton}
-              >
-                <Text style={styles.clearButtonText}>×</Text>
-              </Pressable>
-            )}
+            </Animated.View>
+            <Animated.View
+              style={[styles.settingsOverlay, { opacity: introReveal }]}
+              pointerEvents={isSearchActive ? 'none' : 'auto'}
+            >
+              <SettingsButton
+                onPress={openAccountSettings}
+                tintColor={DAYLIGHT.ocean}
+                pressedBackgroundColor="rgba(238, 184, 83, 0.28)"
+              />
+            </Animated.View>
           </View>
 
-          <NearMeButton
-            active={nearMeActive}
-            status={nearMeStatus}
-            onPress={() => void handleNearMePress()}
-            accentColor={DAYLIGHT.ocean}
-            borderColor={DAYLIGHT.border}
-          />
+          <View style={styles.searchRow}>
+            <Pressable
+              onPress={handleFilterPress}
+              accessibilityLabel={filterPanelState === 'expanded' ? 'Close detailed filters' : 'Show detailed filters'}
+              accessibilityRole="button"
+              accessibilityState={{ expanded: filterPanelState === 'expanded' }}
+              style={[styles.iconButton, filterPanelState === 'expanded' && styles.iconButtonActive]}
+            >
+              <FilterIcon active={filterPanelState === 'expanded'} />
+              {activeFilterCount > 0 && (
+                <View style={styles.filterBadge}>
+                  <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+                </View>
+              )}
+            </Pressable>
+
+            <View style={styles.searchInputShell}>
+              <TextInput
+                ref={searchInputRef}
+                style={styles.searchInput}
+                placeholder="Find your next bite"
+                placeholderTextColor={DAYLIGHT.muted}
+                value={query}
+                onChangeText={handleSearchChange}
+                onSubmitEditing={() => rememberQuery()}
+                onFocus={() => setSearchInputFocused(true)}
+                onBlur={() => setSearchInputFocused(false)}
+                autoFocus={initialState.searchInputFocused}
+                autoCorrect={false}
+                accessibilityLabel="Search food, drinks, or restaurants"
+                returnKeyType="search"
+              />
+              {(searchInputFocused || query.trim().length > 0) && (
+                <Pressable
+                  onPressIn={handleClearSearch}
+                  accessibilityLabel="Clear search"
+                  accessibilityRole="button"
+                  hitSlop={8}
+                  style={styles.clearButton}
+                >
+                  <Text style={styles.clearButtonText}>×</Text>
+                </Pressable>
+              )}
+            </View>
+
+            <NearMeButton
+              active={nearMeActive}
+              status={nearMeStatus}
+              onPress={() => void handleNearMePress()}
+              accentColor={DAYLIGHT.ocean}
+              borderColor={DAYLIGHT.border}
+            />
+          </View>
         </View>
       </View>
 
@@ -1365,12 +1403,14 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   allergyResultTitle: { marginBottom: SPACING.xs },
+  daylightHeroBackdrop: {
+    backgroundColor: DAYLIGHT.mist,
+  },
   daylightHero: {
     overflow: 'hidden',
     backgroundColor: DAYLIGHT.sky,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
-    marginBottom: SPACING.md,
   },
   header: {
     alignItems: 'flex-start',

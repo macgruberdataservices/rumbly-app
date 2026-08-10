@@ -13,10 +13,11 @@ import { AllergyInfoSheet } from './AllergyInfoSheet';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from './GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from './swipeableCoordinator';
 import { isNewMenuItem } from '../data/newItem';
-import { formatRatingAverage } from '../data/ratingAverage';
 import { getItemIdentityKeyFor } from '../data/itemIdentity';
+import { sanitizeRestaurantDescription } from '../data/restaurantDescription';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
+import { MenuItemRatingSummary } from './MenuItemRatingSummary';
 
 // Fixed so every row lays out identically regardless of description
 // length -- name and description each get one line with ellipsis
@@ -52,6 +53,11 @@ const ROW_HEIGHT = 68;
 // custom-written Expo Modules API native module (Swift, no dependency on
 // the broken chain) if this is worth real native-code investment later.
 export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; highlighted?: boolean }) {
+  // Source descriptions come through with raw HTML (e.g. "<p>Sweet Thai
+  // Chili Dipping Sauce</p>") -- same sanitizer Restaurant.description
+  // already goes through, reused here since the logic isn't actually
+  // restaurant-specific.
+  const description = sanitizeRestaurantDescription(item.description);
   // "Allergy option available" is deliberately NOT in this list -- it's
   // rendered as its own tappable badge in MenuItemPreviewCard (opens
   // AllergyInfoSheet's hedged copy + Disney link) rather than an inert
@@ -86,9 +92,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
   const isLoved = lovedItemKeys.has(key);
   const isNeeded = needItItemKeys.has(key);
   const gotItCount = gotItItemCounts.get(key) ?? 0;
-  const ratingAverageLabel = ratingAveragesEnabled
-    ? formatRatingAverage(itemRatingAverages.get(key))
-    : null;
+  const ratingAverage = ratingAveragesEnabled ? itemRatingAverages.get(key) : undefined;
 
   const swipeableRef = useRef<Swipeable>(null);
   const rowRef = useRef<View>(null);
@@ -253,7 +257,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
               });
             }}
             accessible
-            accessibilityLabel={[item.item, isNew && 'New', item.price_display, item.description, ...badges].filter(Boolean).join(', ')}
+            accessibilityLabel={[item.item, isNew && 'New', item.price_display, description, ...badges].filter(Boolean).join(', ')}
             accessibilityState={{ selected: highlighted }}
             style={[
               styles.row,
@@ -269,11 +273,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
                 <Text style={[text.restaurantName, styles.name]} numberOfLines={1}>
                   {item.item}
                 </Text>
-                {!!ratingAverageLabel && (
-                  <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
-                    {ratingAverageLabel}
-                  </Text>
-                )}
+                <MenuItemRatingSummary ratingAverage={ratingAverage} />
               </View>
               {isNew && (
                 <View style={styles.newBadge}>
@@ -282,9 +282,9 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
               )}
               <Text style={[text.body, styles.price]}>{item.price_display}</Text>
             </View>
-            {!!item.description && (
+            {!!description && (
               <Text style={[text.bodyMuted, styles.description]} numberOfLines={1}>
-                {item.description}
+                {description}
               </Text>
             )}
           </AnimatedPressable>
@@ -293,7 +293,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
       <MenuItemPreviewCard
         item={previewVisible ? item : null}
         badges={badges}
-        ratingAverage={ratingAveragesEnabled ? itemRatingAverages.get(key) : undefined}
+        ratingAverage={ratingAverage}
         origin={previewOrigin}
         onClose={() => {
           setPreviewVisible(false);
@@ -388,10 +388,6 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: 14,
-  },
-  ratingAverage: {
-    fontSize: 12,
-    color: COLORS.gold,
   },
   newBadge: {
     backgroundColor: COLORS.gold,

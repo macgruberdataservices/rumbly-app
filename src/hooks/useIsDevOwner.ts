@@ -6,7 +6,15 @@ import { useAuth } from './useAuth';
 // entitlements are also just a client-side flag check).
 const DEV_OWNER_EMAIL = 'jastoney@gmail.com';
 
+// TEMPORARY (owner decision, 2026-08-10): opened to every user so
+// TestFlight testers can reach Development settings and the Ask Rumbly
+// thumbs up/down. Restore `user?.email?.toLowerCase() === DEV_OWNER_EMAIL`
+// below before a public/App Store release -- this is a client-side-only
+// check, appropriate for gating low-stakes dev toggles from casual users,
+// not for anything that needs to stay owner-only once real strangers can
+// install the app.
 export function useIsDevOwner(): boolean {
   const { user } = useAuth();
-  return user?.email?.toLowerCase() === DEV_OWNER_EMAIL;
+  void user;
+  return true;
 }

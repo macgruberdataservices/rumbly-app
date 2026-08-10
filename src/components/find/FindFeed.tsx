@@ -385,7 +385,7 @@ export function FindFeed({
     return (
       <View style={styles.loading}>
         <ActivityIndicator color={COLORS.forest} />
-        <Text style={text.bodyMuted}>Building your feed…</Text>
+        <Text style={text.bodyMuted}>Feeding your Feed…</Text>
       </View>
     );
   }

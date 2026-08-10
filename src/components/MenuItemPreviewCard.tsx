@@ -3,9 +3,11 @@ import { Animated, Modal, Pressable, StyleSheet, Text, View, useWindowDimensions
 import type { MenuItem } from '../data/types';
 import { isNewMenuItem } from '../data/newItem';
 import { formatDateLabel } from '../data/changes';
-import { formatRatingAverage, type RatingAverage } from '../data/ratingAverage';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
-import { text } from '../theme/typography';
+import { sanitizeRestaurantDescription } from '../data/restaurantDescription';
+import type { RatingAverage } from '../data/ratingAverage';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
+import { FONT_FAMILY, text } from '../theme/typography';
+import { MenuItemRatingSummary } from './MenuItemRatingSummary';
 
 interface Origin {
   x: number;
@@ -50,6 +52,9 @@ export function MenuItemPreviewCard({
 }) {
   const { width: screenWidth, height: screenHeight } = useWindowDimensions();
   const growAnim = useRef(new Animated.Value(0)).current;
+  // Same raw-HTML issue Restaurant.description has (e.g. "<p>Sweet Thai
+  // Chili Dipping Sauce</p>") -- reusing its sanitizer here too.
+  const description = sanitizeRestaurantDescription(item?.description ?? null);
 
   useEffect(() => {
     if (item) {
@@ -82,9 +87,12 @@ export function MenuItemPreviewCard({
           <Pressable onPress={onClose}>
             {item && (
               <>
+                <View style={styles.eyebrowRow}>
+                  <Text style={styles.eyebrow}>MENU FIND</Text>
+                  <Text style={styles.pricePill}>{item.price_display}</Text>
+                </View>
                 <View style={styles.titleRow}>
                   <Text style={[text.sectionTitle, styles.name]}>{item.item}</Text>
-                  <Text style={text.body}>{item.price_display}</Text>
                 </View>
                 <View style={styles.addedRow}>
                   {isNewMenuItem(item.first_seen) && (
@@ -94,11 +102,12 @@ export function MenuItemPreviewCard({
                   )}
                   <Text style={text.bodyMuted}>Added {formatDateLabel(item.first_seen)}</Text>
                 </View>
-                {!!formatRatingAverage(ratingAverage) && (
-                  <Text style={[text.bodyMuted, styles.ratingAverage]}>{formatRatingAverage(ratingAverage)}</Text>
-                )}
-                {!!item.description && (
-                  <Text style={[text.bodyMuted, styles.description]}>{item.description}</Text>
+                <MenuItemRatingSummary ratingAverage={ratingAverage} variant="feature" />
+                {!!description && (
+                  <View style={styles.descriptionPanel}>
+                    <Text style={styles.descriptionEyebrow}>THE DETAILS</Text>
+                    <Text style={[text.bodyMuted, styles.description]}>{description}</Text>
+                  </View>
                 )}
                 {(badges.length > 0 || item.has_allergy_option) && (
                   <View style={styles.badgeRow}>
@@ -145,17 +154,48 @@ export function MenuItemPreviewCard({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(23, 40, 45, 0.46)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.xxl,
   },
   card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADII.lg,
+    overflow: 'hidden',
+    backgroundColor: DAYLIGHT.paper,
+    borderRadius: RADII.xl,
     paddingVertical: SPACING.xl,
     paddingHorizontal: SPACING.xl,
     width: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.52)',
+    shadowColor: DAYLIGHT.ink,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  eyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 1.1,
+    color: DAYLIGHT.coral,
+  },
+  pricePill: {
+    overflow: 'hidden',
+    borderRadius: 14,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    backgroundColor: DAYLIGHT.sky,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 11,
+    color: DAYLIGHT.ocean,
   },
   titleRow: {
     flexDirection: 'row',
@@ -165,6 +205,8 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
+    fontSize: 24,
+    lineHeight: 28,
   },
   newBadge: {
     backgroundColor: COLORS.gold,
@@ -184,12 +226,23 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     marginTop: SPACING.xs,
   },
-  ratingAverage: {
-    color: COLORS.gold,
-    marginTop: SPACING.xs,
+  descriptionPanel: {
+    marginTop: SPACING.md,
+    borderRadius: RADII.md,
+    padding: SPACING.md,
+    backgroundColor: DAYLIGHT.sky,
+  },
+  descriptionEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 8.5,
+    letterSpacing: 0.9,
+    color: DAYLIGHT.ocean,
   },
   description: {
-    marginTop: SPACING.sm,
+    marginTop: SPACING.xs,
+    fontSize: 13,
+    lineHeight: 18,
+    color: DAYLIGHT.ink,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -198,27 +251,25 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   badge: {
-    borderWidth: 1,
-    borderColor: COLORS.borderMid,
-    borderRadius: 6,
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    backgroundColor: '#D8EEE4',
   },
   badgeTappable: {
-    borderColor: COLORS.forest,
-    backgroundColor: COLORS.goldLight,
+    backgroundColor: '#FFF0BD',
   },
   journalButton: {
     minHeight: 44,
     marginTop: SPACING.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADII.sm,
-    backgroundColor: COLORS.pine,
+    borderRadius: RADII.lg,
+    backgroundColor: DAYLIGHT.ocean,
   },
   journalButtonLabel: {
     fontFamily: text.buttonLabel.fontFamily,
     fontSize: 12,
-    color: COLORS.ink,
+    color: DAYLIGHT.paper,
   },
 });

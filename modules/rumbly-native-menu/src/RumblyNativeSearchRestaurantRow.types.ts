@@ -5,6 +5,7 @@ export interface NativeSearchRestaurantRow {
   restaurantId: string;
   name: string;
   meta: string;
+  description: string | null;
   highlightQuery: string | null;
   isNeeded: boolean;
   isLoved: boolean;

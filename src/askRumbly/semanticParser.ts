@@ -57,7 +57,7 @@ const KITCHEN_PATTERN = /\b(?:dedicated,?\s+(?:(?:allergy[\s-]?(?:friendly )?)|(
 const CROSS_CONTACT_PATTERN = /\bcross[\s-]?(?:contact|contamination)\b|\bcontaminat(?:e|ed|ion)\b/i;
 const INGREDIENT_PATTERN = /\b(?:ingredients?|contain|made (?:with|from)|what(?:'s| is) in|avoid|free of|healthy|nutritious|nutrition(?:al)?|isn't fried|is not fried|not fried|keto(?:[ -]friendly)?|low[ -]carb|zero[ -]carb(?:ohydrate)?|sugar[ -]free|low[ -]glycemic)\b|\bis there\s+(?:soy|milk|dairy|egg|sesame|peanut|tree nut|fish|shellfish|gluten|wheat)\s+in\b/i;
 const SAFETY_PATTERN = /\b(?:safe|safely|safest|safety|certified|risk[- ]free|guarantee|trust)\b/i;
-const EDITORIAL_PATTERN = /\b(?:best|better|worst|good|great|decent|signature|downgrade|worth(?: the splurge| it| eating)?|hype|overrated|overpriced|quietest|tourist traps?|secret menu|food crawl|weird|gimmicky|funny|fancy date|highest[ -]rated|hidden gem|must[ -]eat|ultimate|top \d+|top dessert|most famous|real bbq|fake theme park|good value|fastest|shortest|most accommodating|most thorough|least risky|recommend(?:ed|ation)?|reviews?|mistakes?|gotten worse)\b/i;
+const EDITORIAL_PATTERN = /\b(?:best|better|worst|good|great|decent|favorite|signature|downgrade|worth(?: the splurge| it| eating)?|hype|overrated|overpriced|quietest|tourist traps?|secret menu|food crawl|weird|gimmicky|funny|fancy date|highest[ -]rated|hidden gem|must[ -]eat|ultimate|top \d+|top dessert|most famous|real bbq|fake theme park|good value|fastest|shortest|most accommodating|most thorough|least risky|recommend(?:ed|ation)?|reviews?|mistakes?|gotten worse)\b/i;
 const REPORTED_OUTCOME_PATTERN = /\b(?:reviews?|mistakes?|reported recently|gotten worse)\b/i;
 const VENUE_AMENITY_PATTERN = /\b(?:quiet(?:est)?|shade|shaded|outdoor seating|air[ -]con(?:ditioned)?|air[ -]conditioned|indoors?|out of (?:the )?(?:heat|rain)|views?|castle views?|fireworks? (?:views?|show)|view (?:the )?(?:nighttime )?fireworks|live music(?:al entertainment)?|away from crowds|giant aquarium|surrounded by sea life|latte art|printed on the foam)\b/i;
 const LIVE_AVAILABILITY_PATTERN = /\b(?:available|availability|join|wait ?list|wait times?|line time|huge wait|same[\s-]?day|right now|currently|still (?:get|book)|to[ -]?go[\s\S]*app)\b/i;
@@ -171,7 +171,9 @@ function extractAllergens(query: string): { keys: string[]; spans: SourceSpan[];
     entry.keys.forEach((key) => keys.add(key));
     spans.push(...matches);
   }
-  const allergyContext = /\b(?:allerg(?:y|ies|ic|en|ens)|celiac|intoleran(?:t|ce))\b/i.test(query);
+  const explicitAllergyContext = /\b(?:allerg(?:y|ies|ic|en|ens)|celiac|intoleran(?:t|ce))\b/i.test(query);
+  const safetyAllergenContext = /\b(?:gluten|wheat|dairy|milk|egg|fish|shellfish|peanut|tree[\s-]?nut|nut|sesame|soy)\b[\s\S]{0,24}\b(?:safe|safely|safest)\b|\b(?:safe|safely|safest)\b[\s\S]{0,24}\b(?:gluten|wheat|dairy|milk|egg|fish|shellfish|peanut|tree[\s-]?nut|nut|sesame|soy)\b/i.test(query);
+  const allergyContext = explicitAllergyContext || safetyAllergenContext;
   if (allergyContext) {
     const contextualAllergens: ReadonlyArray<{ key: string; pattern: RegExp }> = [
       { key: 'gluten-wheat', pattern: /\b(?:gluten|wheat|celiac)\b/gi },
@@ -270,10 +272,20 @@ function requestedAction(query: string, claimType: ClaimType, entities: LinkedEn
 
 function foodCapture(query: string): string {
   const patterns = [
+    // Subjective ranking language still needs a concrete food object so the
+    // app can transparently offer verified options without pretending it can
+    // identify a winner.
+    /\b(?:where(?:'s| is)|what(?:'s| is)|which is)\s+(?:(?:the|your)\s+)?(?:best|top|highest[ -]rated|favorite|must[ -]eat)\s+(.+?)\??$/i,
+    /\bwhat\s+(.+?)\s+do you recommend\??$/i,
+    /\brecommend\s+(?:me\s+)?(?!(?:(?:a|some)\s+)?(?:place|restaurant|location|spot|stand|somewhere)\b)(?:a\s+|some\s+)?(.+?)\??$/i,
+    // Conversational wrappers should not make a guest translate their request
+    // into search-engine grammar. Keep the bounded acquisition verb as the
+    // semantic anchor, then parse the captured object normally.
+    /\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:help\s+(?:me|us)\s+)?(?:find|get|show|suggest|recommend)\s+(?:me\s+|us\s+)?(.+?)\??$/i,
     // "Suggest a place get a burger" is ordinary discovery language, not
     // a request for an editorial ranking. Guests often omit the optional
     // "to" in this compact app-query form, so accept both versions.
-    /\b(?:suggest|suggests|suggested)\s+(?:me\s+)?(?:a\s+)?(?:place|restaurant|location|spot|stand|somewhere)\s+(?:to\s+)?(?:get|find|buy|order|grab|eat|have|try)\s+(.+?)\??$/i,
+    /\b(?:suggest|suggests|suggested|recommend|recommends|recommended)\s+(?:me\s+)?(?:a\s+)?(?:place|restaurant|location|spot|stand|somewhere)\s+(?:to\s+)?(?:get|find|buy|order|grab|eat|have|try)\s+(.+?)\??$/i,
     /\b(?:suggest|suggests|suggested)\s+(?:me\s+)?(?:a\s+)?(.+?)\s+(?:place|restaurant|spot)\??$/i,
     /\b(?:does|do|has|have)\b[\s\S]*?\b(?:have|serve|sell|offer)\s+(.+?)\??$/i,
     /\b(?:where|what place|which place|what restaurant|which restaurant|which locations?|which spots?|which stands?|what [\w-]+ (?:dining )?(?:option|location))[\s\S]*?\b(?:get|find|serves?|sells?|offers?|buy|order|grab|eat)\s+(.+?)\??$/i,
@@ -348,6 +360,7 @@ function normalizeFoodTerm(term: string): string {
     .replace(/^[\s,]+/, '')
     .replace(/^[\s,]*(?:(?:a|an|the|some|any|those|that)\s+)+/i, '')
     .replace(/^(?:a|an|the)$/i, '')
+    .replace(/^(?:best|top(?:\s+\d+)?|highest[ -]rated|favorite|must[ -]eat|most famous|signature)\s+/i, '')
     .replace(/^(?:iconic disney snacks like|disney (?:snacks )?like|comfort (?:food )?classics like)\s+/i, '')
     .replace(/^(?:(?:big|classic|fresh|freshly made|warm|savory|authentic|famous|iconic|refreshing|specialty|custom|customized|giant|quick|full|alcoholic|non-alcoholic)\s+)+/i, '')
     .replace(/^or\s+/i, '')
@@ -489,7 +502,7 @@ function meaningfulUnconsumed(query: string, spans: SourceSpan[]): string {
     .replace(/(?:^|\s)'(?:re|ve|ll|d|t)(?:\s|$)/gi, ' ')
     .replace(/(?:^|\s)-(?:\s|$)/g, ' ')
     .replace(/(?:^|\s)'?m(?:\s|$)/gi, ' ')
-    .replace(/\b(?:what|whats|where|which|who|how|does|do|is|are|am|can|could|would|should|i|im|my|me|we|our|son|wife|daughter|kid|yo|rn|asap|a|an|the|this|that|at|in|inside|near|around|by|to|for|of|on|with|and|or|as|about|through|before|please|tell|help|get|find|show|see|view|suggest|suggests|suggested|want|wanna|need|go|heading|later|place|places|location|locations|spot|spots|stand|stands|restaurant|restaurants|resort|dining|have|has|sell|sells|offer|offers|allow|allows|buy|order|grab|serve|serves|serving|eat|eating|food|foods|option|options|item|items|dish|dishes|meal|meals|anything|something|any|anywhere|there|right|now|today|tomorrow|tonight|morning|still|actually|also|too|again|standing|together|family|unique|year|available|advance|app|clearly|accommodate|accommodates|accommodation|accommodations|disney|list|lists|listed|label|labels|labeled|labelled|menu|allergy|allergies|allergic|allergen|allergens|safe|safely|safest|safety|best|better|worst|good|compare|cheapest|closest|nearest|open|broke|send|dreaming|per|person)\b/gi, ' ')
+    .replace(/\b(?:what|whats|where|which|who|how|does|do|is|are|am|can|could|would|should|i|im|you|your|my|me|we|us|our|son|wife|daughter|kid|yo|rn|asap|a|an|the|this|that|at|in|inside|near|around|by|to|for|of|on|with|and|or|as|about|through|before|please|tell|help|get|find|show|see|view|suggest|suggests|suggested|want|wanna|need|go|heading|later|place|places|location|locations|spot|spots|stand|stands|restaurant|restaurants|resort|dining|have|has|sell|sells|offer|offers|allow|allows|buy|order|grab|serve|serves|serving|eat|eating|food|foods|option|options|item|items|dish|dishes|meal|meals|anything|something|any|anywhere|there|right|now|today|tomorrow|tonight|morning|still|actually|also|too|again|standing|together|family|unique|year|available|advance|app|clearly|accommodate|accommodates|accommodation|accommodations|disney|list|lists|listed|label|labels|labeled|labelled|menu|allergy|allergies|allergic|allergen|allergens|safe|safely|safest|safety|best|better|worst|good|compare|cheapest|closest|nearest|open|broke|send|dreaming|per|person)\b/gi, ' ')
     .replace(/(?:^|\s)'(?:re|ve|ll|d|t)(?:\s|$)/gi, ' ')
     .replace(/(?:^|\s)&(?:\s|$)/g, ' ')
     .replace(/\s+/g, ' ')
@@ -528,7 +541,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   const hungerSpans = hungerOnly ? collectPatternSpans(analysisText, /[\s\S]+/g) : [];
   const discourseSpans = collectPatternSpans(
     analysisText,
-    /\b(?:yo|asap|send help|or am i dreaming|my wife'?s|i'?m broke|we'?re)\b/gi
+    /\b(?:hey|hi|hello|okay|ok)[,\s]+(?:rumbly\b[,\s]*)?|\brumbly\b[,\s]*|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:help\s+(?:me|us)\s+)?(?:find|get|show|suggest|recommend)\s+(?:me|us\s+)?|\b(?:yo|asap|send help|or am i dreaming|my wife'?s|i'?m broke|we'?re)\b/gi
   );
   const menuRoutingSpans = collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi);
   const excludedFoods = extractExcludedFoods(analysisText);
@@ -579,6 +592,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     ...(claimType === 'restaurant_location' ? collectPatternSpans(analysisText, /\bfar(?:\s+away)?\b/gi) : []),
     ...collectPatternSpans(analysisText, /\b(?:cart|stand|location)(?=\s+(?:at|in|near|around|by)?\s*[a-z]|\s*[?.!]*$)/gi),
     ...collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi),
+    ...(claimType === 'editorial_judgment' ? collectPatternSpans(analysisText, EDITORIAL_PATTERN) : []),
     ...(fallbackFoodSpan ? [fallbackFoodSpan] : []),
   ];
   const parsedLocations = locationConstraints(analysisText, linkedEntities);

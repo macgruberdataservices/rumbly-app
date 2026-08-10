@@ -4,9 +4,10 @@ import type { Restaurant, SearchIndexEntry } from '../../data/types';
 import { restaurantLocationLabel } from '../../data/locationNames';
 import { isNewMenuItem } from '../../data/newItem';
 import { formatDateLabel } from '../../data/changes';
-import { formatRatingAverage, type RatingAverage } from '../../data/ratingAverage';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
-import { text } from '../../theme/typography';
+import type { RatingAverage } from '../../data/ratingAverage';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
+import { FONT_FAMILY, text } from '../../theme/typography';
+import { MenuItemRatingSummary } from '../MenuItemRatingSummary';
 
 interface Origin {
   x: number;
@@ -94,9 +95,12 @@ export function ItemResultPreviewCard({
           <Pressable onPress={onOpen}>
             {item && (
               <>
+                <View style={styles.eyebrowRow}>
+                  <Text style={styles.eyebrow}>MENU FIND</Text>
+                  <Text style={styles.pricePill}>{item.price_display}</Text>
+                </View>
                 <View style={styles.titleRow}>
                   <Text style={[text.sectionTitle, styles.name]}>{item.item}</Text>
-                  <Text style={text.body}>{item.price_display}</Text>
                 </View>
                 <View style={styles.addedRow}>
                   {isNewMenuItem(item.first_seen) && (
@@ -106,14 +110,20 @@ export function ItemResultPreviewCard({
                   )}
                   <Text style={text.bodyMuted}>Added {formatDateLabel(item.first_seen)}</Text>
                 </View>
-                <Text style={[text.body, styles.restaurant]}>{restaurant.restaurant}</Text>
-                <Text style={[text.bodyMuted, styles.location]}>{restaurantLocationLabel(restaurant)}</Text>
+                <View style={styles.restaurantPanel}>
+                  <Text style={[text.body, styles.restaurant]}>{restaurant.restaurant}</Text>
+                  <Text style={[text.bodyMuted, styles.location]}>{restaurantLocationLabel(restaurant)}</Text>
+                </View>
                 {statusLabels.length > 0 && (
-                  <Text style={[text.bodyMuted, styles.status]}>{statusLabels.join(' · ')}</Text>
+                  <View style={styles.statusRow}>
+                    {statusLabels.map((label) => (
+                      <View key={label} style={styles.statusPill}>
+                        <Text style={styles.status}>{label}</Text>
+                      </View>
+                    ))}
+                  </View>
                 )}
-                {!!formatRatingAverage(ratingAverage) && (
-                  <Text style={[text.bodyMuted, styles.ratingAverage]}>{formatRatingAverage(ratingAverage)}</Text>
-                )}
+                <MenuItemRatingSummary ratingAverage={ratingAverage} variant="feature" />
                 {(badges.length > 0 || item.has_allergy_option) && (
                   <View style={styles.badgeRow}>
                     {badges.map((b) => (
@@ -154,17 +164,48 @@ export function ItemResultPreviewCard({
 const styles = StyleSheet.create({
   backdrop: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.4)',
+    backgroundColor: 'rgba(23, 40, 45, 0.46)',
     justifyContent: 'center',
     alignItems: 'center',
     paddingHorizontal: SPACING.xxl,
   },
   card: {
-    backgroundColor: COLORS.surface,
-    borderRadius: RADII.lg,
+    overflow: 'hidden',
+    backgroundColor: DAYLIGHT.paper,
+    borderRadius: RADII.xl,
     paddingVertical: SPACING.xl,
     paddingHorizontal: SPACING.xl,
     width: '100%',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.52)',
+    shadowColor: DAYLIGHT.ink,
+    shadowOffset: { width: 0, height: 14 },
+    shadowOpacity: 0.22,
+    shadowRadius: 24,
+    elevation: 10,
+  },
+  eyebrowRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.sm,
+  },
+  eyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 1.1,
+    color: DAYLIGHT.coral,
+  },
+  pricePill: {
+    overflow: 'hidden',
+    borderRadius: 14,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    backgroundColor: DAYLIGHT.sky,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 11,
+    color: DAYLIGHT.ocean,
   },
   titleRow: {
     flexDirection: 'row',
@@ -174,6 +215,8 @@ const styles = StyleSheet.create({
   },
   name: {
     flex: 1,
+    fontSize: 24,
+    lineHeight: 28,
   },
   newBadge: {
     backgroundColor: COLORS.gold,
@@ -193,19 +236,35 @@ const styles = StyleSheet.create({
     gap: SPACING.xs,
     marginTop: SPACING.xs,
   },
+  restaurantPanel: {
+    marginTop: SPACING.md,
+    borderRadius: RADII.md,
+    padding: SPACING.md,
+    backgroundColor: DAYLIGHT.sky,
+  },
   restaurant: {
-    marginTop: SPACING.sm,
+    fontFamily: FONT_FAMILY.workSansBold,
+    color: DAYLIGHT.ink,
   },
   location: {
     marginTop: 2,
   },
-  status: {
-    marginTop: SPACING.xs,
-    color: COLORS.pine,
+  statusRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
   },
-  ratingAverage: {
-    marginTop: SPACING.xs,
-    color: COLORS.gold,
+  statusPill: {
+    borderRadius: 12,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    backgroundColor: '#F3D4C9',
+  },
+  status: {
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 10,
+    color: DAYLIGHT.ink,
   },
   badgeRow: {
     flexDirection: 'row',
@@ -214,27 +273,25 @@ const styles = StyleSheet.create({
     marginTop: SPACING.md,
   },
   badge: {
-    borderWidth: 1,
-    borderColor: COLORS.borderMid,
-    borderRadius: 6,
-    paddingHorizontal: SPACING.xs,
-    paddingVertical: 2,
+    borderRadius: 12,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    backgroundColor: '#D8EEE4',
   },
   badgeTappable: {
-    borderColor: COLORS.forest,
-    backgroundColor: COLORS.goldLight,
+    backgroundColor: '#FFF0BD',
   },
   journalButton: {
     minHeight: 44,
     marginTop: SPACING.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADII.sm,
-    backgroundColor: COLORS.pine,
+    borderRadius: RADII.lg,
+    backgroundColor: DAYLIGHT.ocean,
   },
   journalButtonLabel: {
     fontFamily: text.buttonLabel.fontFamily,
     fontSize: 12,
-    color: COLORS.ink,
+    color: DAYLIGHT.paper,
   },
 });

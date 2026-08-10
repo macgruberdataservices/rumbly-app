@@ -49,6 +49,7 @@ test('second-pass companion surfaces have stable illustration contracts', () => 
     'ask.hero.companion.v1',
     'activity.state.empty.v1',
     'changes.hero.whats-new.v1',
+    'explore.editorial.exclusive-items.v1',
   ]) {
     assert.ok(tagId in ILLUSTRATION_SPECS);
   }

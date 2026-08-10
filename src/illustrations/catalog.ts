@@ -37,6 +37,12 @@ export const ILLUSTRATION_SPECS = {
     backgroundColor: '#D8EEE4',
     accentColor: '#24684C',
   },
+  'explore.editorial.exclusive-items.v1': {
+    label: 'Limited-time menu finds',
+    brief: 'A ticket stub, short food trail, and celebratory star for event-exclusive menus; generic enough to work across seasons.',
+    backgroundColor: '#F8E5B9',
+    accentColor: '#D96F4D',
+  },
   'journal.state.empty.v1': {
     label: 'Empty journal',
     brief: 'An open notebook with one friendly food-memory mark and generous empty space.',

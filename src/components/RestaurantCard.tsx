@@ -9,6 +9,7 @@ import { useDataProvider } from '../hooks/useDataProvider';
 import { getTodayStatus } from '../data/hoursStatus';
 import { HighlightedText } from './HighlightedText';
 import { RestaurantPreviewCard } from './RestaurantPreviewCard';
+import { sanitizeRestaurantDescription } from '../data/restaurantDescription';
 import { COLORS, DAYLIGHT, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { restaurantLocationLabel } from '../data/locationNames';
@@ -47,6 +48,13 @@ export interface RestaurantCardProps {
   highlightQuery?: string;
   distanceMiles?: number | null;
   onPress: () => void;
+  // Opt-in, not a default -- RestaurantCard is shared between Explore's
+  // area-by-area browsing (RestaurantListScreen, wants the blurb) and
+  // Find's search results (FindHomeScreen, doesn't). Defaults to false so
+  // every existing call site is unaffected unless it explicitly asks in.
+  // The nativeInteractionsEnabled path receives the same opt-in and
+  // sanitizes the description before passing it across the native bridge.
+  showDescription?: boolean;
 }
 
 export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function RestaurantCard(
@@ -61,9 +69,10 @@ export const RestaurantCard = forwardRef<View, RestaurantCardProps>(function Res
 });
 
 const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function ClassicRestaurantCard(
-  { restaurant, highlightQuery, distanceMiles, onPress },
+  { restaurant, highlightQuery, distanceMiles, onPress, showDescription },
   ref
 ) {
+  const description = showDescription ? sanitizeRestaurantDescription(restaurant.description) : '';
   const { lovedIds, gotItRestaurantCounts, restaurantRatingAverages } = useActivity();
   const gotItEnabled = useEntitlement('got_it');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
@@ -128,7 +137,7 @@ const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function Cla
           });
         }}
         accessibilityRole="button"
-        accessibilityLabel={[restaurant.restaurant, ...metaParts].join(', ')}
+        accessibilityLabel={[restaurant.restaurant, ...metaParts, description].filter(Boolean).join(', ')}
         style={[
           styles.card,
           {
@@ -152,6 +161,11 @@ const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function Cla
         </View>
         {metaParts.length > 0 && (
           <Text style={[text.bodyMuted, styles.meta]}>{metaParts.join(' · ')}</Text>
+        )}
+        {!!description && (
+          <Text style={[text.bodyMuted, styles.description]} numberOfLines={1}>
+            {description}
+          </Text>
         )}
       </AnimatedPressable>
       <RestaurantPreviewCard
@@ -197,6 +211,9 @@ const styles = StyleSheet.create({
     backgroundColor: DAYLIGHT.ocean,
   },
   meta: {
+    marginTop: 2,
+  },
+  description: {
     marginTop: 2,
   },
 });

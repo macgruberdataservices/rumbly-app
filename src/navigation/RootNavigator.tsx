@@ -7,6 +7,7 @@ import { PlatformPressable } from '@react-navigation/elements';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import Svg, { Path } from 'react-native-svg';
 import { FindNavigator, type FindStackParamList } from './FindNavigator';
 import { ExploreNavigator, type ExploreStackParamList } from './ExploreNavigator';
 import { MyRumblyNavigator, type MyRumblyStackParamList } from './MyRumblyNavigator';
@@ -38,12 +39,15 @@ function FindIcon({ color }: { color: string }) {
   );
 }
 
-function ExploreIcon({ color }: { color: string }) {
+function ExploreIcon({ color, focused }: { color: string; focused: boolean }) {
   return (
     <View style={styles.iconFrame}>
-      <View style={[styles.compassOuter, { borderColor: color }]}>
-        <View style={[styles.compassNeedle, { borderBottomColor: color }]} />
-      </View>
+      <Svg width={25} height={25} viewBox="0 0 24 24" accessibilityElementsHidden>
+        <Path
+          d="M12 1.25 C13.25 7.05 16.95 10.75 22.75 12 C16.95 13.25 13.25 16.95 12 22.75 C10.75 16.95 7.05 13.25 1.25 12 C7.05 10.75 10.75 7.05 12 1.25 Z"
+          fill={focused ? DAYLIGHT.coral : color}
+        />
+      </Svg>
     </View>
   );
 }
@@ -69,9 +73,9 @@ function AskRumblyIcon({ color }: { color: string }) {
   );
 }
 
-function TabIcon({ routeName, color }: { routeName: keyof RootTabParamList; color: string }) {
+function TabIcon({ routeName, color, focused }: { routeName: keyof RootTabParamList; color: string; focused: boolean }) {
   if (routeName === 'Find') return <FindIcon color={color} />;
-  if (routeName === 'Explore') return <ExploreIcon color={color} />;
+  if (routeName === 'Explore') return <ExploreIcon color={color} focused={focused} />;
   if (routeName === 'AskRumbly') return <AskRumblyIcon color={color} />;
   return <MyRumblyIcon color={color} />;
 }
@@ -104,11 +108,17 @@ function MainTabs() {
     <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
-          tabBarIcon: ({ color }) => <TabIcon routeName={route.name} color={color} />,
+          tabBarIcon: ({ color, focused }) => <TabIcon routeName={route.name} color={color} focused={focused} />,
           tabBarActiveTintColor: DAYLIGHT.ocean,
           tabBarInactiveTintColor: DAYLIGHT.muted,
           tabBarButton: (props) => <DaylightTabButton {...props} />,
-          tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
+          tabBarLabelStyle: {
+            fontSize: 11,
+            lineHeight: 14,
+            fontWeight: '600',
+            transform: [{ translateY: -2 }],
+          },
+          tabBarIconStyle: { transform: [{ translateY: -2 }] },
           tabBarBackground: () => <View style={styles.tabBarBackground} />,
           tabBarStyle: {
             position: 'absolute',
@@ -136,7 +146,9 @@ function MainTabs() {
             // just ate into the 62pt height with nothing to show for it,
             // squeezing icon+label down until the icons' bottoms clipped.
             // Overriding back to 0 here is what actually fixes that.
-            paddingTop: 7,
+            // The icon + label stack already fills the custom 62pt pill.
+            // Extra top padding shifted both elements visibly downward.
+            paddingTop: 0,
             paddingBottom: 0,
             borderRadius: 31,
             borderWidth: 1,
@@ -219,24 +231,6 @@ const styles = StyleSheet.create({
     transform: [{ rotate: '45deg' }],
     marginLeft: 12,
     marginTop: -1,
-  },
-  compassOuter: {
-    width: 21,
-    height: 21,
-    borderRadius: 11,
-    borderWidth: 2,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  compassNeedle: {
-    width: 0,
-    height: 0,
-    borderLeftWidth: 4,
-    borderRightWidth: 4,
-    borderBottomWidth: 11,
-    borderLeftColor: 'transparent',
-    borderRightColor: 'transparent',
-    transform: [{ rotate: '35deg' }],
   },
   personHead: {
     width: 9,

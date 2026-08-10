@@ -214,6 +214,7 @@ export function RestaurantListScreen({ route, navigation }: Props) {
               restaurant={item}
               distanceMiles={distanceToRestaurant(origin, item)}
               onPress={() => navigation.navigate('RestaurantDetail', { restaurantId: item.restaurant_id })}
+              showDescription
             />
           )}
         />

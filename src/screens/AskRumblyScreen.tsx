@@ -9,6 +9,7 @@ import {
   Platform,
   Pressable,
   ScrollView,
+  Share,
   StyleSheet,
   Text,
   TextInput,
@@ -16,20 +17,33 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AllergyAcknowledgementSheet } from '../components/AllergyAcknowledgementSheet';
+import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
 import { NearMeButton } from '../components/NearMeButton';
 import { RestaurantCard } from '../components/RestaurantCard';
 import { useDataProvider } from '../hooks/useDataProvider';
+import { useAppSettings } from '../hooks/useAppSettings';
 import { useNearMe } from '../hooks/useNearMe';
 import { getAllMenuItems } from '../data/db';
 import { loadSearchIndex } from '../search/searchIndexLoader';
 import type { MenuItem, Restaurant, SearchIndexEntry } from '../data/types';
 import { dedupeByItemIdentity } from '../data/itemIdentity';
-import { distanceToRestaurant } from '../location/proximity';
+import { distanceToRestaurant, formatProximityDistance } from '../location/proximity';
 import { suggestEntities, type EntitySuggestion } from '../../modules/ask-rumbly/scripts/ask-rumbly/entity_suggestions';
 import { buildAskRumblyData } from '../askRumbly/appData';
 import { runAskRumbly, type AskRumblyResponse } from '../askRumbly/appExecutor';
+import {
+  buildAskRumblyPresentation,
+  type AskRumblySuggestion,
+} from '../askRumbly/presentation';
+import {
+  clearAskRumblyNegativeFeedback,
+  createAskRumblyNegativeFeedback,
+  formatAskRumblyFeedbackExport,
+  loadAskRumblyNegativeFeedback,
+  saveAskRumblyNegativeFeedback,
+} from '../askRumbly/developmentFeedback';
 import type { AskRumblyStackParamList } from '../navigation/AskRumblyNavigator';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<AskRumblyStackParamList, 'AskRumblyHome'>;
@@ -46,10 +60,16 @@ function DevelopmentDataDisclosure({
   response,
   expanded,
   onToggle,
+  feedbackCount,
+  onShareFeedback,
+  onClearFeedback,
 }: {
   response: AskRumblyResponse;
   expanded: boolean;
   onToggle: () => void;
+  feedbackCount: number;
+  onShareFeedback: () => void;
+  onClearFeedback: () => void;
 }) {
   const { result } = response;
   return (
@@ -70,6 +90,12 @@ function DevelopmentDataDisclosure({
           <Text selectable style={styles.developmentText}>{result.text}</Text>
           <Text style={styles.developmentLabel}>Plan</Text>
           <Text selectable style={styles.developmentCode}>{JSON.stringify(response.plan, null, 2)}</Text>
+          {response.adaptation ? (
+            <>
+              <Text style={styles.developmentLabel}>Response adaptation</Text>
+              <Text selectable style={styles.developmentCode}>{JSON.stringify(response.adaptation, null, 2)}</Text>
+            </>
+          ) : null}
           {'trace' in result && result.trace ? (
             <>
               <Text style={styles.developmentLabel}>Execution trace</Text>
@@ -82,6 +108,32 @@ function DevelopmentDataDisclosure({
               <Text selectable style={styles.developmentCode}>{JSON.stringify(result.proof, null, 2)}</Text>
             </>
           ) : null}
+          {__DEV__ ? (
+            <View style={styles.feedbackLogSection}>
+              <Text style={styles.developmentLabel}>Thumbs-down feedback</Text>
+              <Text style={styles.developmentText}>
+                {feedbackCount} {feedbackCount === 1 ? 'response' : 'responses'} saved on this device. The export contains guest questions, so review it before sharing.
+              </Text>
+              <View style={styles.feedbackLogActions}>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onShareFeedback}
+                  disabled={feedbackCount === 0}
+                  style={({ pressed }) => [styles.feedbackLogButton, pressed && styles.pressed, feedbackCount === 0 && styles.disabled]}
+                >
+                  <Text style={styles.feedbackLogButtonText}>Share log</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={onClearFeedback}
+                  disabled={feedbackCount === 0}
+                  style={({ pressed }) => [styles.feedbackLogButton, pressed && styles.pressed, feedbackCount === 0 && styles.disabled]}
+                >
+                  <Text style={styles.feedbackLogButtonText}>Clear log</Text>
+                </Pressable>
+              </View>
+            </View>
+          ) : null}
         </View>
       ) : null}
     </View>
@@ -91,16 +143,22 @@ function DevelopmentDataDisclosure({
 function MenuResultCard({
   item,
   restaurant,
+  distanceMiles,
   onPress,
 }: {
   item: MenuItem;
   restaurant: Restaurant;
+  distanceMiles?: number | null;
   onPress: () => void;
 }) {
+  const restaurantMeta = [
+    restaurant.restaurant,
+    distanceMiles == null ? null : `${formatProximityDistance(distanceMiles)} away`,
+  ].filter(Boolean).join(' · ');
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${item.item} at ${restaurant.restaurant}`}
+      accessibilityLabel={`${item.item} at ${restaurantMeta}`}
       onPress={onPress}
       style={({ pressed }) => [styles.menuResultCard, pressed && styles.pressed]}
     >
@@ -108,7 +166,7 @@ function MenuResultCard({
         <Text style={text.restaurantName}>{item.item}</Text>
         {item.price_display ? <Text style={styles.price}>{item.price_display}</Text> : null}
       </View>
-      <Text style={[text.bodyMuted, styles.menuRestaurant]}>{restaurant.restaurant}</Text>
+      <Text style={[text.bodyMuted, styles.menuRestaurant]}>{restaurantMeta}</Text>
       {!!item.category && <Text style={[text.bodyMuted, styles.menuCategory]}>{item.category}</Text>}
       <Text style={styles.openLabel}>Open restaurant menu ›</Text>
     </Pressable>
@@ -117,6 +175,7 @@ function MenuResultCard({
 
 export function AskRumblyScreen({ navigation }: Props) {
   const { restaurants, hoursData, isLoading, lastSyncedAt, error: dataError } = useDataProvider();
+  const { allergyAcknowledgedThisSession, acknowledgeAllergyDisclaimer } = useAppSettings();
   const {
     origin,
     status: locationStatus,
@@ -138,7 +197,11 @@ export function AskRumblyScreen({ navigation }: Props) {
   const [requestError, setRequestError] = useState<string | null>(null);
   const [developmentDataExpanded, setDevelopmentDataExpanded] = useState(false);
   const [showAllResults, setShowAllResults] = useState(false);
+  const [responseRating, setResponseRating] = useState<'up' | 'down' | null>(null);
+  const [isSavingFeedback, setIsSavingFeedback] = useState(false);
+  const [negativeFeedbackCount, setNegativeFeedbackCount] = useState(0);
   const inputRef = useRef<TextInput>(null);
+  const pendingLocationRetryRef = useRef<string | null>(null);
 
   // Keep the expensive full-menu read off the launch/tab-mount path. The
   // restaurant list powers autocomplete immediately; the SQLite rows and
@@ -149,6 +212,13 @@ export function AskRumblyScreen({ navigation }: Props) {
     setSearchIndex([]);
     setMenuError(null);
   }, [lastSyncedAt]);
+
+  useEffect(() => {
+    if (!__DEV__) return;
+    loadAskRumblyNegativeFeedback()
+      .then((entries) => setNegativeFeedbackCount(entries.length))
+      .catch(() => setNegativeFeedbackCount(0));
+  }, []);
 
   const askData = useMemo(
     () => buildAskRumblyData(restaurants, menuItems, hoursData, searchIndex),
@@ -190,15 +260,19 @@ export function AskRumblyScreen({ navigation }: Props) {
       .filter((restaurant): restaurant is Restaurant => Boolean(restaurant));
   }, [restaurantsById, response]);
 
-  const submitQuery = useCallback(async () => {
-    const trimmed = query.trim();
+  const runQuestion = useCallback(async (questionText: string) => {
+    const trimmed = questionText.trim();
     if (!trimmed || isAsking || isLoading || restaurants.length === 0) return;
     Keyboard.dismiss();
     setIsAsking(true);
     setRequestError(null);
     setSubmittedQuery(trimmed);
+    setResponse(null);
+    setPendingResponse(null);
+    setAcknowledgementVisible(false);
     setDevelopmentDataExpanded(false);
     setShowAllResults(false);
+    setResponseRating(null);
     try {
       let dataForQuery = askData;
       if (menuItems.length === 0 || searchIndex.length === 0) {
@@ -214,8 +288,12 @@ export function AskRumblyScreen({ navigation }: Props) {
         setMenuItems(items);
         setSearchIndex(dataForQuery.searchIndex);
       }
+      // Let the searching state paint before the deterministic parser and
+      // proof pass run synchronously on the JS thread, especially on repeat
+      // questions when the menu is already cached.
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
       const next = runAskRumbly(trimmed, dataForQuery, origin ?? undefined);
-      if ('safety' in next.result && next.result.safety?.kind === 'allergy') {
+      if ('safety' in next.result && next.result.safety?.kind === 'allergy' && !allergyAcknowledgedThisSession) {
         setPendingResponse(next);
         setAcknowledgementVisible(true);
       } else {
@@ -228,7 +306,11 @@ export function AskRumblyScreen({ navigation }: Props) {
       setMenuLoading(false);
       setIsAsking(false);
     }
-  }, [askData, hoursData, isAsking, isLoading, menuItems.length, origin, query, restaurants, searchIndex.length]);
+  }, [allergyAcknowledgedThisSession, askData, hoursData, isAsking, isLoading, menuItems.length, origin, restaurants, searchIndex.length]);
+
+  const submitQuery = useCallback(() => {
+    void runQuestion(query);
+  }, [query, runQuestion]);
 
   const chooseSuggestion = useCallback((suggestion: EntitySuggestion) => {
     setQuery((current) => `${current.slice(0, suggestion.replaceStart)}${suggestion.label}${current.slice(suggestion.replaceEnd)}`);
@@ -242,6 +324,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setRequestError(null);
     setDevelopmentDataExpanded(false);
     setShowAllResults(false);
+    setResponseRating(null);
     inputRef.current?.focus();
   }, []);
 
@@ -252,12 +335,14 @@ export function AskRumblyScreen({ navigation }: Props) {
     setRequestError(null);
     setDevelopmentDataExpanded(false);
     setShowAllResults(false);
+    setResponseRating(null);
     inputRef.current?.focus();
   }, []);
 
   const runLocationEnable = useCallback(async () => {
     const outcome = await enableLocation();
     if (outcome === 'active') return;
+    pendingLocationRetryRef.current = null;
     if (outcome === 'denied') {
       Alert.alert(
         'Location access is off',
@@ -285,6 +370,7 @@ export function AskRumblyScreen({ navigation }: Props) {
 
   const handleLocationPress = useCallback(async () => {
     if (locationActive) {
+      pendingLocationRetryRef.current = null;
       disableLocation();
       return;
     }
@@ -295,7 +381,7 @@ export function AskRumblyScreen({ navigation }: Props) {
           'Show nearby dining?',
           'Rumbly uses your location only while the app is open and compares it with Disney guest entrances on your device. No paid routing service receives your location.',
           [
-            { text: 'Not now', style: 'cancel' },
+            { text: 'Not now', style: 'cancel', onPress: () => { pendingLocationRetryRef.current = null; } },
             { text: 'Continue', onPress: () => void runLocationEnable() },
           ]
         );
@@ -303,9 +389,28 @@ export function AskRumblyScreen({ navigation }: Props) {
       }
       await runLocationEnable();
     } catch {
+      pendingLocationRetryRef.current = null;
       Alert.alert('Location unavailable', 'Rumbly could not check location permission. Please try again.');
     }
   }, [disableLocation, getLocationPermissionStatus, locationActive, runLocationEnable]);
+
+  useEffect(() => {
+    const pendingQuestion = pendingLocationRetryRef.current;
+    if (!locationActive || !origin || !pendingQuestion) return;
+    pendingLocationRetryRef.current = null;
+    setQuery(pendingQuestion);
+    void runQuestion(pendingQuestion);
+  }, [locationActive, origin, runQuestion]);
+
+  const handleRecoverySuggestion = useCallback((suggestion: AskRumblySuggestion) => {
+    if (suggestion.kind === 'enable_location') {
+      pendingLocationRetryRef.current = submittedQuery;
+      void handleLocationPress();
+      return;
+    }
+    setQuery(suggestion.query);
+    void runQuestion(suggestion.query);
+  }, [handleLocationPress, runQuestion, submittedQuery]);
 
   const openRestaurant = useCallback(
     (restaurantId: string, item?: MenuItem) => {
@@ -320,10 +425,11 @@ export function AskRumblyScreen({ navigation }: Props) {
   );
 
   const acceptAllergyAcknowledgement = useCallback(() => {
+    acknowledgeAllergyDisclaimer();
     setResponse(pendingResponse);
     setPendingResponse(null);
     setAcknowledgementVisible(false);
-  }, [pendingResponse]);
+  }, [acknowledgeAllergyDisclaimer, pendingResponse]);
 
   const cancelAllergyAcknowledgement = useCallback(() => {
     setPendingResponse(null);
@@ -332,24 +438,86 @@ export function AskRumblyScreen({ navigation }: Props) {
   }, []);
 
   const result = response?.result;
+  const resultDistances = result?.kind === 'answer' ? result.distanceMilesByRestaurant ?? {} : {};
   const isReady = !isLoading && menuError === null && dataError === null;
   const hasLinkedResults = itemResults.length > 0 || restaurantResults.length > 0;
   const totalPossibilities = itemResults.length > 0 ? itemResults.length : restaurantResults.length;
-  const isProximityResult = response?.plan.constraints.distanceOperation === 'nearest';
-  const isCheapestResult = response?.plan.constraints.priceOperation === 'cheapest';
   const visibleItemResults = showAllResults ? itemResults : itemResults.slice(0, INITIAL_RESULT_COUNT);
   const visibleRestaurantResults = showAllResults
     ? restaurantResults
     : restaurantResults.slice(0, INITIAL_RESULT_COUNT);
-  const friendlyResultText = itemResults.length > 0
-    ? isProximityResult
-      ? "Here's a list of the closest menu items I found."
-      : isCheapestResult
-        ? "Here's a list of the cheapest menu items I found."
-        : "Here's a list of menu items I found."
-    : isProximityResult
-      ? "Here's a list of the closest places I found."
-      : "Here's a list of places I found.";
+  const presentation = response
+    ? buildAskRumblyPresentation(response.plan, response.result, {
+        linkedKind: itemResults.length > 0 ? 'item' : restaurantResults.length > 0 ? 'restaurant' : null,
+        totalPossibilities,
+        hasCurrentLocation: locationActive,
+        subjectiveOptions: response.adaptation?.kind === 'subjective_options',
+      })
+    : null;
+
+  const rateResponseUp = useCallback(() => {
+    if (responseRating || isSavingFeedback) return;
+    setResponseRating('up');
+  }, [isSavingFeedback, responseRating]);
+
+  const rateResponseDown = useCallback(async () => {
+    // TEMPORARY (owner decision, 2026-08-10): the !__DEV__ guard that used
+    // to live here is gone on purpose, so TestFlight testers' thumbs-down
+    // actually saves -- restore it (or gate on useIsDevOwner) once real
+    // strangers can install the app and this local feedback log stops
+    // being something only the owner's own test devices write to.
+    if (!response || !presentation || !submittedQuery || responseRating || isSavingFeedback) return;
+    setIsSavingFeedback(true);
+    try {
+      const count = await saveAskRumblyNegativeFeedback(createAskRumblyNegativeFeedback({
+        question: submittedQuery,
+        response,
+        presentation,
+        dataLastSyncedAt: lastSyncedAt,
+      }));
+      setNegativeFeedbackCount(count);
+      setResponseRating('down');
+    } catch {
+      Alert.alert('Feedback was not saved', 'Rumbly could not write the development feedback log on this device.');
+    } finally {
+      setIsSavingFeedback(false);
+    }
+  }, [isSavingFeedback, lastSyncedAt, presentation, response, responseRating, submittedQuery]);
+
+  const shareFeedbackLog = useCallback(async () => {
+    try {
+      const entries = await loadAskRumblyNegativeFeedback();
+      if (entries.length === 0) {
+        Alert.alert('No feedback saved', 'Use thumbs down on a response before exporting the development log.');
+        return;
+      }
+      await Share.share({
+        title: 'Ask Rumbly development feedback',
+        message: formatAskRumblyFeedbackExport(entries),
+      });
+    } catch {
+      Alert.alert('Feedback could not be shared', 'Rumbly could not prepare the development feedback log.');
+    }
+  }, []);
+
+  const clearFeedbackLog = useCallback(() => {
+    Alert.alert(
+      'Clear Ask Rumbly feedback?',
+      'This permanently removes every saved thumbs-down response from this device.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Clear',
+          style: 'destructive',
+          onPress: () => {
+            void clearAskRumblyNegativeFeedback()
+              .then(() => setNegativeFeedbackCount(0))
+              .catch(() => Alert.alert('Feedback was not cleared', 'Please try again.'));
+          },
+        },
+      ],
+    );
+  }, []);
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
@@ -358,14 +526,25 @@ export function AskRumblyScreen({ navigation }: Props) {
           keyboardShouldPersistTaps="handled"
           contentContainerStyle={styles.content}
         >
-          <View style={styles.titleRow}>
-            <Text style={text.sectionTitle}>Ask Rumbly</Text>
-            <Text style={styles.betaLabel}>(Beta)</Text>
+          <View style={styles.askHero}>
+            <View style={styles.askHeroCopy}>
+              <View style={styles.titleRow}>
+                <Text style={styles.heroTitle}>Ask Rumbly</Text>
+                <View style={styles.betaPill}><Text style={styles.betaLabel}>BETA</Text></View>
+              </View>
+              <Text style={styles.heroEyebrow}>YOUR DINING SIDEKICK</Text>
+              <Text style={styles.intro}>
+                Menus, prices, places, hours, and published allergy labels—ask it like you’d ask a friend.
+              </Text>
+            </View>
+            <IllustrationSlot
+              tagId="ask.hero.companion.v1"
+              variant="artwork"
+              style={styles.askHeroArt}
+            />
           </View>
-          <Text style={[text.bodyMuted, styles.intro]}>
-            Ask about Disney food, restaurants, menus, prices, locations, hours, and published allergy labels.
-          </Text>
 
+          <Text style={styles.starterEyebrow}>A FEW WAYS IN</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -386,6 +565,7 @@ export function AskRumblyScreen({ navigation }: Props) {
             ))}
           </ScrollView>
 
+          <View style={styles.questionComposer}>
           <View style={styles.queryRow}>
             <View style={styles.inputShell}>
               <View style={styles.inputControl}>
@@ -432,6 +612,8 @@ export function AskRumblyScreen({ navigation }: Props) {
               active={locationActive}
               status={locationStatus}
               onPress={() => void handleLocationPress()}
+              accentColor={DAYLIGHT.ocean}
+              borderColor={DAYLIGHT.border}
             />
           </View>
 
@@ -453,12 +635,15 @@ export function AskRumblyScreen({ navigation }: Props) {
           >
             {isAsking ? <ActivityIndicator color={COLORS.surface} /> : <Text style={styles.askButtonText}>Ask</Text>}
           </Pressable>
+          </View>
 
-          {(!isReady || menuLoading) && (
+          {(!isReady || menuLoading || isAsking) && (
             <View style={styles.statusBox}>
               <ActivityIndicator color={COLORS.forest} />
               <Text style={[text.bodyMuted, styles.statusText]}>
-                {menuLoading
+                {isAsking && !menuLoading
+                  ? 'Checking current menus and verifying every part of your question…'
+                  : menuLoading
                   ? 'Preparing menu search…'
                   : dataError ?? menuError ?? (isLoading ? 'Loading Rumbly dining data…' : 'Preparing menu search…')}
               </Text>
@@ -468,13 +653,19 @@ export function AskRumblyScreen({ navigation }: Props) {
           {submittedQuery && result && (
             <View style={styles.responseSection}>
               <Text style={styles.queryLabel}>{submittedQuery}</Text>
-              {!hasLinkedResults ? (
-                <View style={styles.responseBox}>
-                  <Text style={text.body}>{result.text}</Text>
+              {presentation ? (
+                <View style={styles.companionResponse}>
+                  <Text style={styles.responseEyebrow}>{presentation.eyebrow}</Text>
+                  <Text style={styles.responseTitle}>{presentation.title}</Text>
+                  <Text style={styles.responseMessage}>{presentation.message}</Text>
+
+                  {presentation.trustNote ? (
+                    <Text style={styles.trustNote}>{presentation.trustNote}</Text>
+                  ) : null}
                 </View>
               ) : null}
 
-              {result.kind === 'answer' && result.actions?.length ? (
+              {'actions' in result && result.actions?.length ? (
                 <View style={styles.actionRow}>
                   {result.actions.map((action) => (
                     <Pressable
@@ -492,13 +683,26 @@ export function AskRumblyScreen({ navigation }: Props) {
                 </View>
               ) : null}
 
+              {presentation?.suggestions.length ? (
+                <View style={styles.recoverySection}>
+                  <Text style={styles.recoveryLabel}>Try this</Text>
+                  <View style={styles.recoveryRow}>
+                    {presentation.suggestions.map((suggestion) => (
+                      <Pressable
+                        key={suggestion.kind === 'query' ? suggestion.query : suggestion.kind}
+                        accessibilityRole="button"
+                        onPress={() => handleRecoverySuggestion(suggestion)}
+                        style={({ pressed }) => [styles.recoveryButton, pressed && styles.pressed]}
+                      >
+                        <Text style={styles.recoveryText}>{suggestion.label}</Text>
+                      </Pressable>
+                    ))}
+                  </View>
+                </View>
+              ) : null}
+
               {result.kind === 'answer' && hasLinkedResults ? (
                 <View style={styles.resultGroup}>
-                  <Text style={styles.possibilityCount}>
-                    Found {totalPossibilities} {totalPossibilities === 1 ? 'Possibility' : 'Possibilities'}
-                  </Text>
-                  <Text style={styles.resultIntro}>{friendlyResultText}</Text>
-
                   {result.safety?.kind === 'allergy' ? (
                     <View style={styles.allergyNotice}>
                       <Text style={styles.allergyNoticeText}>
@@ -515,6 +719,8 @@ export function AskRumblyScreen({ navigation }: Props) {
                         key={`${item.restaurant_id}:${item.item_id}`}
                         item={item}
                         restaurant={restaurant}
+                        distanceMiles={resultDistances[restaurant.restaurant_id]
+                          ?? (origin ? distanceToRestaurant(origin, restaurant) : undefined)}
                         onPress={() => openRestaurant(restaurant.restaurant_id, item)}
                       />
                     );
@@ -523,7 +729,8 @@ export function AskRumblyScreen({ navigation }: Props) {
                     <RestaurantCard
                       key={restaurant.restaurant_id}
                       restaurant={restaurant}
-                      distanceMiles={origin ? distanceToRestaurant(origin, restaurant) : undefined}
+                      distanceMiles={resultDistances[restaurant.restaurant_id]
+                        ?? (origin ? distanceToRestaurant(origin, restaurant) : undefined)}
                       onPress={() => openRestaurant(restaurant.restaurant_id)}
                     />
                   ))}
@@ -541,11 +748,54 @@ export function AskRumblyScreen({ navigation }: Props) {
                 </View>
               ) : null}
 
+              {/* TEMPORARY (owner decision, 2026-08-10): dropped the __DEV__
+                  gate so TestFlight testers can rate responses -- restore
+                  it before a public release, or replace with a real
+                  entitlement/flag if this is meant to stay on. */}
+              {presentation ? (
+                <View style={styles.ratingSection}>
+                  {responseRating ? (
+                    <Text style={styles.ratingThanks}>
+                      {responseRating === 'down' ? 'Thanks — saved on this device for review.' : 'Thanks — that helps.'}
+                    </Text>
+                  ) : (
+                    <>
+                      <Text style={styles.ratingPrompt}>Did this response help?</Text>
+                      <View style={styles.ratingButtons}>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="This response was helpful"
+                          onPress={rateResponseUp}
+                          disabled={isSavingFeedback}
+                          style={({ pressed }) => [styles.ratingButton, pressed && styles.pressed]}
+                        >
+                          <Text style={styles.ratingIcon} allowFontScaling={false}>👍</Text>
+                        </Pressable>
+                        <Pressable
+                          accessibilityRole="button"
+                          accessibilityLabel="This response was not helpful and save it for development review"
+                          onPress={() => void rateResponseDown()}
+                          disabled={isSavingFeedback}
+                          style={({ pressed }) => [styles.ratingButton, pressed && styles.pressed]}
+                        >
+                          {isSavingFeedback
+                            ? <ActivityIndicator color={COLORS.forest} />
+                            : <Text style={styles.ratingIcon} allowFontScaling={false}>👎</Text>}
+                        </Pressable>
+                      </View>
+                    </>
+                  )}
+                </View>
+              ) : null}
+
               {response ? (
                 <DevelopmentDataDisclosure
                   response={response}
                   expanded={developmentDataExpanded}
                   onToggle={() => setDevelopmentDataExpanded((current) => !current)}
+                  feedbackCount={negativeFeedbackCount}
+                  onShareFeedback={() => void shareFeedbackLog()}
+                  onClearFeedback={clearFeedbackLog}
                 />
               ) : null}
             </View>
@@ -564,33 +814,96 @@ export function AskRumblyScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
+  container: { flex: 1, backgroundColor: DAYLIGHT.paper },
   content: { padding: SPACING.lg, paddingBottom: 150 },
-  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm },
-  betaLabel: {
-    fontFamily: FONT_FAMILY.workSansSemiBold,
-    fontSize: 12,
-    color: COLORS.muted,
+  askHero: {
+    minHeight: 214,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    borderRadius: 28,
+    backgroundColor: DAYLIGHT.coral,
   },
-  intro: { marginTop: SPACING.sm, lineHeight: 18 },
-  starterScroll: { marginTop: SPACING.lg, marginHorizontal: -SPACING.lg },
+  askHeroCopy: {
+    zIndex: 1,
+    width: '63%',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    paddingRight: SPACING.xs,
+  },
+  askHeroArt: {
+    position: 'absolute',
+    width: '42%',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    minHeight: 214,
+    borderRadius: 0,
+  },
+  titleRow: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm },
+  heroTitle: {
+    fontFamily: FONT_FAMILY.piazzollaExtraBold,
+    fontSize: 30,
+    lineHeight: 35,
+    color: DAYLIGHT.paper,
+  },
+  betaPill: {
+    minHeight: 22,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.sm,
+    borderRadius: 11,
+    backgroundColor: DAYLIGHT.paper,
+  },
+  betaLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 8.5,
+    color: DAYLIGHT.coral,
+  },
+  heroEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: '#FFF4EA',
+    marginTop: SPACING.sm,
+  },
+  intro: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: '#FFF4EA',
+    marginTop: SPACING.xs,
+  },
+  starterEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9.5,
+    letterSpacing: 0.9,
+    color: DAYLIGHT.ocean,
+    marginTop: SPACING.xl,
+  },
+  starterScroll: { marginTop: SPACING.sm, marginHorizontal: -SPACING.lg },
   starterContent: { paddingHorizontal: SPACING.lg, gap: SPACING.sm },
   starterPill: {
-    borderWidth: 1,
-    borderColor: COLORS.borderMid,
     borderRadius: RADII.xl,
-    backgroundColor: COLORS.cream,
-    paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.sm,
+    backgroundColor: DAYLIGHT.sky,
+    paddingHorizontal: SPACING.lg,
+    paddingVertical: SPACING.md,
   },
-  starterPillPressed: { backgroundColor: COLORS.pineLight },
+  starterPillPressed: { opacity: 0.72 },
   starterLabel: {
-    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 12,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
+  },
+  questionComposer: {
+    marginTop: SPACING.md,
+    padding: SPACING.md,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.surface,
+    shadowColor: DAYLIGHT.ink,
+    shadowOpacity: 0.08,
+    shadowRadius: 14,
+    shadowOffset: { width: 0, height: 5 },
   },
   queryRow: {
-    marginTop: SPACING.md,
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: SPACING.sm,
@@ -602,11 +915,11 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     borderWidth: 1,
-    borderColor: COLORS.borderMid,
+    borderColor: DAYLIGHT.border,
     borderRadius: RADII.xl,
     paddingLeft: SPACING.lg,
     paddingRight: SPACING.sm,
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.mist,
   },
   input: {
     flex: 1,
@@ -629,8 +942,8 @@ const styles = StyleSheet.create({
   suggestions: {
     marginTop: SPACING.xs,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.md,
+    borderColor: DAYLIGHT.border,
+    borderRadius: RADII.lg,
     backgroundColor: COLORS.surface,
     overflow: 'hidden',
   },
@@ -638,7 +951,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DAYLIGHT.border,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -650,8 +963,8 @@ const styles = StyleSheet.create({
   askButton: {
     minHeight: 50,
     marginTop: SPACING.md,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.forest,
+    borderRadius: 25,
+    backgroundColor: DAYLIGHT.ocean,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -666,7 +979,7 @@ const styles = StyleSheet.create({
     marginTop: SPACING.lg,
     padding: SPACING.md,
     borderRadius: RADII.md,
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.sky,
     alignItems: 'center',
   },
   statusText: { marginTop: SPACING.sm, textAlign: 'center' },
@@ -677,17 +990,43 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     marginBottom: SPACING.sm,
   },
-  responseBox: {
-    padding: SPACING.md,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.cream,
-    borderWidth: 1,
-    borderColor: COLORS.border,
+  companionResponse: {
+    padding: SPACING.lg,
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.sky,
+  },
+  responseEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 11,
+    color: DAYLIGHT.ocean,
+    textTransform: 'uppercase',
+    letterSpacing: 0.5,
+  },
+  responseTitle: {
+    fontFamily: FONT_FAMILY.piazzollaBold,
+    fontSize: 23,
+    lineHeight: 28,
+    color: COLORS.ink,
+    marginTop: SPACING.xs,
+  },
+  responseMessage: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 13.5,
+    lineHeight: 19,
+    color: COLORS.muted,
+    marginTop: SPACING.sm,
+  },
+  trustNote: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: COLORS.muted,
+    marginTop: SPACING.md,
   },
   actionRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm, marginTop: SPACING.md },
   actionButton: {
     borderWidth: 1,
-    borderColor: COLORS.forest,
+    borderColor: DAYLIGHT.ocean,
     borderRadius: RADII.xl,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
@@ -695,31 +1034,72 @@ const styles = StyleSheet.create({
   actionText: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 12,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
-  resultGroup: { marginTop: SPACING.xl },
-  possibilityCount: {
-    fontFamily: FONT_FAMILY.workSansExtraBold,
-    fontSize: 13,
-    color: COLORS.forest,
+  recoverySection: { marginTop: SPACING.md },
+  recoveryLabel: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 11,
+    color: COLORS.muted,
     textTransform: 'uppercase',
     letterSpacing: 0.4,
+    marginBottom: SPACING.sm,
   },
-  resultIntro: {
+  recoveryRow: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
+  recoveryButton: {
+    minHeight: 40,
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: DAYLIGHT.border,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.surface,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+  },
+  recoveryText: {
     fontFamily: FONT_FAMILY.workSansSemiBold,
-    fontSize: 17,
-    lineHeight: 23,
+    fontSize: 12,
     color: COLORS.ink,
-    marginTop: SPACING.xs,
-    marginBottom: SPACING.md,
+  },
+  resultGroup: { marginTop: SPACING.xl },
+  ratingSection: {
+    marginTop: SPACING.xl,
+    alignItems: 'center',
+  },
+  ratingPrompt: {
+    fontFamily: FONT_FAMILY.workSansMedium,
+    fontSize: 12.5,
+    color: COLORS.muted,
+  },
+  ratingButtons: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+    marginTop: SPACING.sm,
+  },
+  ratingButton: {
+    width: 48,
+    height: 42,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.surface,
+  },
+  ratingIcon: { fontSize: 20 },
+  ratingThanks: {
+    fontFamily: FONT_FAMILY.workSansMedium,
+    fontSize: 12.5,
+    color: COLORS.muted,
+    textAlign: 'center',
   },
   allergyNotice: {
     padding: SPACING.md,
     marginBottom: SPACING.md,
     borderWidth: 1,
-    borderColor: COLORS.gold,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.goldLight,
+    borderColor: DAYLIGHT.sun,
+    borderRadius: RADII.lg,
+    backgroundColor: '#FFF0BD',
   },
   allergyNoticeText: {
     fontFamily: FONT_FAMILY.workSansRegular,
@@ -728,25 +1108,23 @@ const styles = StyleSheet.create({
     color: COLORS.ink,
   },
   menuResultCard: {
-    padding: SPACING.md,
+    padding: SPACING.lg,
     marginBottom: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.surface,
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.sky,
   },
   menuResultHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.md },
   price: {
     fontFamily: FONT_FAMILY.workSansSemiBold,
     fontSize: 15,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   menuRestaurant: { marginTop: SPACING.xs },
   menuCategory: { marginTop: SPACING.xs },
   openLabel: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 12,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
     marginTop: SPACING.md,
   },
   seeAllButton: {
@@ -755,21 +1133,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.forest,
+    borderColor: DAYLIGHT.ocean,
     borderRadius: RADII.xl,
   },
   seeAllText: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 13,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   developmentSection: {
     marginTop: SPACING.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.md,
+    borderColor: DAYLIGHT.border,
+    borderRadius: RADII.lg,
     overflow: 'hidden',
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.mist,
   },
   developmentHeader: {
     minHeight: 44,
@@ -791,7 +1169,7 @@ const styles = StyleSheet.create({
   developmentBody: {
     padding: SPACING.md,
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: DAYLIGHT.border,
     backgroundColor: COLORS.surface,
   },
   developmentLabel: {
@@ -814,6 +1192,32 @@ const styles = StyleSheet.create({
     fontSize: 10.5,
     lineHeight: 15,
     color: COLORS.ink,
+  },
+  feedbackLogSection: {
+    marginTop: SPACING.lg,
+    paddingTop: SPACING.md,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+  },
+  feedbackLogActions: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: SPACING.sm,
+    marginTop: SPACING.md,
+  },
+  feedbackLogButton: {
+    minHeight: 38,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.md,
+    borderWidth: 1,
+    borderColor: COLORS.borderMid,
+    borderRadius: RADII.xl,
+    backgroundColor: COLORS.surface,
+  },
+  feedbackLogButtonText: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 12,
+    color: COLORS.forest,
   },
   errorText: {
     fontFamily: FONT_FAMILY.workSansRegular,

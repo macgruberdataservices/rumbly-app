@@ -48,7 +48,9 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const [findFeedEnabled, setFindFeedEnabledState] = useState(true);
   const [findFeedContentMode, setFindFeedContentModeState] =
     useState<FindFeedContentMode>('live');
-  const [nativeInteractionsEnabled, setNativeInteractionsEnabledState] = useState(false);
+  // true to match loadNativeInteractionsEnabled's new no-value-stored
+  // default -- this is just what shows before that async load resolves.
+  const [nativeInteractionsEnabled, setNativeInteractionsEnabledState] = useState(true);
   const [mockLocation, setMockLocationState] = useState<Coordinates | null>(null);
   const [isSettingsReady, setIsSettingsReady] = useState(false);
 

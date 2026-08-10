@@ -3,6 +3,7 @@ import test from 'node:test';
 
 import { assessPlanCapability } from '../src/askRumbly/capabilityRegistry.ts';
 import { runAskRumbly } from '../src/askRumbly/appExecutor.ts';
+import { buildAskRumblyPresentation } from '../src/askRumbly/presentation.ts';
 import { parseQueryPlan } from '../src/askRumbly/semanticParser.ts';
 import { loadData } from '../modules/ask-rumbly/scripts/ask-rumbly/data.ts';
 import { buildParserVocabulary } from '../modules/ask-rumbly/scripts/ask-rumbly/parser_vocabulary.ts';
@@ -81,6 +82,21 @@ test('suggest phrasing is treated as objective food discovery', () => {
   }
 });
 
+test('companion wrappers preserve the same bounded food request', () => {
+  for (const question of [
+    'Hey Rumbly, can you help me find a burger in Magic Kingdom?',
+    'Hi, could you help us get a burger in Magic Kingdom?',
+    'Okay Rumbly, would you please show me a burger in Magic Kingdom?',
+  ]) {
+    const { plan, result } = execute(question);
+    assert.equal(plan.claimType, 'menu_presence', question);
+    assert.deepEqual(plan.subject.foodTerms, ['burger'], question);
+    assert.equal(plan.constraints.location?.label, 'Magic Kingdom', question);
+    assert.equal(plan.diagnostics.confidence, 'high', question);
+    assert.equal(result.kind, 'answer', question);
+  }
+});
+
 test('in-app distance questions require the shared current location or an explicit area', () => {
   const withoutLocation = runAskRumbly("What's the closest burger?", data);
   assert.equal(withoutLocation.plan.action, 'clarify');
@@ -94,6 +110,153 @@ test('in-app distance questions require the shared current location or an explic
   );
   assert.equal(withLocation.plan.action, 'find');
   assert.equal(withLocation.result.kind, 'answer');
+
+  const parkScopeIsNotAnOrigin = runAskRumbly("What's the closest burger in Magic Kingdom?", data);
+  assert.equal(parkScopeIsNotAnOrigin.result.kind, 'clarification');
+
+  const areaAnchor = runAskRumbly('coffee near tree of life', data);
+  assert.equal(areaAnchor.result.kind, 'answer');
+  assert.ok(areaAnchor.result.trace.locationApproximation);
+});
+
+test('the in-app path never inherits the terminal harness origin', () => {
+  const { result } = runAskRumbly('Where can I get ice cream in Epcot?', data);
+  assert.equal(result.kind, 'answer');
+  assert.doesNotMatch(result.text, /\b(?:ft|mi) away\b/i);
+});
+
+test('broad budget searches ask for useful context instead of dumping thousands of rows', () => {
+  const broad = runAskRumbly("I'm broke, what can I get for under $10", data);
+  assert.equal(broad.result.kind, 'clarification');
+  assert.match(broad.result.text, /food or an area|location button/i);
+  const presentation = buildAskRumblyPresentation(broad.plan, broad.result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  assert.ok(presentation.suggestions.some((suggestion) => suggestion.kind === 'enable_location'));
+  assert.ok(presentation.suggestions.some((suggestion) =>
+    suggestion.kind === 'query' && /\$10 or less/i.test(suggestion.query)));
+
+  const scoped = runAskRumbly('What food is under $10 in Magic Kingdom?', data);
+  assert.equal(scoped.result.kind, 'answer');
+});
+
+test('direct restaurant answers keep the actual answer in the guest presentation', () => {
+  for (const question of [
+    'When does Cosmic Rays open?',
+    'Does Cosmic Rays have Mobile Order?',
+    "What's on the menu at Cosmic Rays?",
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.equal(response.result.kind, 'answer', question);
+    const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+      linkedKind: 'restaurant',
+      totalPossibilities: response.result.restaurantIds?.length ?? 0,
+      hasCurrentLocation: false,
+    });
+    assert.equal(presentation.message, response.result.text, question);
+    assert.notEqual(presentation.message, 'Verified against the current Rumbly dining data.', question);
+  }
+});
+
+test('guest presentation explains boundaries without exposing internal failure prose', () => {
+  const outside = runAskRumbly("What's the weather today?", data);
+  const outsidePresentation = buildAskRumblyPresentation(outside.plan, outside.result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  assert.match(outsidePresentation.title, /dining lane/i);
+  assert.match(outsidePresentation.message, /food and restaurants/i);
+  assert.ok(outsidePresentation.suggestions.length > 0);
+  assert.doesNotMatch(`${outsidePresentation.title} ${outsidePresentation.message}`, /unconsumed|not answering|missing proof/i);
+
+  const noMatch = runAskRumbly('gf beer epcot', data);
+  assert.equal(noMatch.result.kind, 'no-match');
+  const noMatchPresentation = buildAskRumblyPresentation(noMatch.plan, noMatch.result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  assert.match(noMatchPresentation.message, /Disney.*labels/i);
+  assert.ok(noMatchPresentation.suggestions.some((suggestion) =>
+    suggestion.kind === 'query' && /gluten-free/i.test(suggestion.query)));
+  assert.doesNotMatch(`${noMatchPresentation.title} ${noMatchPresentation.message}`, /not answering|missing proof/i);
+
+  const tooSpecific = runAskRumbly('wood fired pizza hollywood studios', data);
+  assert.equal(tooSpecific.result.kind, 'no-match');
+  const recovery = buildAskRumblyPresentation(tooSpecific.plan, tooSpecific.result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  assert.ok(recovery.suggestions.some((suggestion) =>
+    suggestion.kind === 'query'
+      && /search for pizza instead/i.test(suggestion.label)
+      && /pizza in Hollywood Studios/i.test(suggestion.query)));
+});
+
+test('subjective food rankings transparently return verified options instead of a dead end', () => {
+  const response = runAskRumbly("Where's the best corn dog?", data);
+  assert.equal(response.adaptation?.kind, 'subjective_options');
+  assert.equal(response.adaptation?.originalPlan.claimType, 'editorial_judgment');
+  assert.equal(response.plan.claimType, 'menu_presence');
+  assert.deepEqual(response.plan.subject.foodTerms, ['corn dog']);
+  assert.equal(response.result.kind, 'answer');
+  assert.ok((response.result.itemKeys?.length ?? 0) > 1);
+
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: 'item',
+    totalPossibilities: response.result.itemKeys?.length ?? 0,
+    hasCurrentLocation: false,
+    subjectiveOptions: true,
+  });
+  assert.match(presentation.title, /can't tell you what's .*best.*options to try/i);
+  assert.match(presentation.message, /not a ranking/i);
+  assert.deepEqual(presentation.suggestions, []);
+
+  for (const question of [
+    "What's your favorite corn dog?",
+    'What corn dog do you recommend?',
+    'Recommend a corn dog',
+    'Recommend a place to get a corn dog',
+  ]) {
+    const variant = runAskRumbly(question, data);
+    assert.equal(variant.adaptation?.kind, 'subjective_options', question);
+    assert.deepEqual(variant.plan.subject.foodTerms, ['corn dog'], question);
+    assert.equal(variant.result.kind, 'answer', question);
+  }
+
+  const nearby = runAskRumbly(
+    'What is the best cinnamon roll?',
+    data,
+    { latitude: 28.4177, longitude: -81.5812 },
+  );
+  assert.equal(nearby.result.kind, 'answer');
+  const nearbyPresentation = buildAskRumblyPresentation(nearby.plan, nearby.result, {
+    linkedKind: 'item',
+    totalPossibilities: nearby.result.itemKeys?.length ?? 0,
+    hasCurrentLocation: true,
+    subjectiveOptions: true,
+  });
+  assert.match(nearbyPresentation.title, /nearby options/i);
+  assert.ok(Object.keys(nearby.result.distanceMilesByRestaurant ?? {}).length > 0);
+
+  const ungrounded = runAskRumbly("i want to try something weird i've never had before", data);
+  assert.equal(ungrounded.result.kind, 'unsupported');
+  assert.equal(ungrounded.adaptation, undefined);
+});
+
+test('official and live handoffs carry a usable Disney action', () => {
+  const { result } = runAskRumbly('how does mobile order work', data);
+  assert.equal(result.kind, 'handoff');
+  assert.ok(result.actions?.some((action) => action.kind === 'openDisney' && /^https:\/\/disneyworld\.disney\.go\.com\//.test(action.url)));
+});
+
+test('same question produces the same plan and result repeatedly', () => {
+  const runs = Array.from({ length: 5 }, () => runAskRumbly('Where can I get a burger and a beer in Epcot?', data));
+  runs.slice(1).forEach((run) => assert.deepEqual(run, runs[0]));
 });
 
 test('cross-contact and kitchen-process questions cannot execute a menu search', () => {
@@ -117,6 +280,11 @@ test('safety language changes the claim and forces clarification', () => {
   const labels = parse('What does Disney list for a tree nut allergy?');
   assert.equal(labels.plan.claimType, 'disney_label');
   assert.equal(labels.capability.disposition, 'execute');
+
+  const compactSafety = parse('shellfish safe food epcot mexico');
+  assert.equal(compactSafety.plan.claimType, 'allergy_safety');
+  assert.deepEqual(compactSafety.plan.constraints.allergenKeys, ['shellfish']);
+  assert.equal(compactSafety.capability.disposition, 'clarify');
 });
 
 test('restaurant menu and feature questions become app-routing plans', () => {
@@ -299,6 +467,15 @@ test('typed allergy execution uses the exact Disney label taxonomy and acknowled
   assert.ok(items.every((item) => item.is_allergy_friendly && item.allergens.includes('gluten-wheat')));
   assert.equal(result.proof.status, 'proven');
   assert.ok(result.proof.witnesses.some((witness) => witness.constraint === 'disney-allergen:gluten-wheat'));
+});
+
+test('generic allergy lists do not present guidance rows as orderable food', () => {
+  const { result } = execute('allergy friendly character breakfast magic kingdom');
+  assert.equal(result.kind, 'answer');
+  const keys = new Set(result.itemKeys);
+  const returned = data.menuItems.filter((item) => keys.has(`${item.restaurant_id}:${item.item_id}`));
+  assert.ok(returned.length > 0);
+  assert.ok(returned.every((item) => !/^(?:guests? must|allergen guide|allergy guide|please (?:ask|speak)|speak to (?:a )?cast member)/i.test(item.item.trim())));
 });
 
 test('typed allergy execution fails closed when no direct Disney label survives', () => {

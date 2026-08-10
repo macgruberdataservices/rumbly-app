@@ -27,12 +27,18 @@ export type PlanExecutionResult<Action = unknown> =
       restaurantIds?: string[];
       itemIds?: string[];
       itemKeys?: string[];
+      distanceMilesByRestaurant?: Record<string, number>;
       actions?: Action[];
       trace: ExecutionTrace;
       proof: ResultProof;
       safety?: { kind: 'allergy'; acknowledgementVersion: number; allergenKeys: string[] };
     }
-  | { kind: 'clarification' | 'handoff' | 'unsupported'; text: string; capability: CapabilityDecision }
+  | {
+      kind: 'clarification' | 'handoff' | 'unsupported';
+      text: string;
+      capability: CapabilityDecision;
+      actions?: Action[];
+    }
   | {
       kind: 'no-match' | 'error';
       text: string;

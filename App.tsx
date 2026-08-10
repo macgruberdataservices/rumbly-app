@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useEffect } from 'react';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
 import { useFonts } from 'expo-font';
@@ -23,6 +23,7 @@ import {
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { DataProvider } from './src/data/dataProvider';
+import { useDataProvider } from './src/hooks/useDataProvider';
 import { AuthProvider } from './src/data/authProvider';
 import { EntitlementsProvider } from './src/data/entitlementsProvider';
 import { ActivityProvider } from './src/data/activityProvider';
@@ -32,6 +33,33 @@ import { NearMeProvider } from './src/data/nearMeProvider';
 import { RootNavigator } from './src/navigation/RootNavigator';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
+
+function AppContent({ fontsReady }: { fontsReady: boolean }) {
+  const { isCacheHydrated } = useDataProvider();
+  const isReady = fontsReady && isCacheHydrated;
+
+  useEffect(() => {
+    if (isReady) {
+      SplashScreen.hideAsync().catch(() => {});
+    }
+  }, [isReady]);
+
+  if (!isReady) return null;
+
+  return (
+    <AuthProvider>
+      <NearMeProvider>
+        <EntitlementsProvider>
+          <ActivityProvider>
+            <JournalProvider>
+              <RootNavigator />
+            </JournalProvider>
+          </ActivityProvider>
+        </EntitlementsProvider>
+      </NearMeProvider>
+    </AuthProvider>
+  );
+}
 
 export default function App() {
   const [fontsLoaded, fontError] = useFonts({
@@ -49,36 +77,12 @@ export default function App() {
     WorkSans_800ExtraBold,
   });
 
-  const onLayoutRootView = useCallback(async () => {
-    if (fontsLoaded || fontError) {
-      await SplashScreen.hideAsync();
-    }
-  }, [fontsLoaded, fontError]);
-
-  useEffect(() => {
-    onLayoutRootView();
-  }, [onLayoutRootView]);
-
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
-
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <AppSettingsProvider>
           <DataProvider>
-            <AuthProvider>
-              <NearMeProvider>
-                <EntitlementsProvider>
-                  <ActivityProvider>
-                    <JournalProvider>
-                      <RootNavigator />
-                    </JournalProvider>
-                  </ActivityProvider>
-                </EntitlementsProvider>
-              </NearMeProvider>
-            </AuthProvider>
+            <AppContent fontsReady={fontsLoaded || Boolean(fontError)} />
           </DataProvider>
         </AppSettingsProvider>
         <StatusBar style="dark" />

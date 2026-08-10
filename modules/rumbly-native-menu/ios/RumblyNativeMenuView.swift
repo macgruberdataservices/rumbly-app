@@ -1311,6 +1311,7 @@ private struct NativeSearchRestaurantRowPayload: Codable, Equatable {
   let restaurantId: String
   let name: String
   let meta: String
+  let description: String?
   let highlightQuery: String?
   let isNeeded: Bool
   let isLoved: Bool
@@ -1481,6 +1482,13 @@ private struct NativeSearchRestaurantRowRootView: View {
           .foregroundStyle(.secondary)
           .lineLimit(1)
       }
+
+      if let description = row.description, !description.isEmpty {
+        Text(description)
+          .font(.system(size: 13))
+          .foregroundStyle(.secondary)
+          .lineLimit(1)
+      }
     }
     .padding(.horizontal, 18)
     .padding(.vertical, 10)
@@ -1528,6 +1536,11 @@ private struct NativeSearchRestaurantRowRootView: View {
             .font(.subheadline)
             .foregroundStyle(.secondary)
         }
+        if let description = row.description, !description.isEmpty {
+          Text(description)
+            .font(.subheadline)
+            .foregroundStyle(.secondary)
+        }
       }
       .padding(20)
       .frame(width: 320, alignment: .leading)
@@ -1536,7 +1549,12 @@ private struct NativeSearchRestaurantRowRootView: View {
     .accessibilityElement(children: .combine)
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel(row.name)
-    .accessibilityValue(row.meta)
+    .accessibilityValue(
+      [row.meta, row.description]
+        .compactMap { $0 }
+        .filter { !$0.isEmpty }
+        .joined(separator: ", ")
+    )
     .accessibilityHint("Double tap to open. Swipe left for actions.")
   }
 

@@ -11,13 +11,70 @@ import { FONT_FAMILY, text } from '../theme/typography';
 import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions';
 import { evaluateChallenge } from '../challenges/evaluate';
 import { ChallengeSummaryCard } from '../components/challenges/ChallengeSummaryCard';
+import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
 import { useActivity } from '../hooks/useActivity';
 import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
 import { useTicketedEvents } from '../hooks/useTicketedEvents';
+import type { IllustrationTagId } from '../illustrations/catalog';
 
 type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreHome'>;
 
 const CARD_COLORS = ['#DCEFF3', '#FFE3D8', '#FFF0BD', '#DCEFE6'] as const;
+
+function ExplorePromoCard({
+  eyebrow,
+  title,
+  description,
+  actionLabel,
+  artworkTag,
+  tone,
+  icon,
+  accessibilityLabel,
+  onPress,
+}: {
+  eyebrow: string;
+  title: string;
+  description: string;
+  actionLabel: string;
+  artworkTag: IllustrationTagId;
+  tone: 'updates' | 'exclusive';
+  icon?: string;
+  accessibilityLabel: string;
+  onPress: () => void;
+}) {
+  return (
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={accessibilityLabel}
+      style={({ pressed }) => [
+        styles.promoCard,
+        tone === 'updates' ? styles.promoCardUpdates : styles.promoCardExclusive,
+        pressed && styles.promoCardPressed,
+      ]}
+      onPress={onPress}
+    >
+      <View pointerEvents="none" style={styles.promoArtworkWrap}>
+        <IllustrationSlot tagId={artworkTag} variant="artwork" style={styles.promoArtwork} />
+      </View>
+      <View style={styles.promoCopy}>
+        <View style={styles.promoEyebrowRow}>
+          {icon && (
+            <View style={styles.promoIconChip}>
+              <Text style={styles.promoIcon}>{icon}</Text>
+            </View>
+          )}
+          <Text style={styles.promoEyebrow}>{eyebrow}</Text>
+        </View>
+        <Text style={styles.promoTitle} numberOfLines={2}>{title}</Text>
+        <Text style={styles.promoDescription} numberOfLines={2}>{description}</Text>
+        <View style={styles.promoAction}>
+          <Text style={styles.promoActionLabel}>{actionLabel}</Text>
+          <Text style={styles.promoActionArrow}>→</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+}
 
 export function ExploreHomeScreen({ navigation }: Props) {
   const { restaurants, isLoading, error } = useDataProvider();
@@ -119,35 +176,33 @@ export function ExploreHomeScreen({ navigation }: Props) {
         {restaurants.length > 0 && (
           <View style={styles.challengeSection}>
             <Text style={[text.sectionToggle, styles.sectionLabel]}>WHAT'S NEW</Text>
-            <Pressable
-              accessibilityRole="button"
+            <ExplorePromoCard
+              eyebrow="THE LATEST"
+              title="Fresh from the parks"
+              description="Menu updates, prices, openings & closures"
+              actionLabel="See updates"
+              artworkTag="changes.hero.whats-new.v1"
+              tone="updates"
               accessibilityLabel="See what's new: menu updates, prices, openings and closures"
-              style={({ pressed }) => [styles.changesCard, pressed && styles.changesCardPressed]}
               onPress={() => navigation.navigate('ChangesHome')}
-            >
-              <View style={styles.changesIcon}>
-                <Text style={styles.changesIconText}>🔄</Text>
-              </View>
-              <View style={styles.changesCopy}>
-                <Text style={styles.changesTitle}>See what's new!</Text>
-                <Text style={styles.changesDescription} numberOfLines={1}>
-                  Menu updates, prices, openings & closures
-                </Text>
-              </View>
-              <Text style={styles.chevron}>›</Text>
-            </Pressable>
+            />
           </View>
         )}
 
         {activeTicketedEvents.length > 0 && (
           <View style={styles.challengeSection}>
-            <Text style={[text.sectionToggle, styles.sectionLabel]}>CHECK OUT EXCLUSIVE ITEMS</Text>
+            <Text style={[text.sectionToggle, styles.sectionLabel]}>LIMITED-TIME FINDS</Text>
             {activeTicketedEvents.map((event) => (
-              <Pressable
+              <ExplorePromoCard
                 key={event.id}
-                accessibilityRole="button"
+                eyebrow="SPECIAL EVENT MENU"
+                title={event.title}
+                description={event.subtitle}
+                actionLabel={`Browse ${event.items.length} ${event.items.length === 1 ? 'item' : 'items'}`}
+                artworkTag="explore.editorial.exclusive-items.v1"
+                tone="exclusive"
+                icon={event.icon}
                 accessibilityLabel={`${event.title}: ${event.subtitle}`}
-                style={({ pressed }) => [styles.changesCard, pressed && styles.changesCardPressed]}
                 onPress={() =>
                   navigation.navigate('TicketedEvent', {
                     title: event.title,
@@ -155,18 +210,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
                     items: event.items,
                   })
                 }
-              >
-                <View style={styles.changesIcon}>
-                  <Text style={styles.changesIconText}>{event.icon}</Text>
-                </View>
-                <View style={styles.changesCopy}>
-                  <Text style={styles.changesTitle}>{event.title}</Text>
-                  <Text style={styles.changesDescription} numberOfLines={1}>
-                    {event.subtitle}
-                  </Text>
-                </View>
-                <Text style={styles.chevron}>›</Text>
-              </Pressable>
+              />
             ))}
           </View>
         )}
@@ -290,53 +334,99 @@ const styles = StyleSheet.create({
   challengeSection: {
     marginTop: SPACING.xl,
   },
-  // Matches ChallengeSummaryCard's bordered-card language (this app's
-  // convention for a top-level section entry point, distinct from the
-  // flat divider-row convention used for peer list items within a screen).
-  changesCard: {
+  promoCard: {
+    position: 'relative',
+    minHeight: 164,
+    overflow: 'hidden',
+    borderRadius: RADII.xl,
+    padding: SPACING.lg,
+    borderWidth: 1,
+    borderColor: 'rgba(23, 40, 45, 0.07)',
+  },
+  promoCardUpdates: {
+    backgroundColor: DAYLIGHT.sky,
+  },
+  promoCardExclusive: {
+    backgroundColor: '#F8E5B9',
+  },
+  promoCardPressed: {
+    opacity: 0.78,
+    transform: [{ scale: 0.985 }],
+  },
+  promoCopy: {
+    width: '66%',
+    minHeight: 130,
+    alignItems: 'flex-start',
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  promoEyebrowRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.sm,
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
+    gap: SPACING.xs,
+    marginBottom: SPACING.xs,
   },
-  changesCardPressed: {
-    backgroundColor: COLORS.goldLight,
+  promoEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    lineHeight: 12,
+    letterSpacing: 1.05,
+    color: DAYLIGHT.ocean,
   },
-  changesIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  promoIconChip: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.forest,
-    marginRight: SPACING.sm,
+    backgroundColor: 'rgba(255, 253, 248, 0.82)',
   },
-  changesIconText: {
-    fontSize: 15,
+  promoIcon: {
+    fontSize: 13,
   },
-  changesCopy: {
-    flex: 1,
-    minWidth: 0,
-  },
-  changesTitle: {
+  promoTitle: {
     fontFamily: FONT_FAMILY.piazzollaBold,
-    fontSize: 17,
-    color: COLORS.ink,
+    fontSize: 21,
+    lineHeight: 24,
+    color: DAYLIGHT.ink,
   },
-  changesDescription: {
+  promoDescription: {
     fontFamily: FONT_FAMILY.workSansRegular,
-    fontSize: 12,
-    lineHeight: 16,
-    color: COLORS.muted,
-    marginTop: 1,
+    fontSize: 12.5,
+    lineHeight: 17,
+    color: DAYLIGHT.muted,
+    marginTop: SPACING.xs,
   },
-  chevron: {
-    fontFamily: FONT_FAMILY.workSansRegular,
-    fontSize: 25,
-    color: COLORS.dim,
-    marginLeft: SPACING.sm,
+  promoAction: {
+    minHeight: 30,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+    borderRadius: 15,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: 'rgba(255, 253, 248, 0.88)',
+  },
+  promoActionLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 10,
+    color: DAYLIGHT.ocean,
+  },
+  promoActionArrow: {
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 15,
+    color: DAYLIGHT.coral,
+  },
+  promoArtworkWrap: {
+    position: 'absolute',
+    width: '40%',
+    right: -8,
+    top: 0,
+    bottom: 0,
+    justifyContent: 'center',
+  },
+  promoArtwork: {
+    minHeight: 148,
+    borderRadius: RADII.xl,
   },
 });

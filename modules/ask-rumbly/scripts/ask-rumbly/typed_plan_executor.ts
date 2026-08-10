@@ -30,6 +30,26 @@ function withObjectiveCandidates(result: UnprovenPlanExecution, candidates: Obje
 
 const NEAR_RADIUS_MILES = { area: 0.75, park: 2, resort: 1.5 } as const;
 const GENERIC_FOOD_TERMS = new Set(['food', 'meal', 'meals', 'option', 'options', 'dish', 'dishes', 'something', 'anything', 'for']);
+const DISNEY_ALLERGY_URL = 'https://disneyworld.disney.go.com/guest-services/special-dietary-requests/';
+const MY_DISNEY_EXPERIENCE_URL = 'https://disneyworld.disney.go.com/guest-services/my-disney-experience/mobile-apps/';
+
+function restaurantDistance(origin: Coordinates | null, restaurant: Restaurant): number | null {
+  return origin ? distanceToRestaurant(origin, restaurant) : null;
+}
+
+function diversifyRestaurants<T extends { restaurant: Restaurant }>(rows: T[]): T[] {
+  const seen = new Set<string>();
+  const first: T[] = [];
+  const remaining: T[] = [];
+  for (const row of rows) {
+    if (seen.has(row.restaurant.restaurant_id)) remaining.push(row);
+    else {
+      seen.add(row.restaurant.restaurant_id);
+      first.push(row);
+    }
+  }
+  return [...first, ...remaining];
+}
 
 function hasGenericFood(plan: QueryPlan): boolean {
   return plan.subject.foodTerms.length === 0
@@ -110,9 +130,10 @@ function exclusionMatch(item: MenuItem, exclusions: string[]): boolean {
 function orderableItem(item: MenuItem): boolean {
   const name = normalizeForSearch(item.item.trim());
   const category = normalizeForSearch(`${item.category} ${item.category_group} ${(item.norm_categories ?? []).join(' ')}`);
+  if (/^(?:guests? must|allergen guide|allergy guide|please (?:ask|speak)|speak to (?:a )?cast member|ask (?:a )?cast member)\b/i.test(item.item.trim())) return false;
   if (/^(?:add|additional|extra|side of|choice of)\s/i.test(item.item.trim()) || /add-?on/i.test(item.item)) return false;
   if (/\b(?:toppings?|add ons?|condiments?|extras?|enhancements?)\b/.test(category)) return false;
-  if (/^(?:sprinkles?|whipped cream|syrups?|hot fudge|caramel(?: sauce| topping)?|flavored syrup|candy pieces?|non dairy|split scoop|sour cream)$/.test(name)) return false;
+  if (/^(?:sprinkles?|whipped cream|syrups?|hot fudge|caramel(?: sauce| topping)?|flavored syrup|flavor shots?|cold foams?|candy pieces?|non[ -]dairy|split scoop|sour cream)$/.test(name)) return false;
   if (item.price_value > 0 && item.price_value <= 2.5 && /\b(?:sauce|spread|dip|cream|foam|syrup|topping|sprinkles|scoop)\b/.test(name)) return false;
   return true;
 }
@@ -150,6 +171,20 @@ function acknowledgement(plan: QueryPlan) {
   } : undefined;
 }
 
+function handoffActions(plan: QueryPlan, data: LoadedData): ExecutorAction[] {
+  const restaurantId = plan.subject.restaurantIds[0];
+  const restaurant = restaurantId
+    ? data.restaurants.find((candidate) => candidate.restaurant_id === restaurantId)
+    : undefined;
+  if (restaurant?.disney_url) {
+    return [{ kind: 'openDisney', label: `Open ${restaurant.restaurant} in Disney`, url: restaurant.disney_url }];
+  }
+  if (plan.constraints.allergenKeys.length > 0) {
+    return [{ kind: 'openDisney', label: 'Open Disney allergy guidance', url: DISNEY_ALLERGY_URL }];
+  }
+  return [{ kind: 'openDisney', label: 'Open My Disney Experience', url: MY_DISNEY_EXPERIENCE_URL }];
+}
+
 function adaptLegacyNonAnswer(
   result: Exclude<ExecutorResult, { kind: 'answer' }>,
   plan: QueryPlan,
@@ -171,10 +206,9 @@ function adaptLegacyNonAnswer(
   };
 }
 
-function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates, trace: ExecutionTrace): UnprovenPlanExecution {
-  const listableItems = plan.constraints.priceOperation === 'cheapest' || plan.constraints.maxPrice != null
-    ? data.menuItems.filter((item) => item.price_value > 0 && orderableItem(item))
-    : data.menuItems;
+function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates | null, trace: ExecutionTrace): UnprovenPlanExecution {
+  const listableItems = data.menuItems.filter((item) => orderableItem(item)
+    && (plan.constraints.priceOperation === 'cheapest' || plan.constraints.maxPrice != null ? item.price_value > 0 : true));
   if (listableItems.length === 0) {
     const labelNote = plan.constraints.allergenKeys.length > 0
       ? ` that Disney lists for the requested allergy label(s)`
@@ -193,24 +227,36 @@ function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates, trac
     .map((item) => ({ item, restaurant: restaurants.get(item.restaurant_id) }))
     .filter((row): row is { item: MenuItem; restaurant: Restaurant } => Boolean(row.restaurant))
     .sort((a, b) => {
-      if (plan.constraints.priceOperation === 'cheapest' || plan.constraints.maxPrice != null) return a.item.price_value - b.item.price_value;
-      return (distanceToRestaurant(origin, a.restaurant) ?? Infinity) - (distanceToRestaurant(origin, b.restaurant) ?? Infinity);
+      if (plan.constraints.priceOperation === 'cheapest') return a.item.price_value - b.item.price_value;
+      const distanceA = restaurantDistance(origin, a.restaurant);
+      const distanceB = restaurantDistance(origin, b.restaurant);
+      if (distanceA != null || distanceB != null) {
+        const distanceDifference = (distanceA ?? Infinity) - (distanceB ?? Infinity);
+        if (distanceDifference !== 0) return distanceDifference;
+      }
+      const restaurantDifference = a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
+      if (restaurantDifference !== 0) return restaurantDifference;
+      if (plan.constraints.maxPrice != null) return a.item.price_value - b.item.price_value;
+      return a.item.item.localeCompare(b.item.item);
     });
   const objectiveCandidates: ObjectiveCandidate[] = sorted.map(({ item, restaurant }) => ({
     restaurantId: restaurant.restaurant_id,
     itemKeys: [`${item.restaurant_id}:${item.item_id}`],
     score: plan.constraints.distanceOperation === 'nearest'
-      ? distanceToRestaurant(origin, restaurant) ?? Infinity
+      ? restaurantDistance(origin, restaurant) ?? Infinity
       : item.price_value,
     evidence: plan.constraints.distanceOperation === 'nearest'
-      ? `${restaurant.restaurant}=${distanceToRestaurant(origin, restaurant) ?? 'unknown'}mi`
+      ? `${restaurant.restaurant}=${restaurantDistance(origin, restaurant) ?? 'unknown'}mi`
       : `${item.item}=${item.price_value}`,
   }));
-  const winners = plan.constraints.priceOperation === 'cheapest'
+  const objectiveRows = plan.constraints.priceOperation === 'cheapest'
     ? sorted.filter((row) => row.item.price_value === sorted[0].item.price_value)
     : plan.constraints.distanceOperation === 'nearest'
-      ? sorted.filter((row) => distanceToRestaurant(origin, row.restaurant) === distanceToRestaurant(origin, sorted[0].restaurant))
+      ? sorted.filter((row) => restaurantDistance(origin, row.restaurant) === restaurantDistance(origin, sorted[0].restaurant))
       : sorted;
+  const winners = plan.constraints.priceOperation === 'cheapest' || plan.constraints.distanceOperation === 'nearest'
+    ? objectiveRows
+    : diversifyRestaurants(objectiveRows);
   const shown = winners.slice(0, 12);
   const allergyPrefix = plan.constraints.allergenKeys.length > 0 ? 'Disney lists these menu items for the requested allergy label(s): ' : '';
   const plantNote = plan.constraints.dietaryKeys.some((key) => key === 'plant-based' || key === 'vegetarian')
@@ -231,6 +277,12 @@ function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates, trac
     restaurantIds: Array.from(new Set(winners.map((row) => row.restaurant.restaurant_id))),
     itemIds: winners.map((row) => row.item.item_id),
     itemKeys: winners.map((row) => `${row.item.restaurant_id}:${row.item.item_id}`),
+    distanceMilesByRestaurant: Object.fromEntries(
+      winners.flatMap((row) => {
+        const distance = restaurantDistance(origin, row.restaurant);
+        return distance == null ? [] : [[row.restaurant.restaurant_id, distance]];
+      }),
+    ),
     trace,
     safety: acknowledgement(plan),
   };
@@ -239,10 +291,10 @@ function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates, trac
     : result;
 }
 
-function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordinates, trace: ExecutionTrace): UnprovenPlanExecution {
+function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordinates | null, trace: ExecutionTrace): UnprovenPlanExecution {
   let rows = data.restaurants.map((restaurant) => ({
     restaurant,
-    distance: distanceToRestaurant(origin, restaurant),
+    distance: restaurantDistance(origin, restaurant),
     hours: getTodayStatus(data.hoursData, restaurant.restaurant_id),
   }));
   const wantsHours = plan.action === 'hours' || plan.claimType === 'restaurant_hours';
@@ -251,7 +303,13 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
   } else if (wantsHours && plan.constraints.time === 'today') {
     rows = rows.filter(({ hours }) => hours.todayLabel.startsWith('Open today'));
   }
-  rows.sort((a, b) => (a.distance ?? Infinity) - (b.distance ?? Infinity));
+  rows.sort((a, b) => {
+    if (a.distance != null || b.distance != null) {
+      const difference = (a.distance ?? Infinity) - (b.distance ?? Infinity);
+      if (difference !== 0) return difference;
+    }
+    return a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
+  });
   if (rows.length === 0) return { kind: 'no-match', text: 'No restaurants matched every requested constraint.', trace };
   const objectiveCandidates: ObjectiveCandidate[] = rows.map(({ restaurant, distance }) => ({
     restaurantId: restaurant.restaurant_id,
@@ -270,6 +328,9 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
     kind: 'answer',
     text: `${plan.constraints.distanceOperation === 'nearest' ? 'Nearest verified restaurant' : `${rows.length} matching restaurant${rows.length === 1 ? '' : 's'}`}: ${labels.join('; ')}${plan.constraints.distanceOperation !== 'nearest' && rows.length > shown.length ? `; and ${rows.length - shown.length} more` : ''}.`,
     restaurantIds: resultRows.map(({ restaurant }) => restaurant.restaurant_id),
+    distanceMilesByRestaurant: Object.fromEntries(
+      resultRows.flatMap(({ restaurant, distance }) => distance == null ? [] : [[restaurant.restaurant_id, distance]]),
+    ),
     trace,
   };
   return plan.constraints.distanceOperation === 'nearest' ? withObjectiveCandidates(result, objectiveCandidates) : result;
@@ -278,7 +339,7 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
 function nativeVerifiedFoodAnswer(
   plan: QueryPlan,
   data: LoadedData,
-  origin: Coordinates,
+  origin: Coordinates | null,
   trace: ExecutionTrace,
 ): UnprovenPlanExecution | null {
   if (plan.subject.foodTerms.length === 0) return null;
@@ -317,13 +378,17 @@ function nativeVerifiedFoodAnswer(
       })
       .forEach((item) => selectedByKey.set(`${item.restaurant_id}:${item.item_id}`, item));
     const selected = Array.from(selectedByKey.values());
+    const distance = restaurantDistance(origin, restaurant);
     const objectiveScore = plan.constraints.priceOperation === 'cheapest'
       ? selected.reduce((sum, item) => sum + (item.price_value > 0 ? item.price_value : Infinity), 0)
-      : distanceToRestaurant(origin, restaurant) ?? Infinity;
-    return [{ restaurant, items: selected, distance: distanceToRestaurant(origin, restaurant), objectiveScore }];
+      : plan.constraints.distanceOperation === 'nearest' || origin
+        ? distance ?? Infinity
+        : 0;
+    return [{ restaurant, items: selected, distance, objectiveScore }];
   });
   rows.sort((a, b) => {
-    return a.objectiveScore - b.objectiveScore;
+    const objectiveDifference = a.objectiveScore - b.objectiveScore;
+    return objectiveDifference || a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
   });
   if (rows.length === 0) return null;
 
@@ -359,6 +424,9 @@ function nativeVerifiedFoodAnswer(
     restaurantIds: resultRows.map((row) => row.restaurant.restaurant_id),
     itemIds: selectedItems.map((item) => item.item_id),
     itemKeys: selectedItems.map((item) => `${item.restaurant_id}:${item.item_id}`),
+    distanceMilesByRestaurant: Object.fromEntries(
+      resultRows.flatMap(({ restaurant, distance }) => distance == null ? [] : [[restaurant.restaurant_id, distance]]),
+    ),
     trace,
     safety: acknowledgement(plan),
   };
@@ -375,11 +443,16 @@ function nativeVerifiedFoodAnswer(
   return result;
 }
 
-function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigin: Coordinates = DEFAULT_ORIGIN): UnprovenPlanExecution {
+function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigin: Coordinates | null = DEFAULT_ORIGIN): UnprovenPlanExecution {
   const capability = assessPlanCapability(plan);
   if (capability.disposition !== 'execute') {
     const kind = capability.disposition === 'clarify' ? 'clarification' : capability.disposition;
-    return { kind, text: capability.reason, capability };
+    return {
+      kind,
+      text: capability.reason,
+      capability,
+      ...(kind === 'handoff' ? { actions: handoffActions(plan, source) } : {}),
+    };
   }
 
   const applied: string[] = [];
@@ -530,7 +603,7 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
   if (plan.action === 'check_feature') {
     const compilation = compileQueryPlan(plan);
     if (compilation.kind !== 'compiled') return { kind: 'error', text: `Execution adapter could not preserve this feature check: ${compilation.reason}`, trace };
-    const result = answerQuery(compilation.query, source, userOrigin);
+    const result = answerQuery(compilation.query, source, userOrigin ?? DEFAULT_ORIGIN);
     if (result.kind === 'answer') return { ...result, trace };
     return adaptLegacyNonAnswer(result, plan, trace);
   }
@@ -590,7 +663,7 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
   if (exposeFilteredAllergyRows) executablePlan.constraints.allergenKeys = [];
   const compilation = compileQueryPlan(executablePlan);
   if (compilation.kind !== 'compiled') return { kind: 'error', text: `Execution adapter could not preserve this plan: ${compilation.reason}`, trace };
-  const result = answerQuery(compilation.query, data, origin);
+  const result = answerQuery(compilation.query, data, origin ?? DEFAULT_ORIGIN);
   if (result.kind !== 'answer') {
     const text = exposeFilteredAllergyRows
       ? `${result.text} This search used only menu rows Disney lists for the requested allergy label(s). Disney's labels are informational; ask a Cast Member about your needs before ordering.`
@@ -619,7 +692,7 @@ function derivedItemKeys(result: Extract<UnprovenPlanExecution, { kind: 'answer'
  * but it cannot become a guest-facing answer unless the actual returned
  * restaurant/menu rows witness every food term and explicit global scope.
  */
-export function executeQueryPlan(plan: QueryPlan, source: LoadedData, userOrigin: Coordinates = DEFAULT_ORIGIN): TypedPlanExecution {
+export function executeQueryPlan(plan: QueryPlan, source: LoadedData, userOrigin: Coordinates | null = DEFAULT_ORIGIN): TypedPlanExecution {
   const result = executeQueryPlanUnproven(plan, source, userOrigin);
   if (result.kind !== 'answer') return result;
   const itemKeys = derivedItemKeys(result, source);

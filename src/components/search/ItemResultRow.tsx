@@ -15,11 +15,11 @@ import { AllergyInfoSheet } from '../AllergyInfoSheet';
 import { GotItRatingCard, type GotItCardEvent, type GotItCardOrigin } from '../GotItRatingCard';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../swipeableCoordinator';
 import { isNewMenuItem } from '../../data/newItem';
-import { formatRatingAverage } from '../../data/ratingAverage';
 import { getItemIdentityKeyFor } from '../../data/itemIdentity';
 import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 import { NativeItemResultRow } from './NativeItemResultRow';
+import { MenuItemRatingSummary } from '../MenuItemRatingSummary';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -93,7 +93,6 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
   const isNeeded = needItItemKeys.has(key);
   const gotItCount = gotItItemCounts.get(key) ?? 0;
   const ratingAverage = ratingAveragesEnabled ? itemRatingAverages.get(key) : undefined;
-  const ratingAverageLabel = formatRatingAverage(ratingAverage);
   const isNew = isNewMenuItem(item.first_seen);
 
   const swipeableRef = useRef<Swipeable>(null);
@@ -287,11 +286,7 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
                 style={[text.restaurantName, styles.name]}
                 numberOfLines={1}
               />
-              {!!ratingAverageLabel && (
-                <Text style={[text.bodyMuted, styles.ratingAverage]} numberOfLines={1}>
-                  {ratingAverageLabel}
-                </Text>
-              )}
+              <MenuItemRatingSummary ratingAverage={ratingAverage} />
             </View>
             {isNew && (
               <View style={styles.newBadge}>
@@ -419,10 +414,6 @@ const styles = StyleSheet.create({
   },
   price: {
     fontSize: 13,
-  },
-  ratingAverage: {
-    fontSize: 12,
-    color: DAYLIGHT.amberInk,
   },
   actionsRow: {
     flexDirection: 'row',

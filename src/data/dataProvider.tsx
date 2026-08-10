@@ -16,6 +16,7 @@ interface DataContextValue {
   restaurants: Restaurant[];
   hoursData: HoursData | null;
   isLoading: boolean;
+  isCacheHydrated: boolean;
   error: string | null;
   lastSyncedAt: number | null;
   lastImportStats: ImportStats | null;
@@ -36,6 +37,7 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
   const [restaurants, setRestaurants] = useState<Restaurant[]>([]);
   const [hoursData, setHoursData] = useState<HoursData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isCacheHydrated, setIsCacheHydrated] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastSyncedAt, setLastSyncedAt] = useState<number | null>(null);
   const [lastImportStats, setLastImportStats] = useState<ImportStats | null>(null);
@@ -54,6 +56,11 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
       setHoursData(cached.hoursData);
     } catch {
       // No usable cache yet -- fall through to the check below regardless.
+    } finally {
+      // The native splash only needs to cover this fast disk read. A cache
+      // hit can then reveal the app immediately while the update check runs
+      // behind it; a cache miss hands off to the matching progress screen.
+      setIsCacheHydrated(true);
     }
 
     setIsLoading(true);
@@ -105,7 +112,16 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <DataContext.Provider
-      value={{ restaurants, hoursData, isLoading, error, lastSyncedAt, lastImportStats, forceRefresh }}
+      value={{
+        restaurants,
+        hoursData,
+        isLoading,
+        isCacheHydrated,
+        error,
+        lastSyncedAt,
+        lastImportStats,
+        forceRefresh,
+      }}
     >
       {children}
     </DataContext.Provider>

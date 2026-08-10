@@ -725,7 +725,7 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     modules.push({
       key: 'curated',
       title: 'Worth a look',
-      subtitle: 'Seasonal picks and stories selected by Rumbly',
+      subtitle: 'Seasonal picks and stories selected by myRumbly',
       sortOrder: curatedConfig.sortOrder,
       items: input.content.slice(0, curatedConfig.maxItems).map((content) => ({
         kind: 'content',

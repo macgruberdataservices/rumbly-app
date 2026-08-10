@@ -8,6 +8,7 @@ import {
 import { getTodayStatus } from '../../data/hoursStatus';
 import { restaurantLocationLabel } from '../../data/locationNames';
 import { formatRatingAverage } from '../../data/ratingAverage';
+import { sanitizeRestaurantDescription } from '../../data/restaurantDescription';
 import { useActivity } from '../../hooks/useActivity';
 import { useDataProvider } from '../../hooks/useDataProvider';
 import { useEntitlement } from '../../hooks/useEntitlement';
@@ -27,7 +28,7 @@ export const NativeRestaurantResultRow = forwardRef<
   View,
   NativeRestaurantResultRowProps
 >(function NativeRestaurantResultRow(
-  { restaurant, highlightQuery, distanceMiles, onPress },
+  { restaurant, highlightQuery, distanceMiles, showDescription, onPress },
   forwardedRef
 ) {
   const {
@@ -59,6 +60,9 @@ export const NativeRestaurantResultRow = forwardRef<
     : null;
   const [gotItEvent, setGotItEvent] = useState<GotItCardEvent | null>(null);
   const hoursStatus = getTodayStatus(hoursData, restaurant.restaurant_id);
+  const description = showDescription
+    ? sanitizeRestaurantDescription(restaurant.description) || null
+    : null;
   const meta = [
     restaurantLocationLabel(restaurant),
     distanceMiles === null || distanceMiles === undefined
@@ -104,13 +108,17 @@ export const NativeRestaurantResultRow = forwardRef<
 
   return (
     <>
-      <View ref={forwardedRef} style={styles.host}>
+      <View
+        ref={forwardedRef}
+        style={[styles.host, description && styles.hostWithDescription]}
+      >
         <RumblyNativeSearchRestaurantRowView
           style={styles.nativeRow}
           row={{
             restaurantId: restaurant.restaurant_id,
             name: restaurant.restaurant,
             meta,
+            description,
             highlightQuery: highlightQuery ?? null,
             isNeeded,
             isLoved,
@@ -147,6 +155,9 @@ export const NativeRestaurantResultRow = forwardRef<
 const styles = StyleSheet.create({
   host: {
     height: 76,
+  },
+  hostWithDescription: {
+    height: 96,
   },
   nativeRow: {
     flex: 1,

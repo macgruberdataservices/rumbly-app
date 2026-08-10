@@ -6,6 +6,7 @@ export interface NativeRestaurantResultRowProps {
   restaurant: Restaurant;
   highlightQuery?: string;
   distanceMiles?: number | null;
+  showDescription?: boolean;
   onPress: () => void;
 }
 

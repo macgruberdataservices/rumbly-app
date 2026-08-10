@@ -38,7 +38,7 @@ export const TICKETED_EVENTS: TicketedEventConfig[] = [
       'mickeys-not-so-scary-halloween-party-exclusives',
       'halloween-exclusives',
     ],
-    title: "Mickey's-Not-So-Scary Halloween Party",
+    title: "Mickey's Not-So-Scary Halloween Party",
     subtitle: 'Browse Halloween party exclusives by location',
     icon: '🎃',
   },

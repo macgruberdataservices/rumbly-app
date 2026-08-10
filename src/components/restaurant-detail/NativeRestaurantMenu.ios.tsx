@@ -19,6 +19,7 @@ import {
 } from '../GotItRatingCard';
 import { formatDateLabel } from '../../data/changes';
 import { isNewMenuItem } from '../../data/newItem';
+import { sanitizeRestaurantDescription } from '../../data/restaurantDescription';
 import { formatRatingAverage } from '../../data/ratingAverage';
 import { getItemIdentityKeyFor } from '../../data/itemIdentity';
 import type { MenuItem } from '../../data/types';
@@ -87,7 +88,7 @@ export const NativeRestaurantMenu = forwardRef<
             anchorId: `${sectionIndex}:${itemIndex}:${item.item_id}`,
             itemId: String(item.item_id),
             name: item.item || 'Menu item',
-            description: item.description ?? null,
+            description: sanitizeRestaurantDescription(item.description) || null,
             price: item.price_display ?? '',
             isNew: isNewMenuItem(item.first_seen),
             addedLabel: `Added ${formatDateLabel(item.first_seen)}`,
