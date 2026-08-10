@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { COLORS, SPACING } from '../../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY } from '../../theme/typography';
 
 export function SettingsScreenHeader({ title, onBack }: { title: string; onBack: () => void }) {
@@ -15,14 +15,25 @@ export function SettingsScreenHeader({ title, onBack }: { title: string; onBack:
 
 const styles = StyleSheet.create({
   row: {
-    minHeight: 64,
+    minHeight: 76,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: SPACING.sm,
+    paddingHorizontal: SPACING.md,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
+    paddingBottom: SPACING.lg,
+    borderBottomLeftRadius: RADII.xl,
+    borderBottomRightRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.sky,
   },
-  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
-  title: { flex: 1, fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
+  backButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: SPACING.xs,
+    borderRadius: 22,
+    backgroundColor: DAYLIGHT.paper,
+  },
+  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: DAYLIGHT.ocean },
+  title: { flex: 1, fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 23, lineHeight: 28, color: DAYLIGHT.ink },
 });

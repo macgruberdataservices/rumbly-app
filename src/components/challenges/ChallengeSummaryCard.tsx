@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ChallengeDefinition } from '../../challenges/evaluate';
 import type { ChallengeProgress } from '../../challenges/evaluate';
-import { COLORS, SPACING } from '../../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY } from '../../theme/typography';
 
 interface Props {
@@ -52,14 +52,17 @@ export function ChallengeSummaryCard({ definition, progress, onPress, compact = 
 
 const styles = StyleSheet.create({
   card: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: 8,
-    padding: SPACING.md,
-    backgroundColor: COLORS.surface,
+    borderRadius: RADII.xl,
+    padding: SPACING.lg,
+    backgroundColor: '#D8EEE4',
+    shadowColor: DAYLIGHT.ocean,
+    shadowOpacity: 0.08,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 6 },
+    elevation: 2,
   },
   cardCompact: { paddingVertical: SPACING.sm },
-  pressed: { backgroundColor: COLORS.goldLight },
+  pressed: { opacity: 0.82 },
   topRow: { flexDirection: 'row', alignItems: 'center' },
   icon: {
     width: 34,
@@ -67,20 +70,21 @@ const styles = StyleSheet.create({
     borderRadius: 17,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.forest,
+    backgroundColor: DAYLIGHT.ocean,
     marginRight: SPACING.sm,
+    transform: [{ rotate: '-7deg' }],
   },
-  iconText: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 15, color: COLORS.goldLight },
+  iconText: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 15, color: '#FFFFFF' },
   copy: { flex: 1, minWidth: 0 },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  title: { flexShrink: 1, fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 17, color: COLORS.ink },
-  repeatPill: { borderRadius: 8, backgroundColor: COLORS.cream, paddingHorizontal: 6, paddingVertical: 2 },
-  repeatLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 8, color: COLORS.forest },
-  description: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 12, lineHeight: 16, color: COLORS.muted, marginTop: 1 },
-  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
+  title: { flexShrink: 1, fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 19, color: DAYLIGHT.ink },
+  repeatPill: { borderRadius: 10, backgroundColor: 'rgba(255,255,255,0.72)', paddingHorizontal: 7, paddingVertical: 3 },
+  repeatLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 8, color: DAYLIGHT.ocean },
+  description: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, lineHeight: 18, color: DAYLIGHT.muted, marginTop: 2 },
+  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 28, color: DAYLIGHT.ocean, marginLeft: SPACING.sm },
   progressRow: { flexDirection: 'row', alignItems: 'center', marginTop: SPACING.sm },
-  track: { flex: 1, height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: COLORS.cream },
-  fill: { height: '100%', backgroundColor: COLORS.pine },
-  progressLabel: { width: 34, textAlign: 'right', fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 11, color: COLORS.forest },
-  completionLabel: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 10, color: COLORS.dim, marginTop: 5 },
+  track: { flex: 1, height: 8, borderRadius: 4, overflow: 'hidden', backgroundColor: 'rgba(255,255,255,0.78)' },
+  fill: { height: '100%', backgroundColor: DAYLIGHT.coral },
+  progressLabel: { width: 40, textAlign: 'right', fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 11, color: DAYLIGHT.ocean },
+  completionLabel: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 10, color: DAYLIGHT.muted, marginTop: 6 },
 });

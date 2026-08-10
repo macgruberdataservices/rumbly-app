@@ -6,7 +6,7 @@ import { SettingsRow } from '../components/settings/SettingsRow';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { useAuth } from '../hooks/useAuth';
 import { useIsDevOwner } from '../hooks/useIsDevOwner';
-import { COLORS, SPACING } from '../theme/tokens';
+import { DAYLIGHT, SPACING } from '../theme/tokens';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'AccountSettings'>;
 
@@ -57,7 +57,7 @@ export function AccountSettingsScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
   content: { flexGrow: 1, paddingBottom: SPACING.xxl },
-  sectionBreak: { height: 10, marginTop: SPACING.lg, backgroundColor: COLORS.goldLight },
+  sectionBreak: { height: 10, marginTop: SPACING.lg },
 });

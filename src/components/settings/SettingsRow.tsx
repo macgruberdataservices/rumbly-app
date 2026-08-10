@@ -1,5 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import { COLORS, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 export function SettingsRow({
@@ -34,14 +34,16 @@ const styles = StyleSheet.create({
     minHeight: 72,
     flexDirection: 'row',
     alignItems: 'center',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingVertical: SPACING.md,
+    borderRadius: RADII.lg,
+    backgroundColor: COLORS.surface,
   },
-  rowPressed: { backgroundColor: COLORS.goldLight },
+  rowPressed: { backgroundColor: DAYLIGHT.sky },
   copy: { flex: 1, minWidth: 0 },
   title: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 17, color: COLORS.ink },
-  destructive: { color: COLORS.gold },
-  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 27, color: COLORS.dim, marginLeft: SPACING.md },
+  destructive: { color: DAYLIGHT.coral },
+  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 27, color: DAYLIGHT.ocean, marginLeft: SPACING.md },
 });

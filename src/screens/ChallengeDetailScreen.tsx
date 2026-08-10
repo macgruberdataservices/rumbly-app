@@ -4,9 +4,10 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getChallengeDefinition } from '../challenges/definitions';
 import { eligibleRestaurants, evaluateChallenge } from '../challenges/evaluate';
+import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
 import { useActivity } from '../hooks/useActivity';
 import { useDataProvider } from '../hooks/useDataProvider';
-import { COLORS, SPACING } from '../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type ChallengeRouteParamList = {
@@ -52,21 +53,28 @@ export function ChallengeDetailScreen() {
         <Text style={styles.headerTitle}>Challenge</Text>
       </View>
       <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.badge}><Text style={styles.badgeStar}>★</Text></View>
-        <View style={styles.titleRow}>
-          <Text style={styles.title}>{definition.title}</Text>
-          <View style={styles.repeatPill}><Text style={styles.repeatLabel}>REPEATABLE</Text></View>
+        <View style={styles.hero}>
+          <View style={styles.heroCopy}>
+            <View style={styles.badge}><Text style={styles.badgeStar}>★</Text></View>
+            <View style={styles.titleRow}>
+              <Text style={styles.title}>{definition.title}</Text>
+            </View>
+            <View style={styles.repeatPill}><Text style={styles.repeatLabel}>REPEATABLE</Text></View>
+          </View>
+          <IllustrationSlot tagId="explore.editorial.challenge.v1" variant="artwork" style={styles.heroArt} />
         </View>
         <Text style={styles.description}>{definition.description}</Text>
 
-        <View style={styles.progressHeader}>
-          <Text style={styles.progressTitle}>Current round</Text>
-          <Text style={styles.progressCount}>{progress.currentCount} of {progress.requiredCount}</Text>
+        <View style={styles.progressCard}>
+          <View style={styles.progressHeader}>
+            <Text style={styles.progressTitle}>Current round</Text>
+            <Text style={styles.progressCount}>{progress.currentCount} of {progress.requiredCount}</Text>
+          </View>
+          <View style={styles.track}><View style={[styles.fill, { width: `${Math.min(100, ratio * 100)}%` }]} /></View>
+          <Text style={styles.ruleCopy}>
+            Each different Quick Service restaurant counts once per round. Restaurant and menu item Got It logs both count.
+          </Text>
         </View>
-        <View style={styles.track}><View style={[styles.fill, { width: `${Math.min(100, ratio * 100)}%` }]} /></View>
-        <Text style={styles.ruleCopy}>
-          Each different Quick Service restaurant counts once per round. Restaurant and menu item Got It logs both count.
-        </Text>
 
         <View style={styles.divider} />
         <Text style={styles.sectionTitle}>This round</Text>
@@ -98,33 +106,37 @@ export function ChallengeDetailScreen() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  header: { minHeight: 64, flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, paddingVertical: SPACING.sm },
-  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
-  headerTitle: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 17, color: COLORS.ink },
-  content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
-  badge: { width: 56, height: 56, borderRadius: 28, backgroundColor: COLORS.forest, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md },
-  badgeStar: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 24, color: COLORS.goldLight },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
+  header: { minHeight: 72, flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.md, paddingVertical: SPACING.sm, backgroundColor: DAYLIGHT.sky, borderBottomLeftRadius: RADII.xl, borderBottomRightRadius: RADII.xl },
+  backButton: { width: 44, height: 44, borderRadius: 22, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFFFFF' },
+  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: DAYLIGHT.ocean },
+  headerTitle: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 18, color: DAYLIGHT.ink, marginLeft: SPACING.sm },
+  content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xxl },
+  hero: { minHeight: 184, flexDirection: 'row', overflow: 'hidden', borderRadius: 30, padding: SPACING.lg, backgroundColor: '#D8EEE4' },
+  heroCopy: { flex: 1, zIndex: 1, justifyContent: 'center' },
+  heroArt: { width: 136, minHeight: 156, marginRight: -34, backgroundColor: '#F4C969' },
+  badge: { width: 54, height: 54, borderRadius: 18, backgroundColor: DAYLIGHT.ocean, alignItems: 'center', justifyContent: 'center', marginBottom: SPACING.md, transform: [{ rotate: '-6deg' }] },
+  badgeStar: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 24, color: '#FFFFFF' },
   titleRow: { flexDirection: 'row', alignItems: 'center', gap: SPACING.sm },
-  title: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 27, color: COLORS.ink },
-  repeatPill: { borderRadius: 8, backgroundColor: COLORS.cream, paddingHorizontal: 7, paddingVertical: 3 },
-  repeatLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 9, color: COLORS.forest },
-  description: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 15, lineHeight: 21, color: COLORS.muted, marginTop: SPACING.xs },
-  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline', marginTop: SPACING.xl },
-  progressTitle: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 16, color: COLORS.ink },
-  progressCount: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 13, color: COLORS.forest },
-  track: { height: 7, borderRadius: 4, overflow: 'hidden', backgroundColor: COLORS.cream, marginTop: SPACING.sm },
-  fill: { height: '100%', backgroundColor: COLORS.pine },
-  ruleCopy: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 12, lineHeight: 17, color: COLORS.muted, marginTop: SPACING.sm },
-  divider: { height: 1, backgroundColor: COLORS.border, marginVertical: SPACING.xl },
-  sectionTitle: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 17, color: COLORS.ink, marginBottom: SPACING.sm },
-  venueRow: { minHeight: 42, flexDirection: 'row', alignItems: 'center', borderBottomWidth: 1, borderBottomColor: COLORS.border },
-  venueNumber: { width: 24, height: 24, borderRadius: 12, backgroundColor: COLORS.goldLight, alignItems: 'center', justifyContent: 'center', marginRight: SPACING.sm },
-  venueNumberText: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 11, color: COLORS.forest },
-  venueName: { flex: 1, fontFamily: FONT_FAMILY.workSansRegular, fontSize: 14, color: COLORS.ink },
-  completionCount: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 30, color: COLORS.forest, marginBottom: SPACING.xs },
-  eligibleNote: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm, marginTop: SPACING.xl },
-  eligibleCount: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 20, color: COLORS.gold },
-  eligibleLabel: { flex: 1, fontFamily: FONT_FAMILY.workSansRegular, fontSize: 11, color: COLORS.dim },
+  title: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 29, lineHeight: 31, color: DAYLIGHT.ink },
+  repeatPill: { alignSelf: 'flex-start', borderRadius: 10, backgroundColor: '#FFFFFF', paddingHorizontal: 8, paddingVertical: 4, marginTop: SPACING.sm },
+  repeatLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 9, color: DAYLIGHT.ocean },
+  description: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 16, lineHeight: 23, color: DAYLIGHT.muted, marginTop: SPACING.lg },
+  progressCard: { marginTop: SPACING.xl, padding: SPACING.lg, borderRadius: RADII.xl, backgroundColor: '#FFFFFF' },
+  progressHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  progressTitle: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 19, color: DAYLIGHT.ink },
+  progressCount: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 13, color: DAYLIGHT.ocean },
+  track: { height: 10, borderRadius: 5, overflow: 'hidden', backgroundColor: DAYLIGHT.sky, marginTop: SPACING.md },
+  fill: { height: '100%', backgroundColor: DAYLIGHT.coral },
+  ruleCopy: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 12, lineHeight: 17, color: DAYLIGHT.muted, marginTop: SPACING.md },
+  divider: { height: 1, backgroundColor: DAYLIGHT.border, marginVertical: SPACING.xl },
+  sectionTitle: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 20, color: DAYLIGHT.ink, marginBottom: SPACING.sm },
+  venueRow: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: SPACING.sm, marginBottom: SPACING.sm, borderRadius: RADII.md, backgroundColor: '#FFFFFF' },
+  venueNumber: { width: 28, height: 28, borderRadius: 10, backgroundColor: '#F8E5B9', alignItems: 'center', justifyContent: 'center', marginRight: SPACING.sm },
+  venueNumberText: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 11, color: DAYLIGHT.amberInk },
+  venueName: { flex: 1, fontFamily: FONT_FAMILY.workSansRegular, fontSize: 14, color: DAYLIGHT.ink },
+  completionCount: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 34, color: DAYLIGHT.coral, marginBottom: SPACING.xs },
+  eligibleNote: { flexDirection: 'row', alignItems: 'baseline', gap: SPACING.sm, marginTop: SPACING.xl, padding: SPACING.lg, borderRadius: RADII.xl, backgroundColor: '#F8E5B9' },
+  eligibleCount: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 24, color: DAYLIGHT.amberInk },
+  eligibleLabel: { flex: 1, fontFamily: FONT_FAMILY.workSansRegular, fontSize: 11, color: DAYLIGHT.muted },
 });

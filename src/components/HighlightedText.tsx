@@ -1,6 +1,6 @@
 import { Text, type StyleProp, type TextStyle } from 'react-native';
 import { findMatchRange } from '../search/highlight';
-import { COLORS } from '../theme/tokens';
+import { DAYLIGHT } from '../theme/tokens';
 import { FONT_FAMILY } from '../theme/typography';
 
 // Default highlight is a font-family swap to Piazzolla bold (the app's one
@@ -14,7 +14,7 @@ import { FONT_FAMILY } from '../theme/typography';
 // a different base font.
 const DEFAULT_HIGHLIGHT_STYLE: TextStyle = {
   fontFamily: FONT_FAMILY.piazzollaBold,
-  color: COLORS.gold,
+  color: DAYLIGHT.amberInk,
 };
 
 export function HighlightedText({

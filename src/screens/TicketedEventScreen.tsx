@@ -5,7 +5,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ExploreStackParamList } from '../navigation/ExploreNavigator';
 import { useDataProvider } from '../hooks/useDataProvider';
 import type { MenuItem } from '../data/types';
-import { COLORS, SPACING } from '../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<ExploreStackParamList, 'TicketedEvent'>;
@@ -80,34 +80,44 @@ export function TicketedEventScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.mist,
   },
   header: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-    backgroundColor: COLORS.surface,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
+    backgroundColor: '#F8E5B9',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: SPACING.sm,
+    minHeight: 38,
+    justifyContent: 'center',
+    borderRadius: 19,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: '#FFFFFF',
   },
   title: {
     fontFamily: FONT_FAMILY.piazzollaBold,
-    fontSize: 24,
-    color: COLORS.ink,
+    fontSize: 31,
+    lineHeight: 34,
+    color: DAYLIGHT.ink,
   },
   scrollContent: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+    paddingTop: SPACING.lg,
+    paddingBottom: 120,
   },
   row: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingVertical: SPACING.md,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    padding: SPACING.lg,
+    borderRadius: RADII.xl,
+    backgroundColor: '#FFFFFF',
+    marginBottom: SPACING.sm,
     gap: SPACING.md,
   },
   rowLeft: {
@@ -117,6 +127,6 @@ const styles = StyleSheet.create({
   chevron: {
     fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 25,
-    color: COLORS.dim,
+    color: DAYLIGHT.ocean,
   },
 });

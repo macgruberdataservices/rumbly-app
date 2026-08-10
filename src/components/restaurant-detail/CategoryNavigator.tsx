@@ -1,6 +1,6 @@
 import { forwardRef } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View, type LayoutChangeEvent } from 'react-native';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
 // Purely presentational — all scroll-sync logic (deciding the active
@@ -45,9 +45,9 @@ export const CategoryNavigator = forwardRef<
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.paper,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DAYLIGHT.border,
   },
   content: {
     paddingHorizontal: SPACING.lg,
@@ -58,20 +58,21 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DAYLIGHT.border,
     borderRadius: RADII.xl,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
+    backgroundColor: COLORS.surface,
   },
   chipActive: {
-    backgroundColor: COLORS.forest,
-    borderColor: COLORS.forest,
+    backgroundColor: DAYLIGHT.ocean,
+    borderColor: DAYLIGHT.ocean,
   },
   chipText: {
     fontSize: 13,
     letterSpacing: 0.45,
   },
   chipTextActive: {
-    color: COLORS.goldLight,
+    color: COLORS.surface,
   },
 });

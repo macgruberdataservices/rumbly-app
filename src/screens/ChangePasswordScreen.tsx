@@ -7,7 +7,7 @@ import { SettingsFormField } from '../components/settings/SettingsFormField';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { SettingsSubmitButton } from '../components/settings/SettingsSubmitButton';
 import { useAuth } from '../hooks/useAuth';
-import { COLORS, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'ChangePassword'>;
@@ -79,8 +79,8 @@ export function ChangePasswordScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { paddingHorizontal: SPACING.lg },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
+  content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg },
   hint: { marginBottom: SPACING.xl },
   error: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },
   success: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.pine, marginBottom: SPACING.md },

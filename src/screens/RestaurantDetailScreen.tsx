@@ -32,7 +32,7 @@ import {
 } from '../components/restaurant-detail/NativeRestaurantMenu';
 import { MenuItemRow } from '../components/MenuItemRow';
 import { closeOpenSwipeable } from '../components/swipeableCoordinator';
-import { COLORS, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { recordRecommendationEvent } from '../recommendations/remote';
 
@@ -616,7 +616,7 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.paper,
   },
   centered: {
     flex: 1,
@@ -642,9 +642,9 @@ const styles = StyleSheet.create({
     gap: SPACING.lg,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.paper,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DAYLIGHT.border,
   },
   periodChip: {
     fontFamily: text.chip.fontFamily,
@@ -656,14 +656,15 @@ const styles = StyleSheet.create({
     borderBottomColor: 'transparent',
   },
   periodChipActive: {
-    color: COLORS.ink,
-    borderBottomColor: COLORS.ink,
+    color: DAYLIGHT.ocean,
+    borderBottomColor: DAYLIGHT.ocean,
   },
   sectionList: {
     flex: 1,
+    backgroundColor: DAYLIGHT.mist,
   },
   sectionHeader: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.mist,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
     paddingBottom: SPACING.xs,

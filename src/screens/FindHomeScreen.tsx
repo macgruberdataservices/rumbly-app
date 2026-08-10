@@ -72,7 +72,7 @@ import {
   recordRecentSearch,
   type RecentSearch,
 } from '../search/recentSearches';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { distanceToRestaurant } from '../location/proximity';
 import { recordRecommendationEvent } from '../recommendations/remote';
@@ -93,9 +93,15 @@ function FilterIcon({ active }: { active: boolean }) {
       source={require('../../assets/filter-icon.png')}
       style={styles.filterIcon}
       resizeMode="contain"
-      tintColor={active ? COLORS.surface : COLORS.forest}
+      tintColor={active ? COLORS.surface : DAYLIGHT.ocean}
     />
   );
+}
+
+function daypartGreeting(hour: number): string {
+  if (hour < 12) return 'GOOD MORNING';
+  if (hour < 17) return 'GOOD AFTERNOON';
+  return 'GOOD EVENING';
 }
 
 function LocationContextHeader({ parkLabel, areaLabel }: { parkLabel: string; areaLabel: string | null }) {
@@ -761,7 +767,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
     if (outcome === 'denied') {
       Alert.alert(
         'Location access is off',
-        'Enable foreground location in Settings to use Near Me. Rumbly never requests background location.',
+        'Enable foreground location in Settings to use Near Me. myRumbly never requests background location.',
         [
           { text: 'Not now', style: 'cancel' },
           { text: 'Choose Location', onPress: showLocationFilters },
@@ -782,7 +788,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
       );
       return;
     }
-    Alert.alert('Location unavailable', 'Rumbly could not determine your location. Please try again.');
+    Alert.alert('Location unavailable', 'myRumbly could not determine your location. Please try again.');
   }, [clearFocusedResult, enableNearMe, openLocationSettings, resetListPosition, showLocationFilters]);
 
   const handleNearMePress = useCallback(async () => {
@@ -798,7 +804,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
       if (permissionStatus === 'undetermined') {
         Alert.alert(
           'Show nearby dining?',
-          'Rumbly uses your location only while the app is open and compares it with Disney guest entrances on your device. No paid routing service receives your location.',
+          'myRumbly uses your location only while the app is open and compares it with Disney guest entrances on your device. No paid routing service receives your location.',
           [
             { text: 'Not now', style: 'cancel' },
             { text: 'Continue', onPress: () => void runNearMeEnable() },
@@ -808,7 +814,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
       }
       await runNearMeEnable();
     } catch {
-      Alert.alert('Location unavailable', 'Rumbly could not check location permission. Please try again.');
+      Alert.alert('Location unavailable', 'myRumbly could not check location permission. Please try again.');
     }
   }, [
     clearFocusedResult,
@@ -1005,82 +1011,92 @@ export function FindHomeScreen({ navigation, route }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
-      <View style={styles.headerRow}>
-        <Animated.View
-          style={[
-            styles.headerClip,
-            {
-              height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 60] }),
-              opacity: introReveal,
-              transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
-            },
-          ]}
-          pointerEvents="none"
-        >
-          <View style={styles.header}>
-            <Image
-              source={require('../../assets/rumbly-wordmark.png')}
-              style={styles.wordmark}
-              resizeMode="contain"
-              accessibilityLabel="Rumbly"
-            />
-          </View>
-        </Animated.View>
-        <View style={styles.settingsOverlay}>
-          <SettingsButton onPress={openAccountSettings} />
-        </View>
-      </View>
-
-      <View style={styles.searchRow}>
-        <Pressable
-          onPress={handleFilterPress}
-          accessibilityLabel={filterPanelState === 'expanded' ? 'Close detailed filters' : 'Show detailed filters'}
-          accessibilityRole="button"
-          accessibilityState={{ expanded: filterPanelState === 'expanded' }}
-          style={[styles.iconButton, filterPanelState === 'expanded' && styles.iconButtonActive]}
-        >
-          <FilterIcon active={filterPanelState === 'expanded'} />
-          {activeFilterCount > 0 && (
-            <View style={styles.filterBadge}>
-              <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+      <View style={styles.daylightHero}>
+        <View style={styles.headerRow}>
+          <Animated.View
+            style={[
+              styles.headerClip,
+              {
+                height: introReveal.interpolate({ inputRange: [0, 1], outputRange: [0, 108] }),
+                opacity: introReveal,
+                transform: [{ translateY: introReveal.interpolate({ inputRange: [0, 1], outputRange: [-8, 0] }) }],
+              },
+            ]}
+            pointerEvents="none"
+          >
+            <View style={styles.header}>
+              <Text style={styles.wordmark} accessibilityRole="header">
+                Rumbly<Text style={styles.wordmarkMark}>✦</Text>
+              </Text>
+              <Text style={styles.heroEyebrow}>{daypartGreeting(new Date().getHours())}, EXPLORER</Text>
+              <Text style={styles.heroTitle}>What sounds good today?</Text>
             </View>
-          )}
-        </Pressable>
-
-        <View style={styles.searchInputShell}>
-          <TextInput
-            ref={searchInputRef}
-            style={styles.searchInput}
-            placeholder="find your next bite"
-            placeholderTextColor={COLORS.muted}
-            value={query}
-            onChangeText={handleSearchChange}
-            onSubmitEditing={() => rememberQuery()}
-            onFocus={() => setSearchInputFocused(true)}
-            onBlur={() => setSearchInputFocused(false)}
-            autoFocus={initialState.searchInputFocused}
-            autoCorrect={false}
-            accessibilityLabel="Search food, drinks, or restaurants"
-            returnKeyType="search"
-          />
-          {(searchInputFocused || query.trim().length > 0) && (
-            <Pressable
-              onPressIn={handleClearSearch}
-              accessibilityLabel="Clear search"
-              accessibilityRole="button"
-              hitSlop={8}
-              style={styles.clearButton}
-            >
-              <Text style={styles.clearButtonText}>×</Text>
-            </Pressable>
-          )}
+          </Animated.View>
+          <Animated.View
+            style={[styles.settingsOverlay, { opacity: introReveal }]}
+            pointerEvents={isSearchActive ? 'none' : 'auto'}
+          >
+            <SettingsButton
+              onPress={openAccountSettings}
+              tintColor={DAYLIGHT.ocean}
+              pressedBackgroundColor="rgba(238, 184, 83, 0.28)"
+            />
+          </Animated.View>
         </View>
 
-        <NearMeButton
-          active={nearMeActive}
-          status={nearMeStatus}
-          onPress={() => void handleNearMePress()}
-        />
+        <View style={styles.searchRow}>
+          <Pressable
+            onPress={handleFilterPress}
+            accessibilityLabel={filterPanelState === 'expanded' ? 'Close detailed filters' : 'Show detailed filters'}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: filterPanelState === 'expanded' }}
+            style={[styles.iconButton, filterPanelState === 'expanded' && styles.iconButtonActive]}
+          >
+            <FilterIcon active={filterPanelState === 'expanded'} />
+            {activeFilterCount > 0 && (
+              <View style={styles.filterBadge}>
+                <Text style={styles.filterBadgeText}>{activeFilterCount}</Text>
+              </View>
+            )}
+          </Pressable>
+
+          <View style={styles.searchInputShell}>
+            <TextInput
+              ref={searchInputRef}
+              style={styles.searchInput}
+              placeholder="Find your next bite"
+              placeholderTextColor={DAYLIGHT.muted}
+              value={query}
+              onChangeText={handleSearchChange}
+              onSubmitEditing={() => rememberQuery()}
+              onFocus={() => setSearchInputFocused(true)}
+              onBlur={() => setSearchInputFocused(false)}
+              autoFocus={initialState.searchInputFocused}
+              autoCorrect={false}
+              accessibilityLabel="Search food, drinks, or restaurants"
+              returnKeyType="search"
+            />
+            {(searchInputFocused || query.trim().length > 0) && (
+              <Pressable
+                onPressIn={handleClearSearch}
+                accessibilityLabel="Clear search"
+                accessibilityRole="button"
+                hitSlop={8}
+                style={styles.clearButton}
+              >
+                <Text style={styles.clearButtonText}>×</Text>
+              </Pressable>
+            )}
+          </View>
+
+          <NearMeButton
+            active={nearMeActive}
+            status={nearMeStatus}
+            onPress={() => void handleNearMePress()}
+            accentColor={DAYLIGHT.ocean}
+            borderColor={DAYLIGHT.border}
+          />
+        </View>
       </View>
 
       <Animated.View
@@ -1118,7 +1134,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
               <>
                 <Text style={text.body}>
                   {explicitAllergyFilterActive
-                    ? `Disney does not currently list a matching Allergy-Friendly item for "${query}" in Rumbly's menu data.`
+                    ? `Disney does not currently list a matching Allergy-Friendly item for "${query}" in myRumbly's menu data.`
                     : `No matches for "${query}".`}
                 </Text>
                 <Text style={[text.bodyMuted, styles.noResultsHint]}>
@@ -1155,7 +1171,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
                 <View style={styles.allergyResultNotice}>
                   <Text style={[text.body, styles.allergyResultTitle]}>{allergyResultTitle}</Text>
                   <Text style={text.bodyMuted}>
-                    Rumbly does not evaluate ingredients or determine whether food is safe for you.
+                    myRumbly does not evaluate ingredients or determine whether food is safe for you.
                     Menus and preparation can change — confirm with a Disney Cast Member before ordering.
                   </Text>
                 </View>
@@ -1339,7 +1355,7 @@ export function FindHomeScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.paper,
   },
   allergyResultNotice: {
     backgroundColor: COLORS.goldLight,
@@ -1349,23 +1365,42 @@ const styles = StyleSheet.create({
     padding: SPACING.md,
   },
   allergyResultTitle: { marginBottom: SPACING.xs },
+  daylightHero: {
+    overflow: 'hidden',
+    backgroundColor: DAYLIGHT.sky,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
+    marginBottom: SPACING.md,
+  },
   header: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.sm,
+    paddingTop: SPACING.xs,
+    paddingBottom: SPACING.md,
   },
   headerClip: { overflow: 'hidden' },
-  // Source asset (rumbly-wordmark.png, swapped again 2026-08-03 to the V2
-  // script wordmark) is 480x213 (~2.25:1) -- squarer than the previous
-  // artwork's ~2.57:1, so the box ratio moved with it to keep
-  // resizeMode="contain" from letterboxing it. Height held at the
-  // previous shrink's 44 so it isn't a fresh size decision, just the
-  // width following the new ratio.
   wordmark: {
-    width: 99,
-    height: 44,
+    ...text.brandWordmarkDark,
+    fontSize: 30,
+    color: DAYLIGHT.ocean,
+  },
+  wordmarkMark: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 17,
+    color: DAYLIGHT.coral,
+  },
+  heroEyebrow: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 10.5,
+    letterSpacing: 0.45,
+    color: DAYLIGHT.ocean,
+    marginTop: 2,
+  },
+  heroTitle: {
+    fontFamily: text.sectionTitle.fontFamily,
+    fontSize: 23,
+    color: DAYLIGHT.ink,
+    marginTop: 2,
   },
   // Wraps headerClip and the settings button together so the button can be
   // absolutely positioned within just this small local area -- not the
@@ -1393,15 +1428,15 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.sm,
-    marginTop: SPACING.sm,
+    paddingBottom: SPACING.xl,
+    marginTop: 0,
     gap: SPACING.sm,
   },
   inlineQuickLocationRail: {
     overflow: 'hidden',
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderBottomColor: DAYLIGHT.border,
+    backgroundColor: DAYLIGHT.paper,
   },
   inlineQuickLocationContent: {
     alignItems: 'center',
@@ -1413,21 +1448,21 @@ const styles = StyleSheet.create({
     minHeight: 36,
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DAYLIGHT.border,
     borderRadius: RADII.xl,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.xs,
     backgroundColor: COLORS.surface,
   },
   inlineQuickLocationChipActive: {
-    borderColor: COLORS.forest,
-    backgroundColor: COLORS.forest,
+    borderColor: DAYLIGHT.ocean,
+    backgroundColor: DAYLIGHT.ocean,
   },
   inlineQuickLocationChipPressed: {
     opacity: 0.6,
   },
   inlineQuickLocationLabelActive: {
-    color: COLORS.goldLight,
+    color: COLORS.surface,
   },
   iconButton: {
     width: 44,
@@ -1436,12 +1471,12 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     borderRadius: 22,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DAYLIGHT.border,
     backgroundColor: COLORS.surface,
   },
   iconButtonActive: {
-    backgroundColor: COLORS.forest,
-    borderColor: COLORS.forest,
+    backgroundColor: DAYLIGHT.ocean,
+    borderColor: DAYLIGHT.ocean,
   },
   filterIcon: {
     width: 26,
@@ -1456,7 +1491,7 @@ const styles = StyleSheet.create({
     borderRadius: 9,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.gold,
+    backgroundColor: DAYLIGHT.coral,
     paddingHorizontal: 4,
   },
   filterBadgeText: {
@@ -1468,10 +1503,10 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.cream,
+    backgroundColor: COLORS.surface,
     borderRadius: RADII.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DAYLIGHT.border,
     paddingLeft: SPACING.lg,
     paddingRight: SPACING.sm,
     minHeight: 44,
@@ -1480,7 +1515,7 @@ const styles = StyleSheet.create({
     flex: 1,
     fontFamily: text.body.fontFamily,
     fontSize: 15,
-    color: COLORS.ink,
+    color: DAYLIGHT.ink,
     paddingVertical: SPACING.sm,
   },
   clearButton: {
@@ -1492,11 +1527,11 @@ const styles = StyleSheet.create({
   clearButtonText: {
     fontFamily: text.buttonLabel.fontFamily,
     fontSize: 18,
-    color: COLORS.ink,
+    color: DAYLIGHT.ink,
   },
   resultList: {
     flex: 1,
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.mist,
   },
   searchMode: {
     flex: 1,
@@ -1534,10 +1569,10 @@ const styles = StyleSheet.create({
   seeAllLabel: {
     fontFamily: text.buttonLabel.fontFamily,
     fontSize: 13,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   locationHeader: {
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.mist,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
   },
@@ -1555,7 +1590,7 @@ const styles = StyleSheet.create({
   locationHeaderText: {
     fontFamily: text.buttonLabel.fontFamily,
     fontSize: 12,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   recentStickyShell: {
     position: 'relative',

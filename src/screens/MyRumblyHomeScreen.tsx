@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions';
 import { evaluateChallenge } from '../challenges/evaluate';
 import { SettingsButton } from '../components/settings/SettingsButton';
+import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
 import type { MyRumblyStackParamList } from '../navigation/MyRumblyNavigator';
 import { scheduleAfterNavigation } from '../navigation/scheduleAfterNavigation';
 import { useActivity } from '../hooks/useActivity';
@@ -13,7 +14,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useJournal } from '../hooks/useJournal';
 import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
-import { COLORS, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<MyRumblyStackParamList, 'MyRumblyHome'>;
@@ -63,27 +64,34 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
     <SafeAreaView style={styles.container} edges={['top']}>
       <View style={styles.header}>
         <View style={styles.headingCopy}>
+          <Text style={styles.eyebrow}>YOUR PARK-DAY STORY</Text>
           <Text style={styles.heading}>My Rumbly</Text>
           <Text style={text.bodyMuted}>{user?.email ?? 'Saved on this device'}</Text>
         </View>
-        <SettingsButton onPress={openAccountSettings} />
+        <SettingsButton
+          onPress={openAccountSettings}
+          tintColor={DAYLIGHT.ocean}
+          pressedBackgroundColor="rgba(30, 98, 120, 0.10)"
+        />
       </View>
       <View style={styles.body}>
-      <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.sectionLabel}>YOUR RUMBLY</Text>
+        <ScrollView contentContainerStyle={styles.content}>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Open personal activity"
           style={({ pressed }) => [styles.activityCard, pressed && styles.cardPressed]}
           onPress={() => navigation.navigate('MyActivity')}
         >
-          <View style={styles.cardHeadingRow}>
-            <View>
-              <Text style={styles.cardTitle}>Personal Activity</Text>
-              <Text style={styles.cardSubtitle}>Your saved tastes and dining history</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
+          <View style={styles.storyCopy}>
+            <Text style={styles.storyEyebrow}>YOUR TASTE TRAIL</Text>
+            <Text style={styles.storyTitle}>Everything you loved, needed, and tried.</Text>
+            <Text style={styles.storyLink}>Open personal activity →</Text>
           </View>
+          <IllustrationSlot
+            tagId="my-rumbly.hero.collection.v1"
+            variant="artwork"
+            style={styles.storyArt}
+          />
           <View style={styles.statsRow}>
             <Stat value={loveCount} label="Love It" />
             <Stat
@@ -94,28 +102,32 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
           </View>
         </Pressable>
 
-        <Text style={[styles.sectionLabel, styles.journalLabel]}>JOURNAL</Text>
+        <Text style={[styles.sectionLabel, styles.journalLabel]}>KEEP THE STORY GOING</Text>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={`Open Journal, ${journalEntries.length} ${journalEntries.length === 1 ? 'entry' : 'entries'}`}
-          style={({ pressed }) => [styles.challengeCard, pressed && styles.cardPressed]}
+          style={({ pressed }) => [styles.journalCard, pressed && styles.cardPressed]}
           onPress={() => navigation.navigate('Journal')}
         >
-          <View style={styles.challengeTopRow}>
-            <View style={styles.challengeIcon}><Text style={styles.challengeIconText}>✎</Text></View>
-            <View style={styles.challengeCopy}>
-              <Text style={styles.cardTitle}>Journal</Text>
-              <Text style={styles.cardSubtitle}>Your private dining memories</Text>
+          <View style={styles.journalCopy}>
+            <Text style={styles.journalEyebrow}>PRIVATE JOURNAL</Text>
+            <Text style={styles.cardTitle}>Save the part you’ll want back later.</Text>
+            <Text style={styles.cardSubtitle}>Photos, notes, ratings, and visits—kept together.</Text>
+            <View style={styles.countPill}>
+              <Text style={styles.countPillText}>
+                {journalEntries.length} {journalEntries.length === 1 ? 'memory' : 'memories'} saved
+              </Text>
             </View>
-            <Text style={styles.chevron}>›</Text>
           </View>
-          <Text style={styles.rounds}>
-            {journalEntries.length} {journalEntries.length === 1 ? 'entry' : 'entries'} saved
-          </Text>
+          <IllustrationSlot
+            tagId="journal.hero.memory-book.v1"
+            variant="artwork"
+            style={styles.journalArt}
+          />
         </Pressable>
 
         <View style={styles.sectionHeadingRow}>
-          <Text style={styles.sectionLabel}>CHALLENGES</Text>
+          <Text style={styles.sectionLabel}>A LITTLE NUDGE</Text>
           <Text style={styles.sectionCount}>1 active</Text>
         </View>
         <Pressable
@@ -125,7 +137,12 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
           onPress={() => navigation.navigate('ChallengeList')}
         >
           <View style={styles.challengeTopRow}>
-            <View style={styles.challengeIcon}><Text style={styles.challengeIconText}>★</Text></View>
+            <IllustrationSlot
+              tagId="explore.editorial.challenge.v1"
+              variant="artwork"
+              showTag={false}
+              style={styles.challengeArt}
+            />
             <View style={styles.challengeCopy}>
               <Text style={styles.cardTitle}>Challenges</Text>
               <Text style={styles.cardSubtitle}>Quick Five</Text>
@@ -138,7 +155,7 @@ export function MyRumblyHomeScreen({ navigation }: Props) {
           </View>
           <Text style={styles.rounds}>{progress.completions.length} completed {progress.completions.length === 1 ? 'round' : 'rounds'}</Text>
         </Pressable>
-      </ScrollView>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -154,41 +171,203 @@ function Stat({ value, label }: { value: number; label: string }) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
+  container: { flex: 1, backgroundColor: DAYLIGHT.paper },
   centered: { alignItems: 'center', justifyContent: 'center' },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.lg,
-    backgroundColor: COLORS.surface,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
+    borderBottomLeftRadius: RADII.xl,
+    borderBottomRightRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.sky,
   },
-  body: { flex: 1, backgroundColor: COLORS.cream },
-  content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.md, paddingBottom: SPACING.xxl },
+  body: { flex: 1, backgroundColor: DAYLIGHT.paper },
+  content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: 130 },
   headingCopy: { flex: 1 },
-  heading: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
-  sectionHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: SPACING.xl },
-  sectionLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 11, color: COLORS.muted, marginBottom: SPACING.sm },
+  eyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9.5,
+    letterSpacing: 1.05,
+    color: DAYLIGHT.ocean,
+  },
+  heading: {
+    fontFamily: FONT_FAMILY.piazzollaExtraBold,
+    fontSize: 29,
+    lineHeight: 34,
+    color: DAYLIGHT.ink,
+  },
+  sectionHeadingRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: SPACING.xl,
+  },
+  sectionLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 10,
+    letterSpacing: 0.8,
+    color: DAYLIGHT.ocean,
+    marginBottom: SPACING.sm,
+  },
   journalLabel: { marginTop: SPACING.xl },
-  sectionCount: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 11, color: COLORS.dim, marginBottom: SPACING.sm },
-  activityCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.surface, overflow: 'hidden' },
-  challengeCard: { borderWidth: 1, borderColor: COLORS.border, borderRadius: 8, backgroundColor: COLORS.surface, padding: SPACING.md },
-  cardPressed: { backgroundColor: COLORS.goldLight },
-  cardHeadingRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', padding: SPACING.md },
-  cardTitle: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 18, color: COLORS.ink },
-  cardSubtitle: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 12, color: COLORS.muted, marginTop: 1 },
-  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
-  statsRow: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: COLORS.border, paddingVertical: SPACING.md },
+  sectionCount: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 11,
+    color: DAYLIGHT.muted,
+    marginBottom: SPACING.sm,
+  },
+  activityCard: {
+    minHeight: 260,
+    overflow: 'hidden',
+    borderRadius: 28,
+    backgroundColor: DAYLIGHT.coral,
+  },
+  storyCopy: {
+    zIndex: 1,
+    width: '62%',
+    minHeight: 188,
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    paddingRight: SPACING.xs,
+  },
+  storyEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9.5,
+    letterSpacing: 0.8,
+    color: '#FFF4EA',
+  },
+  storyTitle: {
+    fontFamily: FONT_FAMILY.piazzollaBold,
+    fontSize: 23,
+    lineHeight: 27,
+    color: DAYLIGHT.paper,
+    marginTop: SPACING.xs,
+  },
+  storyLink: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 11.5,
+    color: DAYLIGHT.paper,
+    marginTop: SPACING.md,
+  },
+  storyArt: {
+    position: 'absolute',
+    width: '43%',
+    right: 0,
+    top: 0,
+    minHeight: 188,
+    borderRadius: 0,
+  },
+  statsRow: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(255,255,255,0.32)',
+    backgroundColor: 'rgba(121,43,25,0.11)',
+  },
   stat: { flex: 1, alignItems: 'center' },
-  statValue: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 20, color: COLORS.forest },
-  statLabel: { fontFamily: FONT_FAMILY.workSansMedium, fontSize: 10, color: COLORS.muted, marginTop: 1 },
+  statValue: {
+    fontFamily: FONT_FAMILY.piazzollaExtraBold,
+    fontSize: 21,
+    color: DAYLIGHT.paper,
+  },
+  statLabel: {
+    fontFamily: FONT_FAMILY.workSansMedium,
+    fontSize: 10,
+    color: '#FFF4EA',
+    marginTop: 1,
+  },
+  journalCard: {
+    minHeight: 192,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    borderRadius: RADII.xl,
+    backgroundColor: '#FFF0BD',
+  },
+  journalCopy: {
+    zIndex: 1,
+    width: '62%',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    paddingRight: SPACING.xs,
+  },
+  journalEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: DAYLIGHT.amberInk,
+    marginBottom: SPACING.xs,
+  },
+  journalArt: {
+    position: 'absolute',
+    width: '42%',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    minHeight: 192,
+    borderRadius: 0,
+  },
+  countPill: {
+    alignSelf: 'flex-start',
+    minHeight: 28,
+    justifyContent: 'center',
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.sm,
+    borderRadius: 14,
+    backgroundColor: DAYLIGHT.paper,
+  },
+  countPillText: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9.5,
+    color: DAYLIGHT.ocean,
+  },
+  challengeCard: {
+    borderRadius: RADII.xl,
+    backgroundColor: '#DCEFE6',
+    padding: SPACING.lg,
+  },
+  cardPressed: { opacity: 0.8, transform: [{ scale: 0.99 }] },
+  cardTitle: {
+    fontFamily: FONT_FAMILY.piazzollaBold,
+    fontSize: 19,
+    lineHeight: 23,
+    color: DAYLIGHT.ink,
+  },
+  cardSubtitle: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 12,
+    lineHeight: 17,
+    color: DAYLIGHT.muted,
+    marginTop: 2,
+  },
+  chevron: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 25,
+    color: DAYLIGHT.ocean,
+    marginLeft: SPACING.sm,
+  },
   challengeTopRow: { flexDirection: 'row', alignItems: 'center' },
-  challengeIcon: { width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: COLORS.forest, marginRight: SPACING.sm },
-  challengeIconText: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 16, color: COLORS.goldLight },
+  challengeArt: { width: 56, minHeight: 56, marginRight: SPACING.md, borderRadius: 18 },
   challengeCopy: { flex: 1 },
-  challengeProgress: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 13, color: COLORS.forest },
-  track: { height: 5, borderRadius: 3, overflow: 'hidden', backgroundColor: COLORS.cream, marginTop: SPACING.md },
-  fill: { height: '100%', backgroundColor: COLORS.pine },
-  rounds: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 10, color: COLORS.dim, marginTop: 5 },
+  challengeProgress: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 13,
+    color: DAYLIGHT.ocean,
+  },
+  track: {
+    height: 7,
+    overflow: 'hidden',
+    marginTop: SPACING.md,
+    borderRadius: 4,
+    backgroundColor: 'rgba(255,255,255,0.74)',
+  },
+  fill: { height: '100%', backgroundColor: DAYLIGHT.ocean },
+  rounds: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 10,
+    color: DAYLIGHT.muted,
+    marginTop: 6,
+  },
 });

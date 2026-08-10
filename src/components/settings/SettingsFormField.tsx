@@ -1,5 +1,5 @@
 import { StyleSheet, Text, TextInput, type TextInputProps, View } from 'react-native';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY } from '../../theme/typography';
 
 export function SettingsFormField({ label, ...props }: TextInputProps & { label: string }) {
@@ -30,10 +30,10 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: COLORS.ink,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.sm,
+    borderColor: DAYLIGHT.border,
+    borderRadius: RADII.lg,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
-    backgroundColor: COLORS.surface,
+    backgroundColor: '#FFFFFF',
   },
 });

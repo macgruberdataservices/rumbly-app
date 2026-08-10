@@ -8,7 +8,7 @@ import { useAuth } from '../../hooks/useAuth';
 import { getJournalPhotoStorageBytes } from '../../media/journalPhotoStorage';
 import { formatStorageBytes } from '../../media/journalPhotoSizing';
 import type { JournalStackParamList } from '../../navigation/journalTypes';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 type Props = NativeStackScreenProps<JournalStackParamList, 'JournalStorageSettings'>;
@@ -66,7 +66,7 @@ export function JournalStorageSettingsScreen({ navigation }: Props) {
           <Text style={styles.noteTitle}>Storage protection</Text>
           <Text style={styles.noteBody}>
             Each entry is limited to six photos, and full-resolution library originals are
-            not copied into Rumbly -- only optimized private copies are kept. Because
+            not copied into myRumbly -- only optimized private copies are kept. Because
             photos live only on this device, they will not appear if you reinstall the app
             or switch devices unless your device's own backup (iCloud or your phone
             manufacturer's equivalent) restores them.
@@ -98,18 +98,18 @@ function StorageRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.cream },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
   header: {
     minHeight: 62,
     flexDirection: 'row',
     alignItems: 'center',
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderBottomColor: DAYLIGHT.border,
+    backgroundColor: DAYLIGHT.sky,
     paddingHorizontal: SPACING.md,
   },
   closeButton: { width: 64, minHeight: 44, justifyContent: 'center' },
-  closeLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 14, color: COLORS.forest },
+  closeLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 14, color: DAYLIGHT.ocean },
   title: {
     flex: 1,
     textAlign: 'center',
@@ -123,15 +123,15 @@ const styles = StyleSheet.create({
     gap: SPACING.md,
     padding: SPACING.lg,
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.lg,
+    borderColor: DAYLIGHT.border,
+    borderRadius: RADII.xl,
     backgroundColor: COLORS.surface,
   },
   rowCopy: { flex: 1, gap: 4 },
   rowTitle: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 15, color: COLORS.ink },
   rowDetail: { ...text.bodyMuted, lineHeight: 18 },
   rowValue: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 14, color: COLORS.ink },
-  noteCard: { padding: SPACING.lg, borderRadius: RADII.lg, backgroundColor: COLORS.pineLight, gap: 6 },
+  noteCard: { padding: SPACING.lg, borderRadius: RADII.xl, backgroundColor: '#FFF0BD', gap: 6 },
   noteTitle: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 13, color: COLORS.ink },
   noteBody: { ...text.bodyMuted, lineHeight: 19 },
 });

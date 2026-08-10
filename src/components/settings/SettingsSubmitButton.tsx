@@ -1,5 +1,5 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY } from '../../theme/typography';
 
 export function SettingsSubmitButton({
@@ -38,13 +38,13 @@ const styles = StyleSheet.create({
     minHeight: 46,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADII.sm,
-    backgroundColor: COLORS.pine,
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.ocean,
     paddingHorizontal: SPACING.lg,
   },
   // Matches SettingsRow's `destructive` convention -- this app's palette has
   // no red, so gold is the destructive/warning color throughout Settings.
-  destructive: { backgroundColor: COLORS.gold },
+  destructive: { backgroundColor: DAYLIGHT.coral },
   disabled: { opacity: 0.5 },
   label: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 14, color: COLORS.surface },
   destructiveLabel: { color: COLORS.ink },

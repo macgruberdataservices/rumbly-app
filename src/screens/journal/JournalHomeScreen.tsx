@@ -13,6 +13,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { AccountAuthPanel } from '../../components/settings/AccountAuthPanel';
 import { JournalEntryCard } from '../../components/journal/JournalEntryCard';
+import { IllustrationSlot } from '../../components/illustrations/IllustrationSlot';
 import type { JournalStackParamList } from '../../navigation/journalTypes';
 import { groupJournalEntriesByPlace, sortJournalEntries } from '../../data/journalReadModel';
 import type { JournalEntry } from '../../data/journal';
@@ -21,11 +22,13 @@ import { useActivity } from '../../hooks/useActivity';
 import { useAuth } from '../../hooks/useAuth';
 import { useJournal } from '../../hooks/useJournal';
 import { useJournalComposer } from '../../hooks/useJournalComposer';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 type Props = NativeStackScreenProps<JournalStackParamList, 'JournalHome'>;
 type JournalMode = 'places' | 'timeline';
+
+const PLACE_TINTS = ['#DCEFF3', '#FFE3D8', '#FFF0BD', '#DCEFE6'] as const;
 
 export function JournalHomeScreen({ navigation }: Props) {
   const { user, initializing } = useAuth();
@@ -103,28 +106,40 @@ export function JournalHomeScreen({ navigation }: Props) {
 
   return (
     <SafeAreaView style={styles.container} edges={['top']}>
-      <View style={styles.header}>
-        <View style={styles.titleRow}>
-          <View style={styles.titleCopy}>
-            <Text style={styles.eyebrow}>PRIVATE TO YOUR ACCOUNT</Text>
-            <Text style={styles.title}>Journal</Text>
+      <View style={styles.heroShell}>
+        <View style={styles.hero}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>YOUR PRIVATE PARK-DAY STORY</Text>
+            <Text style={styles.heroTitle}>Journal</Text>
+            <Text style={styles.heroBody}>Keep the meals, places, and little details worth remembering.</Text>
+            <Pressable
+              style={({ pressed }) => [styles.addButton, pressed && styles.addButtonPressed]}
+              onPress={() => openJournalComposer()}
+              accessibilityRole="button"
+              accessibilityLabel="Add Journal entry"
+            >
+              <Text style={styles.addButtonLabel}>Add a memory</Text>
+              <Text style={styles.addButtonPlus}>＋</Text>
+            </Pressable>
+          </View>
+          <IllustrationSlot
+            tagId="journal.hero.memory-book.v1"
+            variant="artwork"
+            style={styles.heroArt}
+          />
+        </View>
+        <View style={styles.heroFooter}>
+          <View style={styles.heroStats}>
+            <JournalStat value={entries.length} label="memories" />
+            <JournalStat value={places.length} label="places" />
+            <JournalStat value={photos.length} label="photos" />
           </View>
           <Pressable
-            style={styles.addButton}
-            onPress={() => openJournalComposer()}
-            accessibilityRole="button"
-            accessibilityLabel="Add Journal entry"
-          >
-            <Text style={styles.addButtonLabel}>＋</Text>
-          </Pressable>
-        </View>
-        <View style={styles.subtitleRow}>
-          <Text style={styles.subtitle}>The meals, places, and details you want to remember.</Text>
-          <Pressable
+            style={styles.storageButton}
             onPress={() => navigation.navigate('JournalStorageSettings')}
             accessibilityRole="button"
           >
-            <Text style={styles.storageLink}>Storage</Text>
+            <Text style={styles.storageLink}>Storage ›</Text>
           </Pressable>
         </View>
       </View>
@@ -211,7 +226,7 @@ export function JournalHomeScreen({ navigation }: Props) {
               />
             </Pressable>
           )}
-          ListEmptyComponent={<JournalEmptyState />}
+          ListEmptyComponent={<JournalEmptyState onAdd={() => openJournalComposer()} />}
         />
       ) : (
         <FlatList
@@ -220,10 +235,10 @@ export function JournalHomeScreen({ navigation }: Props) {
           keyExtractor={(place) => place.restaurantId}
           contentContainerStyle={[styles.listContent, isEmpty && styles.emptyList]}
           ItemSeparatorComponent={ListSeparator}
-          renderItem={({ item: place }) => (
+          renderItem={({ item: place, index }) => (
             <View style={styles.placeCard}>
               <Pressable
-                style={styles.placeHeader}
+                style={[styles.placeHeader, { backgroundColor: PLACE_TINTS[index % PLACE_TINTS.length] }]}
                 onPress={() =>
                   navigation.navigate('JournalPageDetail', {
                     restaurantId: place.restaurantId,
@@ -232,6 +247,9 @@ export function JournalHomeScreen({ navigation }: Props) {
                 accessibilityRole="button"
                 accessibilityLabel={`${place.restaurantName}, ${place.entries.length} ${place.entries.length === 1 ? 'entry' : 'entries'}`}
               >
+                <View style={styles.placeMark}>
+                  <Text style={styles.placeMarkText}>{place.restaurantName.slice(0, 1).toLocaleUpperCase()}</Text>
+                </View>
                 <View style={styles.placeHeaderCopy}>
                   <Text style={styles.placeName}>{place.restaurantName}</Text>
                   <Text style={text.bodyMuted}>
@@ -276,7 +294,7 @@ export function JournalHomeScreen({ navigation }: Props) {
               )}
             </View>
           )}
-          ListEmptyComponent={<JournalEmptyState />}
+          ListEmptyComponent={<JournalEmptyState onAdd={() => openJournalComposer()} />}
         />
       )}
     </SafeAreaView>
@@ -325,13 +343,30 @@ function ModeButton({
   );
 }
 
-function JournalEmptyState() {
+function JournalEmptyState({ onAdd }: { onAdd: () => void }) {
   return (
     <View style={styles.emptyState}>
+      <IllustrationSlot
+        tagId="journal.state.empty.v1"
+        variant="artwork"
+        style={styles.emptyArt}
+      />
       <Text style={styles.emptyTitle}>Your Journal is ready</Text>
       <Text style={styles.emptyBody}>
-        Your saved dining memories will appear here, organized by place and visit date.
+        Start with one meal, one photo, or one detail you do not want the park day to blur past.
       </Text>
+      <Pressable style={styles.emptyButton} onPress={onAdd} accessibilityRole="button">
+        <Text style={styles.emptyButtonLabel}>Add your first memory</Text>
+      </Pressable>
+    </View>
+  );
+}
+
+function JournalStat({ value, label }: { value: number; label: string }) {
+  return (
+    <View style={styles.heroStat}>
+      <Text style={styles.heroStatValue}>{value}</Text>
+      <Text style={styles.heroStatLabel}>{label}</Text>
     </View>
   );
 }
@@ -341,65 +376,124 @@ function ListSeparator() {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.cream },
+  container: { flex: 1, backgroundColor: DAYLIGHT.paper },
   centered: { alignItems: 'center', justifyContent: 'center' },
-  header: {
+  heroShell: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.md,
-    paddingBottom: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.md,
   },
-  titleRow: { flexDirection: 'row', alignItems: 'center' },
-  titleCopy: { flex: 1 },
+  hero: {
+    minHeight: 210,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    borderRadius: 28,
+    backgroundColor: DAYLIGHT.coral,
+  },
+  heroCopy: {
+    zIndex: 1,
+    width: '62%',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    paddingRight: SPACING.xs,
+  },
+  heroArt: {
+    position: 'absolute',
+    width: '43%',
+    right: -4,
+    top: 0,
+    bottom: 0,
+    minHeight: 210,
+    borderRadius: 0,
+  },
+  heroEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9.5,
+    letterSpacing: 0.9,
+    color: '#FFF4EA',
+  },
+  heroTitle: {
+    fontFamily: FONT_FAMILY.piazzollaExtraBold,
+    fontSize: 37,
+    lineHeight: 42,
+    color: DAYLIGHT.paper,
+    marginTop: 2,
+  },
+  heroBody: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: '#FFF4EA',
+    marginTop: SPACING.xs,
+  },
   addButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
+    alignSelf: 'flex-start',
+    minHeight: 42,
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.pine,
+    gap: SPACING.xs,
+    marginTop: SPACING.md,
+    paddingHorizontal: SPACING.md,
+    borderRadius: 21,
+    backgroundColor: DAYLIGHT.paper,
   },
   addButtonLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: DAYLIGHT.ocean,
+  },
+  addButtonPlus: {
     fontFamily: FONT_FAMILY.workSansRegular,
-    fontSize: 27,
-    lineHeight: 30,
-    color: COLORS.ink,
+    fontSize: 19,
+    lineHeight: 21,
+    color: DAYLIGHT.coral,
+  },
+  addButtonPressed: { opacity: 0.8, transform: [{ scale: 0.98 }] },
+  heroFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.sm,
+  },
+  heroStats: { flex: 1, flexDirection: 'row', gap: SPACING.lg },
+  heroStat: { alignItems: 'flex-start' },
+  heroStatValue: {
+    fontFamily: FONT_FAMILY.piazzollaBold,
+    fontSize: 18,
+    color: DAYLIGHT.ink,
+  },
+  heroStatLabel: {
+    fontFamily: FONT_FAMILY.workSansMedium,
+    fontSize: 9.5,
+    color: DAYLIGHT.muted,
+  },
+  storageButton: { minHeight: 36, justifyContent: 'center', paddingHorizontal: SPACING.sm },
+  storageLink: {
+    fontFamily: FONT_FAMILY.workSansBold,
+    fontSize: 12,
+    color: DAYLIGHT.ocean,
   },
   eyebrow: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 11,
     letterSpacing: 1.2,
-    color: COLORS.muted,
+    color: DAYLIGHT.ocean,
     marginBottom: SPACING.xs,
   },
   title: {
     fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 34,
     lineHeight: 40,
-    color: COLORS.ink,
-  },
-  subtitleRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: SPACING.md,
-  },
-  subtitle: {
-    ...text.bodyMuted,
-    flex: 1,
-    marginTop: SPACING.xs,
-    maxWidth: 360,
-  },
-  storageLink: {
-    fontFamily: FONT_FAMILY.workSansBold,
-    fontSize: 12,
-    color: COLORS.forest,
+    color: DAYLIGHT.ink,
   },
   segmented: {
     flexDirection: 'row',
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.lg,
     padding: 3,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.pineLight,
+    borderRadius: RADII.lg,
+    backgroundColor: DAYLIGHT.sky,
   },
   draftBanner: {
     flexDirection: 'row',
@@ -408,60 +502,68 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
-    borderWidth: 1,
-    borderColor: COLORS.borderMid,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.goldLight,
+    borderRadius: RADII.lg,
+    backgroundColor: '#FFF0BD',
   },
   draftCopy: { flex: 1, gap: 2 },
   draftTitle: {
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 14,
-    color: COLORS.ink,
+    color: DAYLIGHT.ink,
   },
   modeButton: {
     flex: 1,
-    minHeight: 38,
+    minHeight: 40,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADII.sm,
+    borderRadius: RADII.md,
   },
-  modeButtonSelected: {
-    backgroundColor: COLORS.surface,
-  },
+  modeButtonSelected: { backgroundColor: DAYLIGHT.ocean },
   modeLabel: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 12,
-    color: COLORS.muted,
+    color: DAYLIGHT.muted,
   },
-  modeLabelSelected: { color: COLORS.ink },
-  listContent: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxl,
-  },
+  modeLabelSelected: { color: COLORS.surface },
+  listContent: { paddingHorizontal: SPACING.lg, paddingBottom: 130 },
   emptyList: { flexGrow: 1 },
   placeCard: {
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.lg,
+    borderColor: DAYLIGHT.border,
+    borderRadius: RADII.xl,
     backgroundColor: COLORS.surface,
+    shadowColor: DAYLIGHT.ink,
+    shadowOpacity: 0.07,
+    shadowRadius: 12,
+    shadowOffset: { width: 0, height: 5 },
   },
-  placeHeader: {
-    flexDirection: 'row',
+  placeHeader: { flexDirection: 'row', alignItems: 'center', padding: SPACING.lg },
+  placeMark: {
+    width: 42,
+    height: 42,
     alignItems: 'center',
-    padding: SPACING.lg,
+    justifyContent: 'center',
+    marginRight: SPACING.md,
+    borderRadius: 15,
+    backgroundColor: 'rgba(255,255,255,0.76)',
+    transform: [{ rotate: '-3deg' }],
+  },
+  placeMarkText: {
+    fontFamily: FONT_FAMILY.piazzollaExtraBold,
+    fontSize: 19,
+    color: DAYLIGHT.ocean,
   },
   placeHeaderCopy: { flex: 1, gap: 2 },
   placeName: {
     fontFamily: FONT_FAMILY.piazzollaBold,
     fontSize: 20,
-    color: COLORS.ink,
+    color: DAYLIGHT.ink,
   },
   chevron: {
     fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 30,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   itemRow: {
     minHeight: 58,
@@ -470,48 +572,63 @@ const styles = StyleSheet.create({
     marginHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
+    borderTopColor: DAYLIGHT.border,
   },
   itemRowCopy: { flex: 1, gap: 2 },
   itemName: {
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 15,
-    color: COLORS.ink,
+    color: DAYLIGHT.ink,
   },
   smallChevron: {
     fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 24,
-    color: COLORS.dim,
+    color: DAYLIGHT.muted,
   },
   rowPressed: { opacity: 0.65 },
   generalVisits: {
     marginHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
     borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: COLORS.border,
+    borderTopColor: DAYLIGHT.border,
   },
   emptyState: {
     flex: 1,
-    minHeight: 220,
+    minHeight: 410,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: SPACING.xl,
   },
+  emptyArt: {
+    width: '100%',
+    maxWidth: 290,
+    minHeight: 170,
+    marginBottom: SPACING.lg,
+  },
   emptyTitle: {
     fontFamily: FONT_FAMILY.piazzollaBold,
-    fontSize: 22,
-    color: COLORS.ink,
+    fontSize: 24,
+    color: DAYLIGHT.ink,
     marginBottom: SPACING.sm,
   },
-  emptyBody: {
-    ...text.bodyMuted,
-    textAlign: 'center',
-    lineHeight: 19,
+  emptyBody: { ...text.bodyMuted, textAlign: 'center', lineHeight: 19 },
+  emptyButton: {
+    minHeight: 46,
+    justifyContent: 'center',
+    marginTop: SPACING.lg,
+    paddingHorizontal: SPACING.lg,
+    borderRadius: 23,
+    backgroundColor: DAYLIGHT.ocean,
+  },
+  emptyButtonLabel: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12.5,
+    color: COLORS.surface,
   },
   error: {
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 12,
-    color: COLORS.gold,
+    color: DAYLIGHT.coral,
     marginHorizontal: SPACING.lg,
     marginBottom: SPACING.md,
   },
@@ -520,15 +637,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.sm,
-    borderWidth: 1,
-    borderColor: COLORS.borderMid,
-    borderRadius: RADII.md,
-    backgroundColor: COLORS.goldLight,
+    borderRadius: RADII.lg,
+    backgroundColor: '#FFF0BD',
   },
   syncBannerText: {
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 12,
-    color: COLORS.ink,
+    color: DAYLIGHT.ink,
   },
   gateContent: {
     flex: 1,
@@ -540,16 +655,16 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 15,
     lineHeight: 22,
-    color: COLORS.muted,
+    color: DAYLIGHT.muted,
     marginTop: SPACING.sm,
     maxWidth: 420,
   },
   authCard: {
     marginTop: SPACING.xl,
     padding: SPACING.lg,
-    borderRadius: RADII.lg,
+    borderRadius: RADII.xl,
     borderWidth: 1,
-    borderColor: COLORS.border,
+    borderColor: DAYLIGHT.border,
     backgroundColor: COLORS.surface,
   },
 });

@@ -1,10 +1,10 @@
 {
   "expo": {
-    "name": "Rumbly",
+    "name": "myRumbly",
     "slug": "rumbly",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/icon-daylight.png",
     "userInterfaceStyle": "light",
     "ios": {
       "supportsTablet": true,
@@ -73,10 +73,9 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
-        "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
-        "monochromeImage": "./assets/android-icon-monochrome.png"
+        "backgroundColor": "#1E6278",
+        "foregroundImage": "./assets/android-icon-daylight-foreground.png",
+        "monochromeImage": "./assets/android-icon-daylight-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
       "permissions": [
@@ -86,7 +85,7 @@
       "package": "com.macgruberdataservices.rumbly"
     },
     "web": {
-      "favicon": "./assets/favicon.png"
+      "favicon": "./assets/favicon-daylight.png"
     },
     "plugins": [
       "expo-sqlite",
@@ -94,16 +93,16 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/rumbly-wordmark.png",
-          "imageWidth": 200,
+          "image": "./assets/myrumbly-splash-lockup.png",
+          "imageWidth": 320,
           "resizeMode": "contain",
-          "backgroundColor": "#ffffff"
+          "backgroundColor": "#FFFDF8"
         }
       ],
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Allow Rumbly to use your location while the app is open to show nearby dining options.",
+          "locationWhenInUsePermission": "Allow myRumbly to use your location while the app is open to show nearby dining options.",
           "locationAlwaysAndWhenInUsePermission": false,
           "locationAlwaysPermission": false,
           "motionUsagePermission": false
@@ -112,16 +111,16 @@
       [
         "expo-image-picker",
         {
-          "photosPermission": "Allow Rumbly to choose photos for your private Journal.",
-          "cameraPermission": "Allow Rumbly to take photos for your private Journal.",
+          "photosPermission": "Allow myRumbly to choose photos for your private Journal.",
+          "cameraPermission": "Allow myRumbly to take photos for your private Journal.",
           "microphonePermission": false
         }
       ],
       [
         "expo-media-library",
         {
-          "photosPermission": "Allow Rumbly to choose photos for your private Journal.",
-          "savePhotosPermission": "Allow Rumbly to save Journal camera photos to your photo library.",
+          "photosPermission": "Allow myRumbly to choose photos for your private Journal.",
+          "savePhotosPermission": "Allow myRumbly to save Journal camera photos to your photo library.",
           "granularPermissions": [
             "photo"
           ]

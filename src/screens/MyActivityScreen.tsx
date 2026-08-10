@@ -23,7 +23,8 @@ import { useAuth } from '../hooks/useAuth';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useEntitlement } from '../hooks/useEntitlement';
 import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '../components/swipeableCoordinator';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<MyRumblyStackParamList, 'MyActivity'>;
@@ -223,6 +224,11 @@ export function MyActivityScreen({ navigation }: Props) {
           </Text>
           {visibleEvents.length === 0 ? (
             <View style={styles.emptyState}>
+              <IllustrationSlot
+                tagId="activity.state.empty.v1"
+                variant="artwork"
+                style={styles.emptyArt}
+              />
               <Text style={text.bodyMuted}>
                 {activeTab === 'love'
                   ? 'Restaurants and menu items you Love will appear here.'
@@ -351,44 +357,47 @@ function ActivityRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
   centered: { alignItems: 'center', justifyContent: 'center' },
   content: { paddingBottom: SPACING.xxl },
   headingRow: {
-    minHeight: 64,
+    minHeight: 88,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.sm,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
+    paddingBottom: SPACING.lg,
+    borderBottomLeftRadius: RADII.xl,
+    borderBottomRightRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.sky,
   },
-  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center' },
-  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: COLORS.forest },
+  backButton: { width: 44, height: 44, alignItems: 'center', justifyContent: 'center', borderRadius: 22, backgroundColor: DAYLIGHT.paper },
+  backIcon: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 34, lineHeight: 36, color: DAYLIGHT.ocean },
   headingCopy: { flex: 1, gap: 2 },
-  heading: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 22, lineHeight: 27, color: COLORS.ink },
+  heading: { fontFamily: FONT_FAMILY.piazzollaExtraBold, fontSize: 25, lineHeight: 30, color: DAYLIGHT.ink },
   statsBand: {
     flexDirection: 'row',
-    borderTopWidth: 1,
-    borderBottomWidth: 1,
-    borderColor: COLORS.border,
-    paddingVertical: SPACING.md,
+    marginHorizontal: SPACING.lg,
+    marginTop: SPACING.lg,
+    paddingVertical: SPACING.lg,
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.coral,
   },
   stat: { flex: 1, alignItems: 'center' },
-  statValue: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 22, color: COLORS.forest },
-  statLabel: { fontFamily: FONT_FAMILY.workSansMedium, fontSize: 11, color: COLORS.muted, marginTop: 1 },
+  statValue: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 23, color: DAYLIGHT.paper },
+  statLabel: { fontFamily: FONT_FAMILY.workSansMedium, fontSize: 11, color: '#FFF4EA', marginTop: 1 },
   tabs: {
     flexDirection: 'row',
     marginHorizontal: SPACING.lg,
     marginTop: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.sm,
-    padding: 2,
+    borderRadius: RADII.lg,
+    padding: 3,
+    backgroundColor: DAYLIGHT.sky,
   },
-  tab: { flex: 1, minHeight: 36, alignItems: 'center', justifyContent: 'center', borderRadius: 7 },
-  tabActive: { backgroundColor: COLORS.forest },
+  tab: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: RADII.md },
+  tabActive: { backgroundColor: DAYLIGHT.ocean },
   tabLabel: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 12, color: COLORS.muted },
-  tabLabelActive: { color: COLORS.goldLight },
+  tabLabelActive: { color: COLORS.surface },
   collectionSection: { marginTop: SPACING.lg },
   collectionTitle: {
     fontFamily: FONT_FAMILY.workSansSemiBold,
@@ -397,22 +406,24 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     marginBottom: SPACING.sm,
   },
-  emptyState: { minHeight: 96, justifyContent: 'center', paddingHorizontal: SPACING.lg },
+  emptyState: { minHeight: 360, alignItems: 'center', justifyContent: 'center', paddingHorizontal: SPACING.xl },
+  emptyArt: { width: '100%', maxWidth: 280, minHeight: 160, marginBottom: SPACING.lg },
   activityRow: {
     minHeight: 68,
     flexDirection: 'row',
     alignItems: 'center',
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    paddingVertical: SPACING.sm,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    paddingVertical: SPACING.md,
+    borderRadius: RADII.lg,
     backgroundColor: COLORS.surface,
   },
-  rowPressed: { backgroundColor: COLORS.goldLight },
+  rowPressed: { backgroundColor: DAYLIGHT.sky },
   rowCopy: { flex: 1, minWidth: 0 },
   eventDate: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 11, color: COLORS.dim, marginTop: 2 },
-  rating: { fontFamily: FONT_FAMILY.workSansMedium, fontSize: 12, color: COLORS.gold, marginLeft: SPACING.sm },
-  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 25, color: COLORS.dim, marginLeft: SPACING.sm },
+  rating: { fontFamily: FONT_FAMILY.workSansMedium, fontSize: 12, color: DAYLIGHT.amberInk, marginLeft: SPACING.sm },
+  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 25, color: DAYLIGHT.ocean, marginLeft: SPACING.sm },
   swipeableContainer: {
     overflow: 'visible',
   },

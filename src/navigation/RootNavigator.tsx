@@ -1,9 +1,12 @@
 import { NavigationContainer, type NavigatorScreenParams } from '@react-navigation/native';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import {
+  createBottomTabNavigator,
+  type BottomTabBarButtonProps,
+} from '@react-navigation/bottom-tabs';
+import { PlatformPressable } from '@react-navigation/elements';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { StyleSheet, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { BlurView } from 'expo-blur';
 import { FindNavigator, type FindStackParamList } from './FindNavigator';
 import { ExploreNavigator, type ExploreStackParamList } from './ExploreNavigator';
 import { MyRumblyNavigator, type MyRumblyStackParamList } from './MyRumblyNavigator';
@@ -11,7 +14,7 @@ import { AskRumblyNavigator, type AskRumblyStackParamList } from './AskRumblyNav
 import { SettingsNavigator } from './SettingsNavigator';
 import { JournalComposerScreen } from '../screens/journal/JournalComposerScreen';
 import type { AppRootStackParamList } from './journalTypes';
-import { COLORS, SPACING } from '../theme/tokens';
+import { DAYLIGHT, SPACING } from '../theme/tokens';
 
 export type RootTabParamList = {
   Find: NavigatorScreenParams<FindStackParamList>;
@@ -73,6 +76,20 @@ function TabIcon({ routeName, color }: { routeName: keyof RootTabParamList; colo
   return <MyRumblyIcon color={color} />;
 }
 
+function DaylightTabButton(props: BottomTabBarButtonProps) {
+  const selected = props['aria-selected'];
+  return (
+    <PlatformPressable
+      {...props}
+      style={[
+        props.style,
+        styles.tabButton,
+        selected && styles.tabButtonActive,
+      ]}
+    />
+  );
+}
+
 // Floating "pill" tab bar matching current iOS system chrome (the
 // inset-from-edges, rounded, frosted-glass bar iOS itself now uses) rather
 // than the previous edge-to-edge bar docked flush against the bottom.
@@ -88,10 +105,11 @@ function MainTabs() {
         screenOptions={({ route }) => ({
           headerShown: false,
           tabBarIcon: ({ color }) => <TabIcon routeName={route.name} color={color} />,
-          tabBarActiveTintColor: COLORS.forest,
-          tabBarInactiveTintColor: COLORS.muted,
+          tabBarActiveTintColor: DAYLIGHT.ocean,
+          tabBarInactiveTintColor: DAYLIGHT.muted,
+          tabBarButton: (props) => <DaylightTabButton {...props} />,
           tabBarLabelStyle: { fontSize: 11, lineHeight: 14, fontWeight: '600' },
-          tabBarBackground: () => <BlurView intensity={78} tint="light" style={styles.tabBarBlur} />,
+          tabBarBackground: () => <View style={styles.tabBarBackground} />,
           tabBarStyle: {
             position: 'absolute',
             // start/end, not left/right -- @react-navigation/bottom-tabs'
@@ -121,7 +139,8 @@ function MainTabs() {
             paddingTop: 7,
             paddingBottom: 0,
             borderRadius: 31,
-            borderTopWidth: 0,
+            borderWidth: 1,
+            borderColor: DAYLIGHT.border,
             backgroundColor: 'transparent',
             shadowColor: '#000',
             shadowOpacity: 0.12,
@@ -163,14 +182,21 @@ export function RootNavigator() {
 }
 
 const styles = StyleSheet.create({
-  // Rounded + clipped on its own, separate from tabBarStyle's outer
-  // container -- that container needs overflow left visible for its shadow
-  // to render outside its bounds, so the corner-clipping has to live here
-  // on the blur layer instead, not on the shadowed parent.
-  tabBarBlur: {
+  // Opaque in daylight: translucent chrome loses too much separation over
+  // scrolling content outdoors. The outer container keeps the shadow while
+  // this inner surface owns clipping and the rounded fill.
+  tabBarBackground: {
     ...StyleSheet.absoluteFill,
     borderRadius: 31,
     overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.98)',
+  },
+  tabButton: {
+    marginVertical: 5,
+    borderRadius: 22,
+  },
+  tabButtonActive: {
+    backgroundColor: DAYLIGHT.sky,
   },
   iconFrame: {
     width: 24,

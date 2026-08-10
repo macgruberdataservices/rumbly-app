@@ -6,7 +6,7 @@ import type { ExploreStackParamList } from '../navigation/ExploreNavigator';
 import { SettingsButton } from '../components/settings/SettingsButton';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { groupRestaurants, WATER_PARKS_GROUP_KEY, type RestaurantGroup } from '../data/groups';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 import { QUICK_FIVE_CHALLENGE } from '../challenges/definitions';
 import { evaluateChallenge } from '../challenges/evaluate';
@@ -17,16 +17,7 @@ import { useTicketedEvents } from '../hooks/useTicketedEvents';
 
 type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreHome'>;
 
-const CARD_COLORS = [
-  COLORS.forest,
-  COLORS.gold,
-  COLORS.pine,
-  COLORS.barkBrown,
-  COLORS.muted,
-  COLORS.pineLight,
-  COLORS.ink,
-  COLORS.dim,
-];
+const CARD_COLORS = ['#DCEFF3', '#FFE3D8', '#FFF0BD', '#DCEFE6'] as const;
 
 export function ExploreHomeScreen({ navigation }: Props) {
   const { restaurants, isLoading, error } = useDataProvider();
@@ -53,19 +44,19 @@ export function ExploreHomeScreen({ navigation }: Props) {
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
       <View style={styles.header}>
-        <Text
-          style={styles.heading}
-          numberOfLines={1}
-          adjustsFontSizeToFit
-          minimumFontScale={0.84}
-          allowFontScaling={false}
-        >
-          Explore Restaurants and Menus
-        </Text>
-        <SettingsButton onPress={openAccountSettings} />
+        <View style={styles.headerCopy}>
+          <Text style={styles.eyebrow}>WANDER THE WORLD</Text>
+          <Text style={styles.heading}>Pick a place to explore</Text>
+          <Text style={styles.headerDescription}>Restaurants, menus and treats by location.</Text>
+        </View>
+        <SettingsButton
+          onPress={openAccountSettings}
+          tintColor={DAYLIGHT.ocean}
+          pressedBackgroundColor="rgba(30, 98, 120, 0.10)"
+        />
       </View>
       <View style={styles.body}>
-      <ScrollView contentContainerStyle={styles.content}>
+        <ScrollView contentContainerStyle={styles.content}>
         <Text style={[text.sectionToggle, styles.sectionLabel]}>EXPLORE BY LOCATION</Text>
 
         {isLoading && restaurants.length === 0 ? (
@@ -100,10 +91,14 @@ export function ExploreHomeScreen({ navigation }: Props) {
                 >
                   {group.label}
                 </Text>
-                <Text style={styles.cardCount} allowFontScaling={false}>
-                  {group.restaurants.length} restaurants
-                </Text>
-                <View style={styles.cardAccent} />
+                <View style={styles.cardFooter}>
+                  <Text style={styles.cardCount} allowFontScaling={false}>
+                    {group.restaurants.length} restaurants
+                  </Text>
+                  <View style={styles.cardArrow}>
+                    <Text style={styles.cardArrowText}>›</Text>
+                  </View>
+                </View>
               </Pressable>
             ))}
           </View>
@@ -175,7 +170,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
             ))}
           </View>
         )}
-      </ScrollView>
+        </ScrollView>
       </View>
     </SafeAreaView>
   );
@@ -184,19 +179,26 @@ export function ExploreHomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.paper,
   },
   header: {
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'flex-start',
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-    backgroundColor: COLORS.surface,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
+    backgroundColor: DAYLIGHT.sky,
+    borderBottomLeftRadius: RADII.xl,
+    borderBottomRightRadius: RADII.xl,
+  },
+  headerCopy: {
+    flex: 1,
+    minWidth: 0,
+    paddingRight: SPACING.sm,
   },
   body: {
     flex: 1,
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.paper,
   },
   content: {
     paddingHorizontal: SPACING.lg,
@@ -204,12 +206,25 @@ const styles = StyleSheet.create({
     paddingBottom: SPACING.xxl,
   },
   heading: {
-    flex: 1,
+    fontFamily: FONT_FAMILY.piazzollaBold,
+    fontSize: 25,
+    lineHeight: 30,
+    color: DAYLIGHT.ink,
+  },
+  eyebrow: {
     fontFamily: FONT_FAMILY.workSansSemiBold,
-    fontSize: 20,
-    lineHeight: 24,
-    letterSpacing: 0,
-    color: COLORS.ink,
+    fontSize: 10,
+    lineHeight: 14,
+    letterSpacing: 1.25,
+    color: DAYLIGHT.ocean,
+    marginBottom: 2,
+  },
+  headerDescription: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 13,
+    lineHeight: 18,
+    color: DAYLIGHT.muted,
+    marginTop: SPACING.xs,
   },
   sectionLabel: {
     marginBottom: SPACING.sm,
@@ -221,36 +236,47 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '48%',
-    height: 55,
-    borderRadius: RADII.sm,
-    paddingHorizontal: SPACING.sm,
-    paddingVertical: 7,
+    minHeight: 88,
+    borderRadius: RADII.lg,
+    padding: SPACING.md,
     overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: 'rgba(23, 40, 45, 0.08)',
+    justifyContent: 'space-between',
   },
   cardPressed: {
     opacity: 0.72,
   },
   cardTitle: {
     fontFamily: text.sectionTitle.fontFamily,
-    fontSize: 12,
-    lineHeight: 14,
-    color: COLORS.surface,
-    marginBottom: 2,
+    fontSize: 14,
+    lineHeight: 18,
+    color: DAYLIGHT.ink,
+    marginBottom: SPACING.sm,
+  },
+  cardFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   cardCount: {
     fontFamily: text.bodyMuted.fontFamily,
-    fontSize: 9,
-    color: COLORS.goldLight,
+    fontSize: 10,
+    color: DAYLIGHT.muted,
+    flex: 1,
   },
-  cardAccent: {
-    position: 'absolute',
-    right: -13,
-    bottom: -18,
-    width: 46,
-    height: 46,
-    borderRadius: 8,
-    backgroundColor: 'rgba(251, 247, 238, 0.18)',
-    transform: [{ rotate: '-18deg' }],
+  cardArrow: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.72)',
+  },
+  cardArrowText: {
+    fontFamily: FONT_FAMILY.workSansSemiBold,
+    fontSize: 19,
+    lineHeight: 20,
+    color: DAYLIGHT.ocean,
   },
   statePanel: {
     minHeight: 120,

@@ -16,7 +16,7 @@ import { AccountAuthPanel } from '../components/settings/AccountAuthPanel';
 import { SettingsRow } from '../components/settings/SettingsRow';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { useAuth } from '../hooks/useAuth';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 const PRIVACY_POLICY_URL = 'https://cqsnluidczyitdwansey.supabase.co/functions/v1/privacy-policy';
@@ -78,7 +78,7 @@ export function AccountManagementScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
   content: { flexGrow: 1, paddingBottom: SPACING.xxl },
   authSection: { paddingHorizontal: SPACING.lg },
   sectionLabel: {

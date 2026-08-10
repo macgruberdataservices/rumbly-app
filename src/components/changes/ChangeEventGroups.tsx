@@ -1,7 +1,7 @@
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ChangeEvent } from '../../data/types';
 import { changeRowLine, formatDateLabel, groupEvents, isRowTappable, type GroupMode } from '../../data/changes';
-import { COLORS, SPACING } from '../../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
 // Shared by ChangesHomeScreen (Level 0, Openings & Closures) and
@@ -32,7 +32,7 @@ export function ChangeEventGroups({
   return (
     <View>
       {groups.map((group) => (
-        <View key={group.key}>
+        <View key={group.key} style={styles.group}>
           <Text style={[text.sectionToggle, styles.groupHeading]}>
             {group.heading.toUpperCase()} ({group.events.length})
           </Text>
@@ -74,11 +74,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
+  group: {
+    marginBottom: SPACING.sm,
+  },
   groupHeading: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
-    paddingBottom: SPACING.xs,
-    backgroundColor: COLORS.surface,
+    paddingBottom: SPACING.sm,
+    color: DAYLIGHT.ocean,
   },
   row: {
     flexDirection: 'row',
@@ -86,8 +89,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    borderRadius: RADII.lg,
+    backgroundColor: '#FFFFFF',
     gap: SPACING.md,
   },
   rowStatic: {

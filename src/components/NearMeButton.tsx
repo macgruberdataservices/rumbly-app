@@ -15,9 +15,11 @@ interface Props {
   active: boolean;
   status: NearMeStatus;
   onPress: () => void;
+  accentColor?: string;
+  borderColor?: string;
 }
 
-function NearMePulse({ active }: { active: boolean }) {
+function NearMePulse({ active, color }: { active: boolean; color: string }) {
   const ring1 = useRef(new Animated.Value(0)).current;
   const ring2 = useRef(new Animated.Value(0)).current;
 
@@ -55,17 +57,23 @@ function NearMePulse({ active }: { active: boolean }) {
 
   return (
     <View style={styles.pulseWrap} pointerEvents="none">
-      <Animated.View style={[styles.pulseRing, ringStyle(ring1)]} />
-      <Animated.View style={[styles.pulseRing, ringStyle(ring2)]} />
+      <Animated.View style={[styles.pulseRing, { backgroundColor: color }, ringStyle(ring1)]} />
+      <Animated.View style={[styles.pulseRing, { backgroundColor: color }, ringStyle(ring2)]} />
     </View>
   );
 }
 
-export function NearMeButton({ active, status, onPress }: Props) {
+export function NearMeButton({
+  active,
+  status,
+  onPress,
+  accentColor = COLORS.forest,
+  borderColor = COLORS.border,
+}: Props) {
   const requesting = status === 'requesting';
   return (
     <View style={styles.shell}>
-      <NearMePulse active={active && !requesting} />
+      <NearMePulse active={active && !requesting} color={COLORS.gold} />
       <Pressable
         disabled={requesting}
         onPress={onPress}
@@ -73,16 +81,21 @@ export function NearMeButton({ active, status, onPress }: Props) {
         accessibilityHint="Uses foreground location and Disney guest entrance coordinates"
         accessibilityRole="button"
         accessibilityState={{ selected: active, busy: requesting, disabled: requesting }}
-        style={[styles.button, active && styles.buttonActive, requesting && styles.buttonBusy]}
+        style={[
+          styles.button,
+          { borderColor },
+          active && { backgroundColor: accentColor, borderColor: accentColor },
+          requesting && styles.buttonBusy,
+        ]}
       >
         {requesting ? (
-          <ActivityIndicator color={COLORS.forest} />
+          <ActivityIndicator color={accentColor} />
         ) : (
           <Image
             source={require('../../assets/nearby-icon.png')}
             style={styles.icon}
             resizeMode="contain"
-            tintColor={active ? COLORS.surface : COLORS.forest}
+            tintColor={active ? COLORS.surface : accentColor}
           />
         )}
       </Pressable>
@@ -102,7 +115,6 @@ const styles = StyleSheet.create({
     borderColor: COLORS.border,
     backgroundColor: COLORS.surface,
   },
-  buttonActive: { backgroundColor: COLORS.forest, borderColor: COLORS.forest },
   buttonBusy: { opacity: 0.7 },
   icon: { width: 26, height: 26 },
   pulseWrap: {
@@ -117,6 +129,5 @@ const styles = StyleSheet.create({
     width: 44,
     height: 44,
     borderRadius: 22,
-    backgroundColor: COLORS.gold,
   },
 });

@@ -20,8 +20,8 @@ export function AllergyAcknowledgementSheet({
         <View style={styles.card} accessibilityViewIsModal>
           <Text style={[text.sectionTitle, styles.title]}>Before viewing allergy-friendly options</Text>
           <Text style={[text.bodyMuted, styles.body]}>
-            Rumbly's allergy results come only from menu items that Disney explicitly identifies as
-            Allergy-Friendly for the label shown. Rumbly does not evaluate ingredients or
+            myRumbly's allergy results come only from menu items that Disney explicitly identifies as
+            Allergy-Friendly for the label shown. myRumbly does not evaluate ingredients or
             determine whether food is safe for you.
           </Text>
           <Text style={[text.bodyMuted, styles.body]}>

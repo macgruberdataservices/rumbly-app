@@ -22,6 +22,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { IllustrationSlot } from '../../components/illustrations/IllustrationSlot';
 import {
   MAX_JOURNAL_PHOTOS,
   type JournalEntryDraft,
@@ -55,7 +56,7 @@ import {
   resolveJournalPhotoThumbnailUri,
   stageJournalPhoto,
 } from '../../media/journalPhotoStorage';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 type Props = NativeStackScreenProps<AppRootStackParamList, 'JournalComposer'>;
@@ -417,7 +418,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
     new Promise((resolve) => {
       Alert.alert(
         'Keep this photo in your Journal?',
-        'Rumbly could not save a separate original to Photos. You can keep the optimized private Journal copy or open Settings.',
+        'myRumbly could not save a separate original to Photos. You can keep the optimized private Journal copy or open Settings.',
         [
           { text: 'Cancel', style: 'cancel', onPress: () => resolve(false) },
           {
@@ -738,7 +739,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
             accessibilityState={{ disabled: submitting, busy: submitting }}
           >
             {submitting ? (
-              <ActivityIndicator color={COLORS.ink} />
+              <ActivityIndicator color={COLORS.surface} />
             ) : (
               <Text style={styles.saveLabel}>Save</Text>
             )}
@@ -749,6 +750,19 @@ export function JournalComposerScreen({ navigation, route }: Props) {
           contentContainerStyle={styles.content}
           keyboardShouldPersistTaps="handled"
         >
+          <View style={styles.captureIntro}>
+            <View style={styles.captureIntroCopy}>
+              <Text style={styles.captureEyebrow}>A MOMENT WORTH KEEPING</Text>
+              <Text style={styles.captureTitle}>Give this memory a place to land.</Text>
+              <Text style={styles.captureBody}>A few details now can bring the whole park day back later.</Text>
+            </View>
+            <IllustrationSlot
+              tagId="journal.composer.capture-memory.v1"
+              variant="artwork"
+              style={styles.captureArt}
+            />
+          </View>
+
           <ComposerSection title="What did you have?">
             <Pressable
               style={[styles.targetButton, editingEntry && styles.disabled]}
@@ -807,7 +821,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
                 mode="date"
                 presentation="dialog"
                 maximumDate={new Date()}
-                accentColor={COLORS.forest}
+                accentColor={DAYLIGHT.ocean}
                 onValueChange={(_event, date) => {
                   setVisitedOn(visitDateFromDate(date));
                   setAndroidDateVisible(false);
@@ -924,7 +938,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
                   accessibilityLabel="Add Journal photos"
                 >
                   {processingPhotos ? (
-                    <ActivityIndicator color={COLORS.forest} />
+                    <ActivityIndicator color={DAYLIGHT.ocean} />
                   ) : (
                     <>
                       <Text style={styles.addPhotoPlus}>＋</Text>
@@ -936,7 +950,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
             </View>
             <Text style={styles.helpText}>
               {restaurantId
-                ? `${photoCount}/${MAX_JOURNAL_PHOTOS} · Rumbly keeps optimized private copies to reduce storage use.`
+                ? `${photoCount}/${MAX_JOURNAL_PHOTOS} · myRumbly keeps optimized private copies to reduce storage use.`
                 : 'Choose a restaurant before adding photos.'}
             </Text>
           </ComposerSection>
@@ -1001,7 +1015,7 @@ export function JournalComposerScreen({ navigation, route }: Props) {
               mode="date"
               display="spinner"
               maximumDate={new Date()}
-              accentColor={COLORS.forest}
+              accentColor={DAYLIGHT.ocean}
               onValueChange={(_event, date) => setPendingIosDate(date)}
             />
           </View>
@@ -1137,15 +1151,15 @@ function TargetRow({
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.cream },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
   header: {
     minHeight: 62,
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: SPACING.md,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: COLORS.border,
-    backgroundColor: COLORS.surface,
+    borderBottomColor: DAYLIGHT.border,
+    backgroundColor: DAYLIGHT.sky,
   },
   headerButton: {
     width: 72,
@@ -1153,20 +1167,67 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  cancelLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 14, color: COLORS.muted },
+  cancelLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 14, color: DAYLIGHT.ocean },
   headerTitle: { flex: 1, alignItems: 'center' },
   title: { fontFamily: FONT_FAMILY.piazzollaBold, fontSize: 19, color: COLORS.ink },
   draftStatus: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 10.5, color: COLORS.muted },
-  saveButton: { borderRadius: RADII.sm, backgroundColor: COLORS.pine },
-  saveLabel: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 13, color: COLORS.ink },
+  saveButton: { borderRadius: RADII.xl, backgroundColor: DAYLIGHT.ocean },
+  saveLabel: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 13, color: COLORS.surface },
   disabled: { opacity: 0.5 },
   content: { padding: SPACING.lg, paddingBottom: SPACING.xxl, gap: SPACING.lg },
+  captureIntro: {
+    minHeight: 170,
+    overflow: 'hidden',
+    flexDirection: 'row',
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.coral,
+  },
+  captureIntroCopy: {
+    zIndex: 1,
+    width: '64%',
+    justifyContent: 'center',
+    padding: SPACING.lg,
+    paddingRight: SPACING.xs,
+  },
+  captureEyebrow: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    letterSpacing: 0.8,
+    color: '#FFF4EA',
+  },
+  captureTitle: {
+    fontFamily: FONT_FAMILY.piazzollaBold,
+    fontSize: 21,
+    lineHeight: 25,
+    color: DAYLIGHT.paper,
+    marginTop: SPACING.xs,
+  },
+  captureBody: {
+    fontFamily: FONT_FAMILY.workSansRegular,
+    fontSize: 11.5,
+    lineHeight: 16,
+    color: '#FFF4EA',
+    marginTop: SPACING.sm,
+  },
+  captureArt: {
+    position: 'absolute',
+    width: '40%',
+    right: 0,
+    top: 0,
+    bottom: 0,
+    minHeight: 170,
+    borderRadius: 0,
+  },
   section: {
     padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.lg,
+    borderLeftWidth: 5,
+    borderLeftColor: DAYLIGHT.sun,
+    borderRadius: RADII.xl,
     backgroundColor: COLORS.surface,
+    shadowColor: DAYLIGHT.ink,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   sectionHeading: {
     flexDirection: 'row',
@@ -1185,11 +1246,18 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     color: COLORS.dim,
   },
-  targetButton: { minHeight: 52, flexDirection: 'row', alignItems: 'center' },
+  targetButton: {
+    minHeight: 56,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: SPACING.md,
+    borderRadius: RADII.lg,
+    backgroundColor: DAYLIGHT.sky,
+  },
   targetCopy: { flex: 1, gap: 2 },
   targetTitle: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 15, color: COLORS.ink },
   placeholder: { flex: 1, fontFamily: FONT_FAMILY.workSansRegular, fontSize: 15, color: COLORS.dim },
-  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 27, color: COLORS.forest },
+  chevron: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 27, color: DAYLIGHT.ocean },
   helpText: { ...text.bodyMuted, marginTop: SPACING.sm, lineHeight: 18 },
   dateRow: { minHeight: 40, flexDirection: 'row', alignItems: 'center' },
   iosDatePicker: { width: '100%', height: 210 },
@@ -1229,10 +1297,10 @@ const styles = StyleSheet.create({
     minHeight: 38,
     paddingHorizontal: SPACING.lg,
     borderRadius: RADII.sm,
-    backgroundColor: COLORS.pineLight,
+    backgroundColor: DAYLIGHT.sky,
     justifyContent: 'center',
   },
-  changeDateLabel: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 12, color: COLORS.ink },
+  changeDateLabel: { fontFamily: FONT_FAMILY.workSansExtraBold, fontSize: 12, color: DAYLIGHT.ocean },
   chips: { flexDirection: 'row', flexWrap: 'wrap', gap: SPACING.sm },
   chip: {
     minHeight: 38,
@@ -1243,13 +1311,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: COLORS.surface,
   },
-  chipSelected: { backgroundColor: COLORS.pine, borderColor: COLORS.pine },
+  chipSelected: { backgroundColor: DAYLIGHT.ocean, borderColor: DAYLIGHT.ocean },
   chipLabel: { fontFamily: FONT_FAMILY.workSansBold, fontSize: 12, color: COLORS.muted },
-  chipLabelSelected: { color: COLORS.ink },
+  chipLabelSelected: { color: COLORS.surface },
   ratingRow: { flexDirection: 'row', justifyContent: 'space-between' },
   starButton: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   star: { fontSize: 32, color: COLORS.borderMid },
-  starSelected: { color: COLORS.gold },
+  starSelected: { color: DAYLIGHT.sun },
   clearRating: {
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 12,
@@ -1260,9 +1328,9 @@ const styles = StyleSheet.create({
   photoTile: {
     width: 84,
     height: 84,
-    borderRadius: RADII.sm,
+    borderRadius: RADII.lg,
     overflow: 'hidden',
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.mist,
   },
   photoThumbnail: { width: '100%', height: '100%' },
   removePhotoButton: {
@@ -1282,13 +1350,13 @@ const styles = StyleSheet.create({
     height: 84,
     borderWidth: 1,
     borderStyle: 'dashed',
-    borderColor: COLORS.borderMid,
-    borderRadius: RADII.sm,
+    borderColor: DAYLIGHT.ocean,
+    borderRadius: RADII.lg,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.sky,
   },
-  addPhotoPlus: { fontSize: 25, lineHeight: 28, color: COLORS.forest },
+  addPhotoPlus: { fontSize: 25, lineHeight: 28, color: DAYLIGHT.coral },
   addPhotoLabel: {
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 11,
@@ -1300,7 +1368,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: COLORS.border,
     borderRadius: RADII.md,
-    backgroundColor: COLORS.cream,
+    backgroundColor: DAYLIGHT.mist,
     fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 15,
     lineHeight: 21,

@@ -16,7 +16,9 @@ import {
   registerSwipeableOpen,
   unregisterSwipeable,
 } from '../swipeableCoordinator';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { IllustrationSlot } from '../illustrations/IllustrationSlot';
+import { illustrationTagForRestaurant } from '../../illustrations/catalog';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 // COLORS has no true green -- forest/pine both currently resolve to a pale
@@ -24,7 +26,7 @@ import { FONT_FAMILY, text } from '../../theme/typography';
 // status on this screen that most benefits from an unambiguous color.
 // Scoped locally rather than added to the shared token file, which is out
 // of scope for a header layout pass.
-const OPEN_STATUS_COLOR = '#3B6D11';
+const OPEN_STATUS_COLOR = DAYLIGHT.open;
 
 function priceLabel(r: Restaurant): string {
   if (r.price_tier) return '$'.repeat(r.price_tier);
@@ -195,6 +197,7 @@ export function ExpandedHeader({
   // twice on the same header.
   const kicker = restaurant.experience_type || restaurant.service_style;
   const serviceLine = priceLabel(restaurant);
+  const illustrationTag = illustrationTagForRestaurant(restaurant);
 
   const hasDirections = restaurant.lat !== null && restaurant.lng !== null;
 
@@ -364,39 +367,44 @@ export function ExpandedHeader({
                 It / Need It / Got It -- there's otherwise zero affordance
                 that the gesture exists. */}
             <View style={styles.dragHint} />
-            {!!kicker && (
-              <Text style={styles.kicker} numberOfLines={1}>
-                {kicker.toUpperCase()}
-              </Text>
-            )}
-            <Text style={styles.restaurantTitle} numberOfLines={2}>
-              {restaurant.restaurant}
-            </Text>
-            <View style={styles.factLine}>
-              {factSegments.map((segment, index) => (
-                <View key={segment.key} style={styles.factGroup}>
-                  {index > 0 && <Text style={[styles.factText, styles.factTextMuted]}>·</Text>}
-                  {segment.dot && (
-                    <View
-                      style={[
-                        styles.statusDot,
-                        segment.tone === 'open' ? styles.statusDotOpen : styles.statusDotClosed,
-                      ]}
-                    />
-                  )}
-                  <Text
-                    style={[
-                      styles.factText,
-                      segment.dot && styles.factTextStrong,
-                      segment.tone === 'open' && styles.factTextOpen,
-                      segment.tone === 'gold' && styles.factTextGold,
-                      (segment.tone === 'muted' || segment.tone === 'closed') && styles.factTextMuted,
-                    ]}
-                  >
-                    {segment.label}
+            <View style={styles.infoLayout}>
+              <View style={styles.infoCopy}>
+                {!!kicker && (
+                  <Text style={styles.kicker} numberOfLines={1}>
+                    {kicker.toUpperCase()}
                   </Text>
+                )}
+                <Text style={styles.restaurantTitle} numberOfLines={2}>
+                  {restaurant.restaurant}
+                </Text>
+                <View style={styles.factLine}>
+                  {factSegments.map((segment, index) => (
+                    <View key={segment.key} style={styles.factGroup}>
+                      {index > 0 && <Text style={[styles.factText, styles.factTextMuted]}>·</Text>}
+                      {segment.dot && (
+                        <View
+                          style={[
+                            styles.statusDot,
+                            segment.tone === 'open' ? styles.statusDotOpen : styles.statusDotClosed,
+                          ]}
+                        />
+                      )}
+                      <Text
+                        style={[
+                          styles.factText,
+                          segment.dot && styles.factTextStrong,
+                          segment.tone === 'open' && styles.factTextOpen,
+                          segment.tone === 'gold' && styles.factTextGold,
+                          (segment.tone === 'muted' || segment.tone === 'closed') && styles.factTextMuted,
+                        ]}
+                      >
+                        {segment.label}
+                      </Text>
+                    </View>
+                  ))}
                 </View>
-              ))}
+              </View>
+              <IllustrationSlot tagId={illustrationTag} style={styles.identityArt} />
             </View>
           </View>
         </Swipeable>
@@ -414,7 +422,7 @@ export function ExpandedHeader({
                 accessibilityRole="button"
                 accessibilityLabel={`Directions to ${restaurant.restaurant}`}
               >
-                <DirectionsIcon color={COLORS.ink} />
+                <DirectionsIcon color={DAYLIGHT.ocean} />
                 <Text style={styles.capabilityTileLabel} numberOfLines={1}>Directions</Text>
               </Pressable>
             )}
@@ -429,7 +437,7 @@ export function ExpandedHeader({
                 }
                 accessibilityRole="button"
               >
-                <JournalIcon color={COLORS.ink} />
+                <JournalIcon color={DAYLIGHT.ocean} />
                 <Text style={styles.capabilityTileLabel} numberOfLines={1}>Journal</Text>
               </Pressable>
             )}
@@ -439,7 +447,7 @@ export function ExpandedHeader({
                 onPress={() => openRestaurantInOfficialApp(restaurant)}
                 accessibilityRole="button"
               >
-                <ReservationsIcon color={COLORS.ink} />
+                <ReservationsIcon color={DAYLIGHT.ocean} />
                 <Text style={styles.capabilityTileLabel} numberOfLines={1}>Reservations</Text>
               </Pressable>
             )}
@@ -449,7 +457,7 @@ export function ExpandedHeader({
                 onPress={() => openRestaurantInOfficialApp(restaurant)}
                 accessibilityRole="button"
               >
-                <WalkUpIcon color={COLORS.ink} />
+                <WalkUpIcon color={DAYLIGHT.ocean} />
                 <Text style={styles.capabilityTileLabel} numberOfLines={1}>Walk-up List</Text>
               </Pressable>
             )}
@@ -459,7 +467,7 @@ export function ExpandedHeader({
                 onPress={() => openMobileOrderInOfficialApp(restaurant)}
                 accessibilityRole="button"
               >
-                <MobileOrderIcon color={COLORS.ink} />
+                <MobileOrderIcon color={DAYLIGHT.ocean} />
                 <Text style={styles.capabilityTileLabel} numberOfLines={1}>Mobile Ordering</Text>
               </Pressable>
             )}
@@ -469,7 +477,7 @@ export function ExpandedHeader({
                 onPress={() => onCapabilityPress('diningPlan')}
                 accessibilityRole="button"
               >
-                <DiningPlanIcon color={COLORS.ink} />
+                <DiningPlanIcon color={DAYLIGHT.ocean} />
                 <Text style={styles.capabilityTileLabel} numberOfLines={1}>Dining Plan</Text>
               </Pressable>
             )}
@@ -507,10 +515,24 @@ const styles = StyleSheet.create({
   // further down -- see capabilityRow's borderTopColor for the boundary on
   // the other side.
   infoCard: {
-    backgroundColor: COLORS.goldLight,
+    backgroundColor: DAYLIGHT.sky,
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.sm,
+    paddingBottom: SPACING.md,
+  },
+  infoLayout: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    gap: SPACING.md,
+  },
+  infoCopy: {
+    flex: 1,
+    minWidth: 0,
+    justifyContent: 'center',
+  },
+  identityArt: {
+    width: 110,
+    minHeight: 124,
   },
   dragHint: {
     position: 'absolute',
@@ -524,7 +546,7 @@ const styles = StyleSheet.create({
     opacity: 0.45,
   },
   infoCardSliding: {
-    backgroundColor: COLORS.pineLight,
+    backgroundColor: '#CFE6EB',
     borderTopRightRadius: RADII.xl,
     borderBottomRightRadius: RADII.xl,
   },
@@ -538,7 +560,7 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 11,
     letterSpacing: 0.7,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   restaurantTitle: {
     fontFamily: FONT_FAMILY.piazzollaExtraBold,
@@ -584,7 +606,7 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
   },
   factTextGold: {
-    color: COLORS.gold,
+    color: DAYLIGHT.amberInk,
   },
   // Border lives on this wrapper, not on the ScrollView's own
   // contentContainerStyle -- content-container width follows the content
@@ -594,16 +616,24 @@ const styles = StyleSheet.create({
   // CategoryNavigator's own container/content split for the same reason.
   capabilityRowContainer: {
     borderTopWidth: 1,
-    borderTopColor: COLORS.border,
+    borderTopColor: DAYLIGHT.border,
+    backgroundColor: DAYLIGHT.paper,
   },
   capabilityRow: {
     flexDirection: 'row',
-    gap: SPACING.lg,
+    gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
     paddingVertical: SPACING.md,
   },
   capabilityTile: {
+    width: 92,
+    minHeight: 64,
     alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: RADII.lg,
+    backgroundColor: DAYLIGHT.sky,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.sm,
   },
   capabilityTilePressed: {
     opacity: 0.6,
@@ -613,7 +643,7 @@ const styles = StyleSheet.create({
     fontFamily: text.buttonLabel.fontFamily,
     fontSize: 10.5,
     lineHeight: 13,
-    color: COLORS.ink,
+    color: DAYLIGHT.ocean,
     textAlign: 'center',
   },
   actionsRow: {

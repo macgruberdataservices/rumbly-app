@@ -7,7 +7,7 @@ import { SettingsFormField } from '../components/settings/SettingsFormField';
 import { SettingsScreenHeader } from '../components/settings/SettingsScreenHeader';
 import { SettingsSubmitButton } from '../components/settings/SettingsSubmitButton';
 import { useAuth } from '../hooks/useAuth';
-import { COLORS, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'ChangeEmail'>;
@@ -65,8 +65,8 @@ export function ChangeEmailScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { paddingHorizontal: SPACING.lg },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
+  content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg },
   label: { fontFamily: FONT_FAMILY.workSansSemiBold, fontSize: 12, color: COLORS.muted, marginBottom: SPACING.xs },
   currentValue: { marginBottom: SPACING.xl },
   error: { fontFamily: FONT_FAMILY.workSansRegular, fontSize: 13, color: COLORS.gold, marginBottom: SPACING.md },

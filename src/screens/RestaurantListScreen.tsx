@@ -10,7 +10,7 @@ import { CategoryNavigator } from '../components/restaurant-detail/CategoryNavig
 import { distanceToRestaurant } from '../location/proximity';
 import type { Restaurant } from '../data/types';
 import { areaDisplayName, isWaterPark, parkDisplayName } from '../data/locationNames';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<BrowseStackParamList, 'RestaurantList'>;
@@ -225,36 +225,45 @@ export function RestaurantListScreen({ route, navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.mist,
   },
   header: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-    backgroundColor: COLORS.surface,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.lg,
+    backgroundColor: DAYLIGHT.sky,
+    borderBottomLeftRadius: RADII.xl,
+    borderBottomRightRadius: RADII.xl,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: SPACING.sm,
+    minHeight: 38,
+    justifyContent: 'center',
+    borderRadius: 19,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: '#FFFFFF',
   },
   title: {
     fontFamily: FONT_FAMILY.piazzollaBold,
-    fontSize: 30,
-    color: COLORS.ink,
+    fontSize: 32,
+    lineHeight: 34,
+    color: DAYLIGHT.ink,
   },
   sectionList: {
     flex: 1,
   },
   sectionHeader: {
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.mist,
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.xs,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.sm,
   },
   sectionHeaderPill: {
     justifyContent: 'center',
+    alignSelf: 'flex-start',
     borderRadius: RADII.xl,
-    backgroundColor: COLORS.forest,
+    backgroundColor: DAYLIGHT.coral,
     paddingHorizontal: 13,
     paddingVertical: 6.5,
   },

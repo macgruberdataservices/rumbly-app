@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ChangesStackParamList } from '../navigation/changesTypes';
 import { categoryBreakdown } from '../data/changes';
-import { COLORS, SPACING } from '../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<ChangesStackParamList, 'ChangesRestaurant'>;
@@ -60,33 +60,41 @@ export function ChangesRestaurantScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.mist,
   },
   header: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-    backgroundColor: COLORS.surface,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
+    backgroundColor: '#F3D4C9',
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: SPACING.sm,
+    minHeight: 38,
+    justifyContent: 'center',
+    borderRadius: 19,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: '#FFFFFF',
   },
   title: {
     fontFamily: text.sectionTitle.fontFamily,
-    fontSize: 24,
-    color: COLORS.ink,
+    fontSize: 30,
+    lineHeight: 33,
+    color: DAYLIGHT.ink,
   },
   list: {
-    paddingTop: SPACING.sm,
+    padding: SPACING.lg,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: SPACING.md,
-    paddingHorizontal: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    padding: SPACING.lg,
+    borderRadius: RADII.xl,
+    backgroundColor: '#FFFFFF',
+    marginBottom: SPACING.sm,
     gap: SPACING.md,
   },
   icon: {
@@ -98,6 +106,6 @@ const styles = StyleSheet.create({
   },
   chevron: {
     fontSize: 22,
-    color: COLORS.dim,
+    color: DAYLIGHT.ocean,
   },
 });

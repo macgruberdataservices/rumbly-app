@@ -9,7 +9,7 @@ import { useDataProvider } from '../hooks/useDataProvider';
 import { getTodayStatus } from '../data/hoursStatus';
 import { HighlightedText } from './HighlightedText';
 import { RestaurantPreviewCard } from './RestaurantPreviewCard';
-import { COLORS, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { restaurantLocationLabel } from '../data/locationNames';
 import { formatRatingAverage } from '../data/ratingAverage';
@@ -132,7 +132,7 @@ const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function Cla
         style={[
           styles.card,
           {
-            backgroundColor: shadowAnim.interpolate({ inputRange: [0, 1], outputRange: [COLORS.surface, COLORS.goldLight] }),
+            backgroundColor: shadowAnim.interpolate({ inputRange: [0, 1], outputRange: [DAYLIGHT.mist, COLORS.goldLight] }),
             shadowColor: '#000',
             shadowOffset: { width: 0, height: 0 },
             shadowRadius: 6,
@@ -180,7 +180,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     marginHorizontal: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DAYLIGHT.border,
   },
   titleRow: {
     flexDirection: 'row',
@@ -194,7 +194,7 @@ const styles = StyleSheet.create({
     width: 6,
     height: 6,
     borderRadius: 3,
-    backgroundColor: COLORS.pine,
+    backgroundColor: DAYLIGHT.ocean,
   },
   meta: {
     marginTop: 2,

@@ -9,7 +9,7 @@ import { entriesForJournalPage } from '../../data/journalReadModel';
 import { useActivity } from '../../hooks/useActivity';
 import { useJournal } from '../../hooks/useJournal';
 import type { JournalStackParamList } from '../../navigation/journalTypes';
-import { COLORS, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 type Props = NativeStackScreenProps<JournalStackParamList, 'JournalPageDetail'>;
@@ -121,11 +121,14 @@ export function JournalPageDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.cream },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
   centered: { alignItems: 'center', justifyContent: 'center' },
   pageHeading: {
-    paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.lg,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.lg,
+    padding: SPACING.lg,
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.sky,
     gap: SPACING.xs,
   },
   restaurantName: {
@@ -135,7 +138,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.xxl,
+    paddingBottom: 120,
   },
   emptyList: { flexGrow: 1 },
   emptyState: {
@@ -159,7 +162,7 @@ const styles = StyleSheet.create({
     marginRight: SPACING.sm,
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 12,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
     textAlign: 'right',
   },
 });

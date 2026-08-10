@@ -9,7 +9,7 @@ import { SyncStatusBar } from '../components/SyncStatusBar';
 import { useDataProvider } from '../hooks/useDataProvider';
 import { useAppSettings } from '../hooks/useAppSettings';
 import type { SettingsStackParamList } from '../navigation/settingsTypes';
-import { COLORS, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'GeneralSettings'>;
@@ -148,8 +148,8 @@ export function GeneralSettingsScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
+  content: { paddingHorizontal: SPACING.lg, paddingTop: SPACING.lg, paddingBottom: SPACING.xxl },
   sectionLabel: {
     fontFamily: FONT_FAMILY.workSansBold,
     fontSize: 11,
@@ -164,6 +164,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: SPACING.md,
+    padding: SPACING.lg,
+    borderRadius: RADII.xl,
+    backgroundColor: '#FFFFFF',
   },
   settingRowText: { flex: 1 },
   settingRowSubtitle: { marginTop: SPACING.xs },

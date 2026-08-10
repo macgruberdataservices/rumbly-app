@@ -14,7 +14,8 @@ import {
   type GroupMode,
 } from '../data/changes';
 import { ChangeEventGroups } from '../components/changes/ChangeEventGroups';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
+import { DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<ChangesStackParamList, 'ChangesHome'>;
@@ -96,8 +97,14 @@ export function ChangesHomeScreen({ navigation }: Props) {
         <Pressable onPress={() => navigation.goBack()} hitSlop={8} style={styles.backButton}>
           <Text style={text.buttonLabel}>‹ Back</Text>
         </Pressable>
-        <Text style={styles.title}>See what's new!</Text>
-        <Text style={text.bodyMuted}>Menu updates, prices, openings & closures</Text>
+        <View style={styles.hero}>
+          <View style={styles.heroCopy}>
+            <Text style={styles.heroEyebrow}>THE LATEST</Text>
+            <Text style={styles.title}>What changed?</Text>
+            <Text style={styles.heroBody}>New bites, price moves, openings, and goodbyes—without the scavenger hunt.</Text>
+          </View>
+          <IllustrationSlot tagId="changes.hero.whats-new.v1" variant="artwork" style={styles.heroArt} />
+        </View>
       </View>
 
       <View style={styles.rangeRow}>
@@ -121,7 +128,7 @@ export function ChangesHomeScreen({ navigation }: Props) {
 
       {loading ? (
         <View style={styles.statePanel}>
-          <ActivityIndicator color={COLORS.forest} />
+          <ActivityIndicator color={DAYLIGHT.ocean} />
         </View>
       ) : errored ? (
         <View style={styles.statePanel}>
@@ -217,42 +224,80 @@ export function ChangesHomeScreen({ navigation }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.mist,
   },
   header: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-    backgroundColor: COLORS.surface,
+    paddingBottom: SPACING.lg,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: SPACING.sm,
+    minHeight: 40,
+    justifyContent: 'center',
+    borderRadius: 20,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: DAYLIGHT.sky,
+  },
+  hero: {
+    minHeight: 190,
+    flexDirection: 'row',
+    overflow: 'hidden',
+    borderRadius: 30,
+    padding: SPACING.lg,
+    backgroundColor: '#F8E5B9',
+  },
+  heroCopy: {
+    flex: 1,
+    zIndex: 1,
+    paddingRight: SPACING.sm,
+  },
+  heroEyebrow: {
+    fontFamily: text.categoryHeader.fontFamily,
+    fontSize: 10,
+    letterSpacing: 1,
+    color: DAYLIGHT.coral,
   },
   title: {
     fontFamily: text.sectionTitle.fontFamily,
-    fontSize: 24,
-    color: COLORS.ink,
+    fontSize: 31,
+    lineHeight: 33,
+    color: DAYLIGHT.ink,
+    marginTop: SPACING.xs,
+  },
+  heroBody: {
+    fontFamily: text.body.fontFamily,
+    fontSize: 13,
+    lineHeight: 18,
+    color: DAYLIGHT.muted,
+    marginTop: SPACING.sm,
+  },
+  heroArt: {
+    width: 132,
+    minHeight: 158,
+    marginRight: -32,
+    backgroundColor: '#F3D4C9',
   },
   rangeRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.sm,
+    marginBottom: SPACING.lg,
   },
   rangeButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
+    flex: 1,
+    alignItems: 'center',
     borderRadius: RADII.xl,
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    backgroundColor: '#FFFFFF',
   },
   rangeButtonActive: {
-    backgroundColor: COLORS.forest,
-    borderColor: COLORS.forest,
+    backgroundColor: DAYLIGHT.ocean,
   },
   rangeButtonTextActive: {
-    color: COLORS.goldLight,
+    color: '#FFFFFF',
   },
   statePanel: {
     flex: 1,
@@ -261,7 +306,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: SPACING.lg,
   },
   scrollContent: {
-    paddingBottom: SPACING.xl,
+    paddingBottom: 120,
   },
   showAllRow: {
     flexDirection: 'row',
@@ -271,14 +316,13 @@ const styles = StyleSheet.create({
     marginBottom: SPACING.md,
   },
   showAllButton: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
     borderRadius: RADII.xl,
     paddingHorizontal: SPACING.md,
     paddingVertical: SPACING.sm,
+    backgroundColor: DAYLIGHT.sky,
   },
   section: {
-    marginBottom: SPACING.md,
+    marginBottom: SPACING.lg,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -293,8 +337,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: SPACING.md,
     paddingHorizontal: SPACING.lg,
-    borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    marginHorizontal: SPACING.lg,
+    marginBottom: SPACING.sm,
+    borderRadius: RADII.lg,
+    backgroundColor: '#FFFFFF',
     gap: SPACING.md,
   },
   rowLeft: {

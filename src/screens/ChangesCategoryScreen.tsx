@@ -4,7 +4,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ChangesStackParamList } from '../navigation/changesTypes';
 import { ChangeEventGroups } from '../components/changes/ChangeEventGroups';
-import { COLORS, RADII, SPACING } from '../theme/tokens';
+import { DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<ChangesStackParamList, 'ChangesCategory'>;
@@ -77,44 +77,52 @@ export function ChangesCategoryScreen({ navigation, route }: Props) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: COLORS.surface,
+    backgroundColor: DAYLIGHT.mist,
   },
   scrollContent: {
-    paddingBottom: SPACING.xl,
+    paddingBottom: 120,
   },
   header: {
     paddingHorizontal: SPACING.lg,
-    paddingTop: SPACING.sm,
-    paddingBottom: SPACING.md,
-    backgroundColor: COLORS.surface,
+    paddingTop: SPACING.md,
+    paddingBottom: SPACING.xl,
+    backgroundColor: DAYLIGHT.sky,
+    borderBottomLeftRadius: 30,
+    borderBottomRightRadius: 30,
   },
   backButton: {
     alignSelf: 'flex-start',
     marginBottom: SPACING.sm,
+    minHeight: 38,
+    justifyContent: 'center',
+    borderRadius: 19,
+    paddingHorizontal: SPACING.md,
+    backgroundColor: '#FFFFFF',
   },
   title: {
     fontFamily: text.sectionTitle.fontFamily,
-    fontSize: 24,
-    color: COLORS.ink,
+    fontSize: 30,
+    lineHeight: 33,
+    color: DAYLIGHT.ink,
   },
   filterRow: {
     flexDirection: 'row',
     gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    paddingBottom: SPACING.md,
+    paddingVertical: SPACING.lg,
   },
   filterPill: {
-    borderWidth: 1,
-    borderColor: COLORS.border,
     borderRadius: RADII.xl,
+    flex: 1,
+    alignItems: 'center',
     paddingHorizontal: SPACING.md,
-    paddingVertical: SPACING.xs,
+    paddingVertical: SPACING.sm,
+    backgroundColor: '#FFFFFF',
   },
   filterPillActive: {
-    backgroundColor: COLORS.forest,
-    borderColor: COLORS.forest,
+    backgroundColor: DAYLIGHT.ocean,
   },
   filterPillTextActive: {
-    color: COLORS.goldLight,
+    color: '#FFFFFF',
   },
 });

@@ -1,7 +1,7 @@
 import { Animated, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { HoursStatus } from '../../data/hoursStatus';
-import { COLORS, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
 // This is Rumbly's persistent restaurant-detail nav bar — Back and
@@ -54,7 +54,7 @@ const styles = StyleSheet.create({
   // very top of the device (behind the status bar, via this SafeAreaView)
   // down through the nav bar and the info card below it.
   safeArea: {
-    backgroundColor: COLORS.goldLight,
+    backgroundColor: DAYLIGHT.sky,
   },
   container: {
     flexDirection: 'row',
@@ -67,7 +67,7 @@ const styles = StyleSheet.create({
     paddingRight: SPACING.sm,
   },
   backLabel: {
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   titleBlock: {
     flex: 1,
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   status: {
     fontSize: 12,
   },
-  statusOpen: { color: COLORS.pine },
+  statusOpen: { color: DAYLIGHT.open },
   statusClosed: { color: COLORS.muted },
   overflowSpacer: {
     width: 76,

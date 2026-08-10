@@ -33,7 +33,9 @@ import type {
   FeedModule,
 } from '../../recommendations/types';
 import type { ChangeEvent, SearchIndexEntry } from '../../data/types';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { IllustrationSlot } from '../illustrations/IllustrationSlot';
+import { illustrationTagForMenuItem } from '../../illustrations/catalog';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 interface Props {
@@ -68,39 +70,6 @@ function feedRefreshIntervalMs(remote: RemoteFeedData): number {
   return minutes * 60_000;
 }
 
-function itemArtworkPresentation(
-  category: string | null | undefined,
-  itemName: string
-): {
-  label: string;
-  mark: string;
-  backgroundColor: string;
-  accentColor: string;
-} {
-  const normalized = `${category ?? ''} ${itemName}`.toLocaleLowerCase();
-  if (/(drink|beverage|cocktail|wine|beer|coffee|tea)/.test(normalized)) {
-    return { label: 'Drinks', mark: 'SIP', backgroundColor: '#DCECF3', accentColor: '#397D98' };
-  }
-  if (/(dessert|sweet|bakery|pastry|ice cream)/.test(normalized)) {
-    return { label: 'Something sweet', mark: 'TREAT', backgroundColor: '#F5DFE5', accentColor: '#A85472' };
-  }
-  if (/(breakfast|brunch)/.test(normalized)) {
-    return { label: 'Breakfast', mark: 'AM', backgroundColor: '#F8E5B9', accentColor: '#9A6A1D' };
-  }
-  if (/(snack|appetizer|starter|shareable|side)/.test(normalized)) {
-    return { label: 'Snacks & shares', mark: 'BITE', backgroundColor: '#E7E2F2', accentColor: '#6C5A91' };
-  }
-  if (/(kids|children)/.test(normalized)) {
-    return { label: 'For kids', mark: 'KIDS', backgroundColor: '#E0EEDC', accentColor: '#4F7A45' };
-  }
-  return {
-    label: category?.trim() || 'Menu pick',
-    mark: 'BITE',
-    backgroundColor: COLORS.pineLight,
-    accentColor: COLORS.forest,
-  };
-}
-
 function FeedItemCard({
   recommendation,
   onPress,
@@ -110,7 +79,7 @@ function FeedItemCard({
 }) {
   const venueImageUrl = recommendation.restaurant.detail_image_url
     ?? recommendation.restaurant.list_image_url;
-  const artwork = itemArtworkPresentation(
+  const artworkTag = illustrationTagForMenuItem(
     recommendation.item.category,
     recommendation.item.item
   );
@@ -133,23 +102,8 @@ function FeedItemCard({
       onPress={onPress}
       style={({ pressed }) => [styles.itemCard, pressed && styles.cardPressed]}
     >
-      <View style={[
-        styles.itemArtwork,
-        { backgroundColor: artwork.backgroundColor },
-      ]}>
-        <View style={[styles.artworkCircle, styles.artworkCircleLarge, { borderColor: artwork.accentColor }]} />
-        <View style={[styles.artworkCircle, styles.artworkCircleSmall, { backgroundColor: artwork.accentColor }]} />
-        <View style={styles.itemPlaceholder}>
-          <Text style={[styles.placeholderMark, { color: artwork.accentColor }]}>
-            {artwork.mark}
-          </Text>
-          <Text
-            style={[styles.placeholderCategory, { color: artwork.accentColor }]}
-            numberOfLines={1}
-          >
-            {artwork.label}
-          </Text>
-        </View>
+      <View style={styles.itemArtwork}>
+        <IllustrationSlot tagId={artworkTag} style={styles.artworkSlot} />
         <View style={styles.venueMarker}>
           <Text style={styles.venueMarkerLabel}>VENUE</Text>
           {venueImageUrl ? (
@@ -215,9 +169,10 @@ function ContentCard({
         <Image source={{ uri: content.imageUrl }} style={styles.contentImage} resizeMode="cover" />
       )}
       {!content.imageUrl && (
-        <View style={styles.contentPlaceholder}>
-          <Text style={styles.contentPlaceholderMark}>✦</Text>
-        </View>
+        <IllustrationSlot
+          tagId="find.editorial.feature-card.v1"
+          style={styles.contentPlaceholder}
+        />
       )}
       {previewMode && (
         <View style={[
@@ -601,7 +556,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: RADII.md,
+    borderRadius: RADII.lg,
     backgroundColor: COLORS.surface,
     shadowColor: COLORS.ink,
     shadowOpacity: 0.08,
@@ -612,44 +567,15 @@ const styles = StyleSheet.create({
   itemArtwork: {
     height: 126,
     overflow: 'hidden',
-    backgroundColor: COLORS.pineLight,
+    backgroundColor: DAYLIGHT.sky,
   },
-  artworkCircle: {
+  artworkSlot: {
     position: 'absolute',
-    borderRadius: 999,
-    opacity: 0.14,
-  },
-  artworkCircleLarge: {
-    width: 132,
-    height: 132,
-    borderWidth: 22,
-    left: -34,
-    top: -58,
-  },
-  artworkCircleSmall: {
-    width: 66,
-    height: 66,
-    right: 34,
-    bottom: -26,
-  },
-  itemPlaceholder: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: SPACING.lg,
-    paddingRight: 76,
-  },
-  placeholderMark: {
-    fontFamily: FONT_FAMILY.workSansExtraBold,
-    fontSize: 25,
-    letterSpacing: -0.7,
-  },
-  placeholderCategory: {
-    fontFamily: FONT_FAMILY.workSansExtraBold,
-    fontSize: 9,
-    letterSpacing: 0.5,
-    opacity: 0.78,
-    marginTop: 1,
-    textTransform: 'uppercase',
+    top: 0,
+    right: 0,
+    bottom: 0,
+    left: 0,
+    borderRadius: 0,
   },
   venueMarker: {
     position: 'absolute',
@@ -733,14 +659,14 @@ const styles = StyleSheet.create({
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 9.5,
     letterSpacing: 0.25,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
     textTransform: 'uppercase',
   },
   cardChevron: {
     fontFamily: FONT_FAMILY.workSansRegular,
     fontSize: 22,
     lineHeight: 20,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   challengeReason: {
     ...text.bodyMuted,
@@ -753,7 +679,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: COLORS.border,
-    borderRadius: RADII.md,
+    borderRadius: RADII.lg,
     backgroundColor: COLORS.surface,
     shadowColor: COLORS.ink,
     shadowOpacity: 0.08,
@@ -763,16 +689,10 @@ const styles = StyleSheet.create({
   },
   contentImage: { width: '100%', height: 142, backgroundColor: COLORS.cream },
   contentPlaceholder: {
+    width: '100%',
     height: 142,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: COLORS.pineLight,
-  },
-  contentPlaceholderMark: {
-    fontFamily: FONT_FAMILY.piazzollaBold,
-    fontSize: 44,
-    color: COLORS.ink,
-    opacity: 0.68,
+    minHeight: 142,
+    borderRadius: 0,
   },
   previewStatusPill: {
     position: 'absolute',
@@ -796,7 +716,7 @@ const styles = StyleSheet.create({
   eyebrow: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 10,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   contentTitle: {
     fontFamily: FONT_FAMILY.piazzollaBold,
@@ -822,7 +742,7 @@ const styles = StyleSheet.create({
   openLabel: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 11,
-    color: COLORS.forest,
+    color: DAYLIGHT.ocean,
   },
   pressed: { backgroundColor: COLORS.goldLight },
   cardPressed: { opacity: 0.76, transform: [{ scale: 0.985 }] },

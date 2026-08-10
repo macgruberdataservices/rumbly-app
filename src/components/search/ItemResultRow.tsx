@@ -17,7 +17,7 @@ import { registerSwipeableOpen, unregisterSwipeable, closeOpenSwipeable } from '
 import { isNewMenuItem } from '../../data/newItem';
 import { formatRatingAverage } from '../../data/ratingAverage';
 import { getItemIdentityKeyFor } from '../../data/itemIdentity';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 import { NativeItemResultRow } from './NativeItemResultRow';
 
@@ -375,7 +375,7 @@ const styles = StyleSheet.create({
     paddingVertical: SPACING.md,
     marginHorizontal: SPACING.lg,
     borderBottomWidth: 1,
-    borderBottomColor: COLORS.border,
+    borderBottomColor: DAYLIGHT.border,
   },
   titleRow: {
     flexDirection: 'row',
@@ -393,7 +393,7 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   newBadge: {
-    backgroundColor: COLORS.gold,
+    backgroundColor: DAYLIGHT.sun,
     borderRadius: RADII.sm,
     paddingHorizontal: 6,
     paddingVertical: 2,
@@ -422,7 +422,7 @@ const styles = StyleSheet.create({
   },
   ratingAverage: {
     fontSize: 12,
-    color: COLORS.gold,
+    color: DAYLIGHT.amberInk,
   },
   actionsRow: {
     flexDirection: 'row',

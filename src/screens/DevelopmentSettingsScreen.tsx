@@ -8,7 +8,7 @@ import { useAppSettings } from '../hooks/useAppSettings';
 import { useEntitlements } from '../hooks/useEntitlements';
 import { useIsDevOwner } from '../hooks/useIsDevOwner';
 import type { SettingsStackParamList } from '../navigation/settingsTypes';
-import { COLORS, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<SettingsStackParamList, 'Development'>;
@@ -166,13 +166,16 @@ export function DevelopmentSettingsScreen({ navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.surface },
-  content: { paddingBottom: SPACING.xxl },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
+  content: { paddingTop: SPACING.lg, paddingBottom: SPACING.xxl },
   settingRow: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     gap: SPACING.md,
-    paddingHorizontal: SPACING.lg,
+    padding: SPACING.lg,
+    marginHorizontal: SPACING.lg,
+    borderRadius: RADII.xl,
+    backgroundColor: '#FFFFFF',
   },
   settingRowText: { flex: 1 },
   settingRowSubtitle: { marginTop: SPACING.xs },

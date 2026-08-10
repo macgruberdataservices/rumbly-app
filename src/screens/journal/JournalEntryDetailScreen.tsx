@@ -30,7 +30,7 @@ import { useActivity } from '../../hooks/useActivity';
 import { useJournal } from '../../hooks/useJournal';
 import { useJournalComposer } from '../../hooks/useJournalComposer';
 import type { JournalStackParamList } from '../../navigation/journalTypes';
-import { COLORS, RADII, SPACING } from '../../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { FONT_FAMILY, text } from '../../theme/typography';
 
 type Props = NativeStackScreenProps<JournalStackParamList, 'JournalEntryDetail'>;
@@ -343,15 +343,13 @@ export function JournalEntryDetailScreen({ navigation, route }: Props) {
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: COLORS.cream },
+  container: { flex: 1, backgroundColor: DAYLIGHT.mist },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center' },
   content: { paddingHorizontal: SPACING.lg, paddingBottom: SPACING.xxl, gap: SPACING.lg },
   summaryCard: {
     padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.lg,
-    backgroundColor: COLORS.surface,
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.sky,
     gap: SPACING.sm,
   },
   restaurantName: {
@@ -363,15 +361,17 @@ const styles = StyleSheet.create({
   rating: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 14,
-    color: COLORS.gold,
+    color: DAYLIGHT.amberInk,
   },
   section: {
     padding: SPACING.lg,
-    borderWidth: 1,
-    borderColor: COLORS.border,
-    borderRadius: RADII.lg,
+    borderRadius: RADII.xl,
     backgroundColor: COLORS.surface,
     gap: SPACING.md,
+    shadowColor: DAYLIGHT.ink,
+    shadowOpacity: 0.05,
+    shadowRadius: 10,
+    shadowOffset: { width: 0, height: 4 },
   },
   sectionHeading: {
     flexDirection: 'row',
@@ -406,21 +406,21 @@ const styles = StyleSheet.create({
     width: '48%',
     aspectRatio: 1,
     overflow: 'hidden',
-    borderRadius: RADII.sm,
-    backgroundColor: COLORS.cream,
+    borderRadius: RADII.lg,
+    backgroundColor: DAYLIGHT.sky,
   },
   photo: { width: '100%', height: '100%' },
   editButton: {
     minHeight: 50,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: RADII.sm,
-    backgroundColor: COLORS.pine,
+    borderRadius: 25,
+    backgroundColor: DAYLIGHT.ocean,
   },
   editLabel: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 14,
-    color: COLORS.ink,
+    color: COLORS.surface,
   },
   photoViewer: { flex: 1, backgroundColor: 'rgba(12, 20, 19, 0.98)' },
   photoToolbar: {
