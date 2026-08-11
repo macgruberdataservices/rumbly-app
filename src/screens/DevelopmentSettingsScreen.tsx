@@ -9,6 +9,7 @@ import { useEntitlements } from '../hooks/useEntitlements';
 import { useIsDevOwner } from '../hooks/useIsDevOwner';
 import type { SettingsStackParamList } from '../navigation/settingsTypes';
 import {
+  PERF,
   clearPerfSamples,
   getPerfSamples,
   subscribePerf,
@@ -23,14 +24,35 @@ function formatMs(value: number): string {
   return value >= 100 ? `${Math.round(value)}` : value.toFixed(1);
 }
 
+// Rows below this never carry information: the cheap rails
+// (nearby_need_it, continue_challenge, seasonal, final) and the empty-index
+// feed build sit at 0-1ms every launch, and a row that is always zero is a row
+// you stop reading. Filtered at DISPLAY time only -- every sample is still
+// recorded, so if one of them ever regresses it crosses the threshold and
+// reappears on its own rather than staying invisible.
+const TRIVIAL_MS = 2;
+
+// Typing one word records a row per debounced prefix, so a few queries bury
+// the launch phases. Rows are already sorted slowest-first, and the slow one
+// is the entire reason to look, so the tail is what gets dropped.
+const MAX_SEARCH_ROWS = 5;
+
 // Real Hermes-on-device timings for the phases that decide how launch and
-// search feel. scripts/search_benchmark.ts measures the same phases on
-// Node/V8 and desktop hardware, where the large-JSON.parse path looks far
-// cheaper than it is -- these are the numbers to trust, and the reason to
-// read them before the SQLite search port removes the JSON path entirely.
+// search feel. scripts/*_benchmark.ts measure the same phases on Node/V8 and
+// desktop hardware, where the JSON.parse-heavy paths look far cheaper than
+// they are -- these are the numbers to trust.
 function PerformancePanel() {
   const samples = useSyncExternalStore(subscribePerf, getPerfSamples, getPerfSamples);
-  const summary = summarizePerf(samples);
+  const allRows = summarizePerf(samples);
+
+  const significant = allRows.filter((row) => row.max >= TRIVIAL_MS);
+  const quietCount = allRows.length - significant.length;
+  const searchRows = significant.filter((row) => row.name === PERF.searchQuery);
+  const summary = [
+    ...significant.filter((row) => row.name !== PERF.searchQuery),
+    ...searchRows.slice(0, MAX_SEARCH_ROWS),
+  ];
+  const extraSearchCount = Math.max(0, searchRows.length - MAX_SEARCH_ROWS);
 
   return (
     <View style={[styles.settingRow, styles.perfPanel]}>
@@ -43,7 +65,7 @@ function PerformancePanel() {
           build is the meaningful one to read -- debug timings are not what users feel.
         </Text>
 
-        {summary.length === 0 ? (
+        {allRows.length === 0 ? (
           <Text style={[text.bodyMuted, styles.perfEmpty]}>
             Nothing measured yet. Run a search, or relaunch to capture the launch phases.
           </Text>
@@ -70,7 +92,13 @@ function PerformancePanel() {
                 <Text style={[styles.perfCellNum, styles.perfValue]}>{formatMs(row.max)}</Text>
               </View>
             ))}
-            <Text style={styles.perfUnits}>milliseconds</Text>
+            <Text style={styles.perfUnits}>
+              {[
+                'milliseconds',
+                quietCount > 0 ? `${quietCount} under ${TRIVIAL_MS}ms hidden` : null,
+                extraSearchCount > 0 ? `${extraSearchCount} faster queries hidden` : null,
+              ].filter(Boolean).join(' · ')}
+            </Text>
           </View>
         )}
 
