@@ -19,6 +19,10 @@ import { DATA_BASE_URL, LOCAL_FILES } from './constants';
 import { writeJSON } from './fileStore';
 import { clearMenuItems, insertMenuItemsBatch } from './db';
 import { normalizeForSearch } from './diacritics';
+import {
+  shouldImportMainRestaurant,
+  visibleRestaurantMenuItems,
+} from './restaurantVisibility';
 
 async function fetchJSON<T>(fileName: string): Promise<T> {
   const res = await fetch(`${DATA_BASE_URL}${fileName}`);
@@ -205,16 +209,14 @@ export async function runImport(manifest: DataManifest): Promise<ImportStats> {
     fetchOptionalJSON<Restaurant[]>(manifest.hand_coded_data, []),
   ]);
 
-  // The published restaurant_data.json has a known upstream data-quality
-  // issue: hand-coded entries (snack carts/kiosks without a real Disney
-  // facility id) can appear twice under the same restaurant_id. The source
-  // PWA never notices because it always builds restaurants into a Map
-  // keyed by restaurant_id (last write wins) rather than keeping a raw
-  // array — replicate that de-dupe here rather than assuming the source
-  // data is clean.
+  // Reject stale pre-split HANDCODE records from the main feed. The
+  // independent hand-coded feed below is their sole authority; accepting
+  // both is what let an old visible placeholder survive beside Disney's
+  // newly discovered replacement. The Map still de-dupes ordinary main
+  // records by restaurant_id.
   const byId = new Map<string, Restaurant>();
   for (const r of rawRestaurants) {
-    if (r.show_in_app) byId.set(r.restaurant_id, r);
+    if (shouldImportMainRestaurant(r)) byId.set(r.restaurant_id, r);
   }
   // Hand-coded venues merge into the same restaurant_id-keyed map. Two
   // different cases, found while investigating a 2026-07-23 "these are
@@ -269,7 +271,12 @@ export async function runImport(manifest: DataManifest): Promise<ImportStats> {
   const visibleHandCodedMenuItems = rawHandCodedMenuItems
     .filter((item) => byId.has(item.restaurant_id))
     .map(normalizeHandCodedMenuItem);
-  const menuItems = rawMenuItems.concat(visibleHandCodedMenuItems);
+  const visibleRestaurantIds = new Set(byId.keys());
+  const visibleMainMenuItems = visibleRestaurantMenuItems(
+    rawMenuItems,
+    visibleRestaurantIds
+  );
+  const menuItems = visibleMainMenuItems.concat(visibleHandCodedMenuItems);
 
   const searchIndex: SearchIndexEntry[] = new Array(menuItems.length);
   await clearMenuItems();

@@ -658,7 +658,10 @@ private struct NativeSwipeMenuRow: View {
 
       slidingContent
     }
-    .frame(minHeight: 76)
+    // Without an explicit full-width proposal, the ZStack can size itself
+    // to the 180pt action tray and leave that gray layer exposed behind
+    // short menu copy even when rowOffset is zero.
+    .frame(maxWidth: .infinity, minHeight: 76, alignment: .trailing)
     .clipped()
     .onChange(of: model.openItemId) { openId in
       if openId != item.itemId {

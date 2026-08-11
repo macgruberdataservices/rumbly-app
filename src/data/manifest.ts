@@ -42,7 +42,11 @@ import { MANIFEST_URL, REFRESH_INTERVAL_MS, LOCAL_FILES } from './constants';
 // restaurants missing it in the published data -- a code-level pipeline
 // change, not a manifest change, so it needs the schema bump to force a
 // reimport rather than waiting for the normal 24h cadence.
-const LOCAL_DATA_SCHEMA_VERSION = 8;
+// v10: stale HANDCODE rows in the main restaurant feed are now rejected in
+// favor of the authoritative hand-coded stream, and menu items are gated on
+// their parent restaurant being visible. Force existing installs to discard
+// the two Energy Bytes records already cached under the old merge policy.
+const LOCAL_DATA_SCHEMA_VERSION = 10;
 
 interface MetaBlob {
   manifest: DataManifest | null;
