@@ -61,6 +61,7 @@
     "test:journal-read-model": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/journalReadModel.test.mjs",
     "test:journal-storage": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/journalStorage.test.mjs",
     "test:menu-item-query": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/menuItemQuery.test.mjs",
+    "test:sql-search": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs --test tests/sqlSearch.test.mjs",
     "test:feed-chunking": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/feedChunking.test.mjs",
     "test:recommendations": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/recommendations.test.mjs",
     "test:restaurant-cards": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/restaurantCards.test.mjs",

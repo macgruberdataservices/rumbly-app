@@ -12,6 +12,7 @@
 // an in-memory SQLite in Node tests with the real 31k-row dataset.
 
 import type { SqlDatabase } from './../data/sqlDatabase.ts';
+import type { SearchIndexEntry } from './../data/types.ts';
 
 // The projection ranking needs, and nothing more.
 //
@@ -34,6 +35,112 @@ export interface MenuItemCandidateRow {
 
 const CANDIDATE_COLUMNS =
   'restaurant_id, item_id, item, norm_item, show_in_menu, is_kids, is_allergy_friendly, allergens';
+
+// Every column a SearchIndexEntry carries. Retrieved in full rather than in
+// the narrow shape above because rank.ts hands the entry straight through to
+// the result, and the UI renders category, price and dining period from it.
+//
+// The narrow-projection idea is still the right optimisation if bridge
+// marshalling turns out to cost: rank on the narrow shape, then hydrate only
+// the ~200 rows that survive. It is deliberately not done yet -- correctness
+// first, and the side-by-side exists to find out whether it is needed.
+const ENTRY_COLUMNS = `
+  restaurant_id, item_id, item, norm_item AS _norm, category, price_display,
+  price_changed, previous_price, show_in_menu, is_festival_item, dining_period,
+  norm_categories, is_kids, is_allergy_friendly, has_allergy_option, allergens,
+  allergy_free_of, first_seen, description
+`;
+
+interface EntryRow {
+  restaurant_id: string;
+  item_id: string;
+  item: string;
+  _norm: string | null;
+  category: string | null;
+  price_display: string | null;
+  price_changed: string | null;
+  previous_price: number | null;
+  show_in_menu: number | null;
+  is_festival_item: number | null;
+  dining_period: string | null;
+  norm_categories: string | null;
+  is_kids: number | null;
+  is_allergy_friendly: number | null;
+  has_allergy_option: number | null;
+  allergens: string | null;
+  allergy_free_of: string | null;
+  first_seen: string | null;
+  description: string | null;
+}
+
+function parseJsonArray(value: string | null): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+// SQLite has no booleans and stores the JSON-valued columns as text, so the
+// row has to be rehydrated into the exact shape rank.ts and the row components
+// already expect. Anything lossy here shows up as a subtly different result.
+function rowToEntry(row: EntryRow): SearchIndexEntry {
+  return {
+    restaurant_id: row.restaurant_id,
+    item_id: row.item_id,
+    item: row.item,
+    _norm: row._norm ?? '',
+    category: row.category ?? '',
+    price_display: row.price_display ?? '',
+    price_changed: row.price_changed,
+    previous_price: row.previous_price,
+    show_in_menu: !!row.show_in_menu,
+    is_festival_item: !!row.is_festival_item,
+    dining_period: row.dining_period ?? '',
+    norm_categories: parseJsonArray(row.norm_categories),
+    is_kids: !!row.is_kids,
+    is_allergy_friendly: !!row.is_allergy_friendly,
+    has_allergy_option: !!row.has_allergy_option,
+    allergens: parseJsonArray(row.allergens),
+    allergy_free_of: parseJsonArray(row.allergy_free_of),
+    first_seen: row.first_seen ?? '',
+    description: row.description,
+  } as SearchIndexEntry;
+}
+
+export async function findStrictItemEntries(
+  db: SqlDatabase,
+  normalizedQuery: string
+): Promise<SearchIndexEntry[]> {
+  if (!normalizedQuery) return [];
+  const rows = await db.getAllAsync<EntryRow>(
+    `SELECT ${ENTRY_COLUMNS} FROM menu_items WHERE instr(norm_item, $q) > 0;`,
+    { $q: normalizedQuery }
+  );
+  return rows.map(rowToEntry);
+}
+
+export async function findFuzzyItemEntries(
+  db: SqlDatabase,
+  normalizedQuery: string,
+  maxDistance: number
+): Promise<SearchIndexEntry[]> {
+  const chunks = pigeonholeChunks(normalizedQuery, maxDistance).filter(Boolean);
+  if (chunks.length === 0) return [];
+  const params: Record<string, string> = {};
+  const predicates = chunks.map((chunk, index) => {
+    const key = `$c${index}`;
+    params[key] = chunk;
+    return `instr(norm_item, ${key}) > 0`;
+  });
+  const rows = await db.getAllAsync<EntryRow>(
+    `SELECT ${ENTRY_COLUMNS} FROM menu_items WHERE ${predicates.join(' OR ')};`,
+    params
+  );
+  return rows.map(rowToEntry);
+}
 
 // One scan, not three.
 //

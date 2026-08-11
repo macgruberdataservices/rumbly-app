@@ -45,7 +45,10 @@ const TIER = {
 // 6 owns the large-result-set UX (category counts, refinement
 // suggestions); for now just cap render cost rather than build that here.
 const MAX_RESULTS = 200;
-const FUZZY_TRIGGER_RESULT_COUNT = 25;
+// Exported so the SQL path can tell whether the fuzzy fallback would have run
+// and therefore whether it needs to fetch the wider candidate set. It reads
+// this rather than hardcoding 25, so the two cannot drift apart.
+export const FUZZY_TRIGGER_RESULT_COUNT = 25;
 
 function tokenize(norm: string): string[] {
   return norm.split(/[^a-z0-9]+/).filter(Boolean);
