@@ -42,6 +42,14 @@ import { MANIFEST_URL, REFRESH_INTERVAL_MS, LOCAL_FILES } from './constants';
 // restaurants missing it in the published data -- a code-level pipeline
 // change, not a manifest change, so it needs the schema bump to force a
 // reimport rather than waiting for the normal 24h cadence.
+// v9: menu_items gained norm_item (normalizeForSearch(item), indexed) as
+// the first step of moving item search off the in-memory
+// search_index.json projection and into SQLite. The column is added to
+// existing databases by menuItemsSchema.ts's migration, but ALTER TABLE
+// leaves it NULL on every already-stored row -- only a reimport actually
+// populates it, so this bump is what makes the column usable rather than
+// merely present. Also picks up importPipeline.ts's new import-time
+// dedupe of search_index.json (~32% smaller) ahead of the 24h cadence.
 // v10: stale HANDCODE rows in the main restaurant feed are now rejected in
 // favor of the authoritative hand-coded stream, and menu items are gated on
 // their parent restaurant being visible. Force existing installs to discard

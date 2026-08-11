@@ -75,8 +75,31 @@ export interface BuildFeedInput {
   now?: Date;
 }
 
+// Memoized because this is the hottest function in the build by a wide
+// margin. It is pure, it does an NFKD normalize plus four regex replaces, and
+// the engine calls it on the order of a hundred thousand times per build:
+// every full-index pass runs it twice per item (once inside
+// isLowValueRecommendation via recommendationQuality, once inside
+// isExcluded), and new_bites keys a Map by it across the entire index.
+//
+// It is also strikingly repetitive on real data -- only ~52% of index entries
+// have a distinct item name, because the same dish repeats across dining
+// periods and across venues -- so most of that work was recomputing an answer
+// already produced.
+//
+// Module-level rather than per-build so a second build in the same session
+// pays almost nothing for it; that matters because a signed-in launch can
+// build the feed twice as entitlements resolve. Capped so it cannot grow
+// without bound across data refreshes: ~16k distinct names is the steady
+// state, well under the limit, so the clear is a safety valve rather than
+// something that fires in ordinary use.
+const CANONICAL_NAME_CACHE_LIMIT = 40_000;
+const canonicalNameCache = new Map<string, string>();
+
 function canonicalItemName(value: string): string {
-  return value
+  const cached = canonicalNameCache.get(value);
+  if (cached !== undefined) return cached;
+  const canonical = value
     .normalize('NFKD')
     .toLocaleLowerCase()
     .replace(/[™®©]/g, '')
@@ -84,17 +107,44 @@ function canonicalItemName(value: string): string {
     .replace(/[^a-z0-9]+/g, ' ')
     .trim()
     .replace(/\s+/g, ' ');
+  if (canonicalNameCache.size >= CANONICAL_NAME_CACHE_LIMIT) canonicalNameCache.clear();
+  canonicalNameCache.set(value, canonical);
+  return canonical;
 }
+
+// Memoized for the same reason canonicalItemName is, but the multiplier here
+// is worse: this is called from inside sort comparators, so a rail ranking N
+// candidates invokes it O(N log N) times -- and each call allocated a
+// template string and ran an FNV hash over it. Profiling put it at ~9% of
+// total build self-time.
+//
+// The cache is keyed on `value` alone, with the day tracked separately and
+// the cache cleared when it rolls over. Keying on the composed `${day}:${value}`
+// would mean allocating that string just to perform the lookup, which is most
+// of what we are trying to avoid. Rotation is intentionally day-stable -- the
+// clear on rollover is what preserves that, not an optimisation detail.
+const ROTATION_CACHE_LIMIT = 40_000;
+const rotationCache = new Map<string, number>();
+let rotationCacheDay = Number.NaN;
 
 function stableRotationKey(value: string, now: Date): number {
   const day = Math.floor(now.getTime() / 86_400_000);
+  if (day !== rotationCacheDay) {
+    rotationCacheDay = day;
+    rotationCache.clear();
+  }
+  const cached = rotationCache.get(value);
+  if (cached !== undefined) return cached;
   let hash = 2_166_136_261;
   const source = `${day}:${value}`;
   for (let index = 0; index < source.length; index += 1) {
     hash ^= source.charCodeAt(index);
     hash = Math.imul(hash, 16_777_619);
   }
-  return hash >>> 0;
+  const result = hash >>> 0;
+  if (rotationCache.size >= ROTATION_CACHE_LIMIT) rotationCache.clear();
+  rotationCache.set(value, result);
+  return result;
 }
 
 function roundRobinByRestaurant(
@@ -321,15 +371,108 @@ function buildTasteProfile(
   };
 }
 
+// How many candidates the for_you rail scores between yields. Sized so a
+// batch lands well inside a frame on device: the rail costs ~42ms across the
+// full candidate set on desktop V8, and the device runs roughly 9x slower, so
+// batching at this granularity keeps each pause-to-pause interval in the low
+// single-digit milliseconds here and comfortably sub-frame there.
+const FOR_YOU_SCORING_BATCH = 2_000;
+
+// nearby_for_you scores the same candidate set with a distance check on top,
+// so it batches at the same granularity for the same reason.
+const NEARBY_SCORING_BATCH = 2_000;
+
+// Presentation order for whatever rails exist so far. Applied at every step
+// so a partial result is directly renderable rather than something the
+// caller has to know how to finish.
+function finalizeModules(modules: FeedModule[]): FeedModule[] {
+  return modules
+    .filter((module) => module.items.length > 0)
+    .sort((left, right) => left.sortOrder - right.sortOrder);
+}
+
+// What one pause-to-pause interval of the build produced. The label exists so
+// cost can be attributed to a named rail rather than to an opaque step index
+// -- on device that is the difference between "the feed is slow" and "the
+// new_bites rail is slow", which is the only version you can act on.
+export interface FeedBuildStep {
+  label: string;
+  modules: FeedModule[];
+}
+
+// The whole feed in one synchronous call. Kept as the primary API because it
+// is what the tests and any non-UI caller want, and because it is the
+// definition of correct that the chunked path below must match.
 export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
+  const steps = buildFindFeedSteps(input);
+  let step = steps.next();
+  while (!step.done) step = steps.next();
+  return step.value;
+}
+
+// The same build, pausable between rails.
+//
+// buildFindFeed measures ~91ms on desktop V8 for a real profile and roughly
+// 9x that on device -- long enough that running it in one go blocks a tap or
+// a keystroke outright, which is the whole complaint. Rails already run
+// strictly in sequence and share only the excludedItemKeys/Names accumulator,
+// so a generator expresses the pause points without restructuring any of the
+// logic: local state simply survives across yields.
+//
+// Each yield hands back the rails completed so far, already finalized, so a
+// caller can paint progressively. The caller owns scheduling and therefore
+// owns the frame budget -- see FindFeed, which pumps this across frames.
+//
+// Yields sit at rail boundaries rather than inside rails. If one rail turns
+// out to exceed a frame on its own, split that rail; do not move these.
+export function* buildFindFeedSteps(
+  input: BuildFeedInput
+): Generator<FeedBuildStep, FeedModule[], void> {
   const now = input.now ?? new Date();
   const configByKey = resolveConfigs(input.configs);
   const feedConfig = configByKey.get('find_feed')!;
   if (!available(feedConfig, input.isEntitled)) return [];
 
   const restaurantById = new Map(input.restaurants.map((restaurant) => [restaurant.restaurant_id, restaurant]));
-  const itemByKey = new Map(
-    input.searchIndex.map((item) => [getItemIdentityKey(item.restaurant_id, item.item_id), item])
+
+  // Indexed only for items the user has actually interacted with.
+  //
+  // Every read of itemByKey is `.get(getItemIdentityKey(event.restaurantId,
+  // event.itemId))` for an activity event -- a Love, a Need It, a Got It --
+  // so a few dozen lookups at most. Building it across all 31,223 entries
+  // meant 31k string concatenations and a 31k-entry Map to serve them, inside
+  // the setup step device measurement showed as the longest remaining block
+  // (~82-135ms).
+  //
+  // The restaurant-id check comes first deliberately: it is a plain Set hit
+  // and lets the vast majority of entries skip the concatenation entirely,
+  // which is the part that actually costs. Narrowing is safe because a key
+  // that is never looked up cannot change an answer, and every key that IS
+  // looked up is in wantedItemKeys by construction.
+  const activityRestaurantIds = new Set<string>();
+  const wantedItemKeys = new Set<string>();
+  for (const list of [
+    input.activity.lovedItems,
+    input.activity.neededItems,
+    input.activity.gotItHistory,
+    input.activity.lovedRestaurants,
+    input.activity.neededRestaurants,
+  ]) {
+    for (const event of list) {
+      if (!event.itemId) continue;
+      activityRestaurantIds.add(event.restaurantId);
+      wantedItemKeys.add(getItemIdentityKey(event.restaurantId, event.itemId));
+    }
+  }
+  const itemByKey = new Map<string, SearchIndexEntry>(
+    activityRestaurantIds.size === 0
+      ? []
+      : input.searchIndex
+        .filter((item) => activityRestaurantIds.has(item.restaurant_id))
+        .map((item): [string, SearchIndexEntry] =>
+          [getItemIdentityKey(item.restaurant_id, item.item_id), item]
+        )
+        .filter(([key]) => wantedItemKeys.has(key))
   );
   const modules: FeedModule[] = [];
   const excludedItemKeys = new Set<string>();
@@ -372,6 +515,42 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     && !isLowValueRecommendation(item)
     && (!item.is_allergy_friendly || hasAllergyInterest);
 
+  // Evaluated once for the whole build instead of separately inside each
+  // rail. recommendationQuality depends only on the item and
+  // hasAllergyInterest, both fixed for the duration, yet nearby_for_you,
+  // for_you and seasonal each re-ran it across the full index -- three
+  // complete passes producing the same answer, and most of the index does not
+  // survive it, so every later pass was also iterating rows already known to
+  // be ineligible.
+  //
+  // isExcluded deliberately does NOT move here: it reads excludedItemKeys and
+  // excludedItemNames, which grow as each rail claims its items, so it has to
+  // stay inside the passes to keep evaluating against current state. Filter
+  // is order-preserving, so downstream ordering and tie-breaks are unchanged.
+  const qualityCandidates = input.searchIndex.filter(recommendationQuality);
+
+  // Grouped for the nearby_need_it rail, which previously scanned the entire
+  // index once per restaurant-level Need It -- several saved venues cost a
+  // multiple of the full index.
+  //
+  // Built lazily because that rail is the only consumer, and it only runs with
+  // a location AND at least one restaurant-level Need It. Most sessions have
+  // neither, and this is an interpreted loop over ~25k entries sitting in the
+  // setup step, which is exactly the shape Hermes handles worst.
+  let groupedQualityByRestaurant: Map<string, SearchIndexEntry[]> | null = null;
+  const qualityByRestaurant = (): Map<string, SearchIndexEntry[]> => {
+    if (!groupedQualityByRestaurant) {
+      const grouped = new Map<string, SearchIndexEntry[]>();
+      for (const item of qualityCandidates) {
+        const existing = grouped.get(item.restaurant_id);
+        if (existing) existing.push(item);
+        else grouped.set(item.restaurant_id, [item]);
+      }
+      groupedQualityByRestaurant = grouped;
+    }
+    return groupedQualityByRestaurant;
+  };
+
   const candidateScore = (item: SearchIndexEntry, restaurant: Restaurant): number => {
     const categoryScore = Math.max(
       ...item.norm_categories.map(
@@ -390,6 +569,10 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     const priceScore = priceScores.get(restaurant.price_tier?.toString() ?? '') ?? 0;
     return categoryScore + cuisineScore * 0.8 + serviceScore * 0.35 + priceScore * 0.2;
   };
+
+  // Setup is done: taste profile, quality filter, and the grouped indexes.
+  // This is the single largest step, so the pause matters most here.
+  yield { label: 'setup', modules: finalizeModules(modules) };
 
   const nearbyConfig = configByKey.get('nearby_need_it')!;
   if (input.origin && available(nearbyConfig, input.isEntitled)) {
@@ -422,10 +605,8 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
         if (!restaurant) return [];
         const distance = distanceToRestaurant(input.origin, restaurant);
         if (distance === null || distance > maxDistance) return [];
-        const representative = input.searchIndex
-          .filter((candidate) =>
-            candidate.restaurant_id === event.restaurantId && recommendationQuality(candidate)
-          )
+        const representative = (qualityByRestaurant().get(event.restaurantId) ?? [])
+          .slice()
           .sort((left, right) => candidateScore(right, restaurant) - candidateScore(left, restaurant))[0];
         if (!representative) return [];
         return [
@@ -459,28 +640,42 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     }
   }
 
+  yield { label: 'nearby_need_it', modules: finalizeModules(modules) };
+
   const nearbyForYouConfig = configByKey.get('nearby_for_you')!;
   if (input.origin && available(nearbyForYouConfig, input.isEntitled)) {
     const maxDistance = numberSetting(nearbyForYouConfig, 'max_distance_miles', 2);
     const minScore = numberSetting(nearbyForYouConfig, 'min_score', 4);
     const mealPeriod = activeMealPeriod(now);
-    const ranked = input.searchIndex
-      .filter((item) =>
-        recommendationQuality(item)
-        && matchesMealPeriod(item, mealPeriod)
-        && !explicitItemKeys.has(getItemIdentityKey(item.restaurant_id, item.item_id))
-        && !explicitItemNames.has(canonicalItemName(item.item))
-        && !isExcluded(item)
-      )
-      .flatMap((item) => {
-        const restaurant = restaurantById.get(item.restaurant_id);
-        if (!restaurant) return [];
-        const distance = distanceToRestaurant(input.origin, restaurant);
-        if (distance === null || distance > maxDistance) return [];
-        const score = candidateScore(item, restaurant);
-        if (score < minScore) return [];
-        return [{ item, restaurant, distance, score }];
-      })
+    // Batched for the same reason as for_you, and the same way: slices of the
+    // candidate array with the native builtins kept inside each batch. This
+    // rail measured ~93-107ms on device as a single block, which was the
+    // longest pause in the build once for_you had been split.
+    const nearbyScored: { item: SearchIndexEntry; restaurant: Restaurant; distance: number; score: number }[] = [];
+    for (let start = 0; start < qualityCandidates.length; start += NEARBY_SCORING_BATCH) {
+      if (start > 0) {
+        yield { label: 'nearby_for_you.scoring', modules: finalizeModules(modules) };
+      }
+      const batchScored = qualityCandidates
+        .slice(start, start + NEARBY_SCORING_BATCH)
+        .filter((item) =>
+          matchesMealPeriod(item, mealPeriod)
+          && !explicitItemKeys.has(getItemIdentityKey(item.restaurant_id, item.item_id))
+          && !explicitItemNames.has(canonicalItemName(item.item))
+          && !isExcluded(item)
+        )
+        .flatMap((item) => {
+          const restaurant = restaurantById.get(item.restaurant_id);
+          if (!restaurant) return [];
+          const distance = distanceToRestaurant(input.origin, restaurant);
+          if (distance === null || distance > maxDistance) return [];
+          const score = candidateScore(item, restaurant);
+          if (score < minScore) return [];
+          return [{ item, restaurant, distance, score }];
+        });
+      for (const entry of batchScored) nearbyScored.push(entry);
+    }
+    const ranked = nearbyScored
       .sort((left, right) =>
         right.score - left.score
         || left.distance - right.distance
@@ -518,17 +713,36 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     }
   }
 
+  yield { label: 'nearby_for_you', modules: finalizeModules(modules) };
+
   const newConfig = configByKey.get('new_bites')!;
   if (available(newConfig, input.isEntitled)) {
     const cutoff = new Date(now);
     cutoff.setDate(cutoff.getDate() - numberSetting(newConfig, 'new_window_days', 30));
     const minScore = numberSetting(newConfig, 'min_score', 4);
+    // Indexed only for the restaurants the change log actually mentions, not
+    // for the whole catalogue. This Map exists purely to resolve change-log
+    // rows back to menu items, and a 30-day window touches a small fraction of
+    // venues -- yet it was built across all 31k entries, in an interpreted
+    // for-of loop, on every build. It measured ~54-80ms on device.
+    //
+    // Restaurant ids are collected first so the pass can skip any item whose
+    // venue has no recent changes, which is the overwhelming majority.
+    const changedRestaurantIds = new Set<string>();
+    for (const change of input.changes ?? []) {
+      if (change.category === 'menu_item_added' && change.restaurant_id) {
+        changedRestaurantIds.add(change.restaurant_id);
+      }
+    }
     const itemsByRestaurantAndName = new Map<string, SearchIndexEntry[]>();
-    for (const item of input.searchIndex) {
-      const key = `${item.restaurant_id}:${canonicalItemName(item.item)}`;
-      const matches = itemsByRestaurantAndName.get(key) ?? [];
-      matches.push(item);
-      itemsByRestaurantAndName.set(key, matches);
+    if (changedRestaurantIds.size > 0) {
+      for (const item of input.searchIndex) {
+        if (!changedRestaurantIds.has(item.restaurant_id)) continue;
+        const key = `${item.restaurant_id}:${canonicalItemName(item.item)}`;
+        const matches = itemsByRestaurantAndName.get(key) ?? [];
+        matches.push(item);
+        itemsByRestaurantAndName.set(key, matches);
+      }
     }
     const candidates = (input.changes ?? [])
       .filter((change) =>
@@ -599,6 +813,8 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     }
   }
 
+  yield { label: 'new_bites', modules: finalizeModules(modules) };
+
   const challengeConfig = configByKey.get('continue_challenge')!;
   if (available(challengeConfig, input.isEntitled)) {
     const progress = evaluateChallenge(
@@ -623,32 +839,59 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     }
   }
 
+  yield { label: 'continue_challenge', modules: finalizeModules(modules) };
+
   if (available(forYouConfig, input.isEntitled)) {
     const minScore = numberSetting(forYouConfig, 'min_score', 4);
-    const ranked = input.searchIndex
-      .filter((item) =>
-        recommendationQuality(item)
-        && !explicitItemKeys.has(getItemIdentityKey(item.restaurant_id, item.item_id))
-        && !explicitItemNames.has(canonicalItemName(item.item))
-        && !isExcluded(item)
-      )
-      .flatMap((item) => {
-        const restaurant = restaurantById.get(item.restaurant_id);
-        if (!restaurant) return [];
-        const categoryAffinity = Math.max(
-          ...item.norm_categories.map((category) => categoryScores.get(category.toLocaleLowerCase()) ?? 0),
-          categoryScores.get(item.category.toLocaleLowerCase()) ?? 0,
-          0
-        );
-        const score = candidateScore(item, restaurant);
-        if (score < minScore) return [];
-        const reason = categoryAffinity > 0
-          ? `Inspired by your interest in ${item.category.toLocaleLowerCase()}`
-          : restaurant.primary_cuisine
-            ? `A ${restaurant.primary_cuisine} pick from your taste profile`
-            : 'Based on bites you Love and rate highly';
-        return [{ item, restaurant, score, reason }];
-      })
+    // Batched over slices, with filter/flatMap kept inside each batch rather
+    // than replaced by a hand-written loop.
+    //
+    // That distinction is not stylistic, it is the whole cost. An earlier
+    // version of this rewrote the chain as an explicit `for` loop with
+    // `continue`, which desktop V8 makes faster -- its JIT compiles the loop
+    // and it allocates less. Hermes has no JIT, so an interpreted loop is much
+    // slower than filter/flatMap, which are native builtins. Device
+    // measurement caught it: for_you.scoring came back at ~26ms per batch,
+    // ~286ms across the rail, against 22ms for the whole rail on V8. The
+    // benchmark in scripts/ is useful for comparing shapes, not for choosing
+    // between a builtin and a loop -- those invert between the two engines.
+    const scoredCandidates: { item: SearchIndexEntry; restaurant: Restaurant; score: number; reason: string }[] = [];
+    for (let start = 0; start < qualityCandidates.length; start += FOR_YOU_SCORING_BATCH) {
+      if (start > 0) {
+        yield { label: 'for_you.scoring', modules: finalizeModules(modules) };
+      }
+      // slice + native filter/flatMap: same predicates, same order, same
+      // result as scoring the whole array in one chain.
+      const batchScored = qualityCandidates
+        .slice(start, start + FOR_YOU_SCORING_BATCH)
+        .filter((item) =>
+          !explicitItemKeys.has(getItemIdentityKey(item.restaurant_id, item.item_id))
+          && !explicitItemNames.has(canonicalItemName(item.item))
+          && !isExcluded(item)
+        )
+        .flatMap((item) => {
+          const restaurant = restaurantById.get(item.restaurant_id);
+          if (!restaurant) return [];
+          const categoryAffinity = Math.max(
+            ...item.norm_categories.map((category) => categoryScores.get(category.toLocaleLowerCase()) ?? 0),
+            categoryScores.get(item.category.toLocaleLowerCase()) ?? 0,
+            0
+          );
+          const score = candidateScore(item, restaurant);
+          if (score < minScore) return [];
+          const reason = categoryAffinity > 0
+            ? `Inspired by your interest in ${item.category.toLocaleLowerCase()}`
+            : restaurant.primary_cuisine
+              ? `A ${restaurant.primary_cuisine} pick from your taste profile`
+              : 'Based on bites you Love and rate highly';
+          return [{ item, restaurant, score, reason }];
+        });
+      // Appended one at a time rather than push(...spread): the spread would
+      // put a whole batch on the call stack, and this loop only runs over the
+      // survivors, which are a small fraction of the batch.
+      for (const entry of batchScored) scoredCandidates.push(entry);
+    }
+    const ranked = scoredCandidates
       .sort((left, right) =>
         right.score - left.score
         || stableRotationKey(left.item.item_id, now) - stableRotationKey(right.item.item_id, now)
@@ -684,12 +927,13 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     }
   }
 
+  yield { label: 'for_you', modules: finalizeModules(modules) };
+
   const seasonalConfig = configByKey.get('seasonal')!;
   if (available(seasonalConfig, input.isEntitled)) {
-    const items = input.searchIndex
+    const items = qualityCandidates
       .filter((item) =>
-        recommendationQuality(item)
-        && item.is_festival_item
+        item.is_festival_item
         && !isExcluded(item)
       )
       .sort((left, right) =>
@@ -720,6 +964,8 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     }
   }
 
+  yield { label: 'seasonal', modules: finalizeModules(modules) };
+
   const curatedConfig = configByKey.get('curated')!;
   if (available(curatedConfig, input.isEntitled) && input.content.length > 0) {
     modules.push({
@@ -735,7 +981,5 @@ export function buildFindFeed(input: BuildFeedInput): FeedModule[] {
     });
   }
 
-  return modules
-    .filter((module) => module.items.length > 0)
-    .sort((left, right) => left.sortOrder - right.sortOrder);
+  return finalizeModules(modules);
 }

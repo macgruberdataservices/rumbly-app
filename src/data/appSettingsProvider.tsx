@@ -2,7 +2,7 @@
 // owning fetch + state. Hydrates from AsyncStorage on mount (device-local,
 // no account/auth dependency, so this can sit outside AuthProvider).
 
-import React, { createContext, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Coordinates } from '../location/proximity';
 import {
   loadAllAllergyInSearch,
@@ -78,61 +78,83 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
     };
   }, []);
 
-  const setAllAllergyInSearch = (value: boolean) => {
+  // All seven setters are useCallback'd with empty deps -- each only calls a
+  // state setter (stable) and a save function (module-level import), so a
+  // stable identity is safe and keeps the memoized value below from churning.
+  const setAllAllergyInSearch = useCallback((value: boolean) => {
     setAllAllergyInSearchState(value);
     saveAllAllergyInSearch(value).catch(() => {});
-  };
+  }, []);
 
-  const setShowAllergyFriendlyMenuItems = (value: boolean) => {
+  const setShowAllergyFriendlyMenuItems = useCallback((value: boolean) => {
     setShowAllergyFriendlyMenuItemsState(value);
     saveShowAllergyFriendlyMenuItems(value).catch(() => {});
-  };
+  }, []);
 
-  const acknowledgeAllergyDisclaimer = () => {
+  const acknowledgeAllergyDisclaimer = useCallback(() => {
     setAllergyAcknowledgedThisSession(true);
     saveAllergyAcknowledgement().catch(() => {});
-  };
+  }, []);
 
-  const setFindFeedEnabled = (value: boolean) => {
+  const setFindFeedEnabled = useCallback((value: boolean) => {
     setFindFeedEnabledState(value);
     saveFindFeedEnabled(value).catch(() => {});
-  };
+  }, []);
 
-  const setFindFeedContentMode = (value: FindFeedContentMode) => {
+  const setFindFeedContentMode = useCallback((value: FindFeedContentMode) => {
     setFindFeedContentModeState(value);
     saveFindFeedContentMode(value).catch(() => {});
-  };
+  }, []);
 
-  const setNativeInteractionsEnabled = (value: boolean) => {
+  const setNativeInteractionsEnabled = useCallback((value: boolean) => {
     setNativeInteractionsEnabledState(value);
     saveNativeInteractionsEnabled(value).catch(() => {});
-  };
+  }, []);
 
-  const setMockLocation = (value: Coordinates | null) => {
+  const setMockLocation = useCallback((value: Coordinates | null) => {
     setMockLocationState(value);
     saveMockLocation(value).catch(() => {});
-  };
+  }, []);
+
+  const value = useMemo(
+    () => ({
+      allAllergyInSearch,
+      setAllAllergyInSearch,
+      showAllergyFriendlyMenuItems,
+      setShowAllergyFriendlyMenuItems,
+      allergyAcknowledgedThisSession,
+      acknowledgeAllergyDisclaimer,
+      findFeedEnabled,
+      setFindFeedEnabled,
+      findFeedContentMode,
+      setFindFeedContentMode,
+      nativeInteractionsEnabled,
+      setNativeInteractionsEnabled,
+      mockLocation,
+      setMockLocation,
+      isSettingsReady,
+    }),
+    [
+      allAllergyInSearch,
+      setAllAllergyInSearch,
+      showAllergyFriendlyMenuItems,
+      setShowAllergyFriendlyMenuItems,
+      allergyAcknowledgedThisSession,
+      acknowledgeAllergyDisclaimer,
+      findFeedEnabled,
+      setFindFeedEnabled,
+      findFeedContentMode,
+      setFindFeedContentMode,
+      nativeInteractionsEnabled,
+      setNativeInteractionsEnabled,
+      mockLocation,
+      setMockLocation,
+      isSettingsReady,
+    ]
+  );
 
   return (
-    <AppSettingsContext.Provider
-      value={{
-        allAllergyInSearch,
-        setAllAllergyInSearch,
-        showAllergyFriendlyMenuItems,
-        setShowAllergyFriendlyMenuItems,
-        allergyAcknowledgedThisSession,
-        acknowledgeAllergyDisclaimer,
-        findFeedEnabled,
-        setFindFeedEnabled,
-        findFeedContentMode,
-        setFindFeedContentMode,
-        nativeInteractionsEnabled,
-        setNativeInteractionsEnabled,
-        mockLocation,
-        setMockLocation,
-        isSettingsReady,
-      }}
-    >
+    <AppSettingsContext.Provider value={value}>
       {children}
     </AppSettingsContext.Provider>
   );

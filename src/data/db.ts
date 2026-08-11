@@ -1,83 +1,32 @@
 // The only indexed/on-demand-queried store in the app. Mirrors the source
 // PWA's IDB_STORE_ITEMS: full menu item records (45k+, 28 fields each),
 // never held fully in memory, fetched only by restaurant_id when a
-// specific restaurant's menu screen opens. Everything else (restaurants,
-// hours, the search index) lives in fileStore.ts instead — see that file
-// for why.
+// specific restaurant's menu screen opens. Restaurants and hours live in
+// fileStore.ts instead — see that file for why.
+//
+// The search index is mid-migration out of fileStore.ts and into this
+// table. search_index.json is still what rank.ts reads, but it costs a
+// multi-megabyte synchronous JSON.parse on the JS thread before the first
+// search can run, which is the single largest cost on the path from cold
+// launch to results. The norm_item column added here (see
+// menuItemsSchema.ts) is the target: the same normalized item name the
+// JSON projection carries as `_norm`, indexed, so matching can happen in
+// SQL with nothing to parse. Schema only so far — no query reads it yet.
 
 import type { SQLiteDatabase } from 'expo-sqlite';
 import type { MenuItem } from './types';
+import { normalizeForSearch } from './diacritics';
 import { getDb as getSharedDb } from './sqlite';
+import { asSqlDatabase } from './sqlDatabase';
+import { ensureMenuItemsSchema } from './menuItemsSchema';
 
 let readyPromise: Promise<SQLiteDatabase> | null = null;
 let allMenuItemsPromise: Promise<MenuItem[]> | null = null;
 
-// CREATE TABLE IF NOT EXISTS is a no-op on any device that already has
-// this table from a prior session -- it does NOT retroactively add new
-// columns to an existing local file. Found 2026-07-27 while adding
-// allergens/allergy_free_of: without this, the next reimport on an
-// already-used device (triggered by LOCAL_DATA_SCHEMA_VERSION's bump)
-// would throw a real SQL error inserting into columns that don't exist,
-// not just serve stale data. Idempotent, cheap (one PRAGMA read), and
-// the pattern to follow for any future menu_items column addition --
-// add the column to both the CREATE TABLE above (for genuinely new
-// installs) and this list (for existing ones).
-const MIGRATION_COLUMNS: { name: string; ddl: string }[] = [
-  { name: 'allergens', ddl: 'ALTER TABLE menu_items ADD COLUMN allergens TEXT;' },
-  { name: 'allergy_free_of', ddl: 'ALTER TABLE menu_items ADD COLUMN allergy_free_of TEXT;' },
-];
-
-async function migrateColumns(db: SQLiteDatabase): Promise<void> {
-  const existing = new Set(
-    (await db.getAllAsync<{ name: string }>('PRAGMA table_info(menu_items);')).map((c) => c.name)
-  );
-  for (const column of MIGRATION_COLUMNS) {
-    if (!existing.has(column.name)) {
-      await db.execAsync(column.ddl);
-    }
-  }
-}
-
 function getDb(): Promise<SQLiteDatabase> {
   if (!readyPromise) {
     readyPromise = getSharedDb().then(async (db) => {
-      await db.execAsync(`
-        CREATE TABLE IF NOT EXISTS menu_items (
-          id INTEGER PRIMARY KEY AUTOINCREMENT,
-          restaurant_id TEXT NOT NULL,
-          item_id TEXT,
-          item TEXT,
-          description TEXT,
-          category TEXT,
-          category_group TEXT,
-          group_display_order INTEGER,
-          dining_period TEXT,
-          price_display TEXT,
-          price_value REAL,
-          price_changed TEXT,
-          previous_price REAL,
-          is_seasonal INTEGER,
-          is_limited_time INTEGER,
-          is_allergy_friendly INTEGER,
-          is_kids INTEGER,
-          is_alcoholic INTEGER,
-          has_allergy_option INTEGER,
-          allergens TEXT,
-          allergy_free_of TEXT,
-          is_festival_item INTEGER,
-          show_in_menu INTEGER,
-          norm_categories TEXT,
-          cuisine_tags TEXT,
-          festival_name TEXT,
-          festival_year INTEGER,
-          first_seen TEXT,
-          last_seen TEXT,
-          queried_facility_id TEXT,
-          fetched_from_facility_id TEXT
-        );
-        CREATE INDEX IF NOT EXISTS idx_menu_items_restaurant_id ON menu_items(restaurant_id);
-      `);
-      await migrateColumns(db);
+      await ensureMenuItemsSchema(asSqlDatabase(db));
       return db;
     });
   }
@@ -101,7 +50,7 @@ export async function insertMenuItemsBatch(items: MenuItem[]): Promise<void> {
   await db.withTransactionAsync(async () => {
     const statement = await db.prepareAsync(`
       INSERT INTO menu_items (
-        restaurant_id, item_id, item, description, category, category_group,
+        restaurant_id, item_id, item, norm_item, description, category, category_group,
         group_display_order, dining_period, price_display, price_value,
         price_changed, previous_price, is_seasonal, is_limited_time,
         is_allergy_friendly, is_kids, is_alcoholic, has_allergy_option,
@@ -110,7 +59,7 @@ export async function insertMenuItemsBatch(items: MenuItem[]): Promise<void> {
         festival_name, festival_year, first_seen, last_seen,
         queried_facility_id, fetched_from_facility_id
       ) VALUES (
-        $restaurant_id, $item_id, $item, $description, $category, $category_group,
+        $restaurant_id, $item_id, $item, $norm_item, $description, $category, $category_group,
         $group_display_order, $dining_period, $price_display, $price_value,
         $price_changed, $previous_price, $is_seasonal, $is_limited_time,
         $is_allergy_friendly, $is_kids, $is_alcoholic, $has_allergy_option,
@@ -126,6 +75,10 @@ export async function insertMenuItemsBatch(items: MenuItem[]): Promise<void> {
           $restaurant_id: item.restaurant_id,
           $item_id: item.item_id,
           $item: item.item,
+          // Precomputed once at import rather than per keystroke: this is
+          // the same projection search_index.json's `_norm` carries, moved
+          // into the indexed store so matching can happen in SQL.
+          $norm_item: normalizeForSearch(item.item),
           $description: item.description,
           $category: item.category,
           $category_group: item.category_group,
@@ -165,6 +118,9 @@ interface MenuItemRow {
   restaurant_id: string;
   item_id: string;
   item: string;
+  // Null on rows written before the norm_item migration; the schema bump
+  // that introduced it forces a reimport, so that state is transient.
+  norm_item: string | null;
   description: string | null;
   category: string;
   category_group: string;
@@ -194,7 +150,11 @@ interface MenuItemRow {
   fetched_from_facility_id: string | null;
 }
 
-function rowToMenuItem(row: MenuItemRow): MenuItem {
+// norm_item is destructured off deliberately: it's a search-side index
+// projection, not part of a MenuItem, and every SELECT * here would
+// otherwise carry a duplicate of every item name into memory -- including
+// getAllMenuItems(), which holds all 46k rows for Ask Rumbly.
+function rowToMenuItem({ norm_item: _normItem, ...row }: MenuItemRow): MenuItem {
   return {
     ...row,
     is_seasonal: !!row.is_seasonal,

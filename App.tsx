@@ -31,6 +31,7 @@ import { JournalProvider } from './src/data/journalProvider';
 import { AppSettingsProvider } from './src/data/appSettingsProvider';
 import { NearMeProvider } from './src/data/nearMeProvider';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { markStartupInteractive } from './src/perf/perfLog';
 
 SplashScreen.preventAutoHideAsync().catch(() => {});
 
@@ -40,6 +41,7 @@ function AppContent({ fontsReady }: { fontsReady: boolean }) {
 
   useEffect(() => {
     if (isReady) {
+      markStartupInteractive();
       SplashScreen.hideAsync().catch(() => {});
     }
   }, [isReady]);

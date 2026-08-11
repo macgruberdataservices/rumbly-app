@@ -10,6 +10,7 @@
 import type { SearchIndexEntry } from '../data/types';
 import { LOCAL_FILES } from '../data/constants';
 import { readJSON } from '../data/fileStore';
+import { PERF, measurePerf, measurePerfAsync } from '../perf/perfLog';
 
 let cached: Promise<SearchIndexEntry[]> | null = null;
 
@@ -30,9 +31,22 @@ function prepareSearchIndex(data: SearchIndexEntry[]): SearchIndexEntry[] {
   });
 }
 
+// Timed in two parts so the device numbers separate cleanly: the outer
+// measurement is read + JSON.parse + dedupe, the inner one is dedupe alone,
+// so read + parse is the difference. That split is the whole point of
+// measuring here -- the parse is what the SQLite port removes, and it is the
+// part scripts/search_benchmark.ts understates most on V8.
 export function loadSearchIndex(): Promise<SearchIndexEntry[]> {
   if (!cached) {
-    cached = readJSON<SearchIndexEntry[]>(LOCAL_FILES.searchIndex).then((data) => prepareSearchIndex(data ?? []));
+    cached = measurePerfAsync(PERF.searchIndexLoad, async () => {
+      const data = await readJSON<SearchIndexEntry[]>(LOCAL_FILES.searchIndex);
+      const raw = data ?? [];
+      return measurePerf(
+        PERF.searchIndexPrepare,
+        () => prepareSearchIndex(raw),
+        `${raw.length} entries in`
+      );
+    });
   }
   return cached;
 }

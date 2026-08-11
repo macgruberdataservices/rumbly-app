@@ -4,13 +4,14 @@
 // the network. Deliberately does NOT expose full menu items — those stay
 // behind db.ts's on-demand query, used starting in Milestone 2.
 
-import React, { createContext, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Restaurant, HoursData } from './types';
 import { LOCAL_FILES } from './constants';
 import { readJSON } from './fileStore';
 import { checkForUpdate, forceCheckForUpdate, markImported, getLastCheckedAt } from './manifest';
 import { runImport, type ImportStats } from './importPipeline';
 import { invalidateSearchIndexCache } from '../search/searchIndexLoader';
+import { PERF, measurePerfAsync } from '../perf/perfLog';
 
 interface DataContextValue {
   restaurants: Restaurant[];
@@ -51,7 +52,9 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     // install still has nothing here, so isLoading below keeps gating
     // the loading screen for that case via `isLoading && restaurants.length === 0`.
     try {
-      const cached = await loadFromCache();
+      // Timed because the native splash covers exactly this read, so it is
+      // the floor on how soon anything can appear at all.
+      const cached = await measurePerfAsync(PERF.startupCacheHydrate, loadFromCache);
       setRestaurants(cached.restaurants);
       setHoursData(cached.hoursData);
     } catch {
@@ -110,22 +113,34 @@ export function DataProvider({ children }: { children: React.ReactNode }) {
     runInitialCheck();
   }, [runInitialCheck]);
 
-  return (
-    <DataContext.Provider
-      value={{
-        restaurants,
-        hoursData,
-        isLoading,
-        isCacheHydrated,
-        error,
-        lastSyncedAt,
-        lastImportStats,
-        forceRefresh,
-      }}
-    >
-      {children}
-    </DataContext.Provider>
+  // Memoized: isLoading alone flips twice during the launch update check,
+  // and every flip used to hand a brand-new object to every consumer --
+  // FindHomeScreen, AskRumblyScreen and the rest re-rendered each time even
+  // though restaurants/hoursData hadn't changed.
+  const value = useMemo(
+    () => ({
+      restaurants,
+      hoursData,
+      isLoading,
+      isCacheHydrated,
+      error,
+      lastSyncedAt,
+      lastImportStats,
+      forceRefresh,
+    }),
+    [
+      restaurants,
+      hoursData,
+      isLoading,
+      isCacheHydrated,
+      error,
+      lastSyncedAt,
+      lastImportStats,
+      forceRefresh,
+    ]
   );
+
+  return <DataContext.Provider value={value}>{children}</DataContext.Provider>;
 }
 
 export { DataContext };

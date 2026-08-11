@@ -13,7 +13,7 @@
 // repeatable event at both levels, with count Maps derived from those rows
 // for compact UI state.
 
-import React, { createContext, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   toggleLove as toggleLoveDb,
   toggleRestaurantNeedIt as toggleRestaurantNeedItDb,
@@ -33,6 +33,12 @@ import {
   loadPersonalActivityReadModel,
   type PersonalActivityReadModel,
 } from './activity';
+import {
+  keepIfSame,
+  sameCountMap,
+  samePersonalActivity,
+  sameStringSet,
+} from './activityIdentity';
 import { syncActivity } from './sync';
 import { useAuth } from '../hooks/useAuth';
 import { getItemIdentityKey } from './itemIdentity';
@@ -76,7 +82,7 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
 
   const refreshPersonalActivity = useCallback(() => {
     loadPersonalActivityReadModel()
-      .then(setPersonalActivity)
+      .then((readModel) => setPersonalActivity(keepIfSame(readModel, samePersonalActivity)))
       .catch((error) => console.warn('personal activity refresh failed:', error));
   }, []);
 
@@ -90,13 +96,16 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
       loadGotItRestaurantCounts(),
       loadPersonalActivityReadModel(),
     ]);
-    setLovedIds(loved);
-    setNeedItRestaurantIds(neededRestaurants);
-    setLovedItemKeys(lovedItems);
-    setNeedItItemKeys(needItItems);
-    setGotItItemCounts(gotItItems);
-    setGotItRestaurantCounts(gotItRestaurants);
-    setPersonalActivity(readModel);
+    // Every one of these keeps its previous reference when the underlying
+    // rows are unchanged -- see the comparison helpers above for why that
+    // matters far more than it looks like it should.
+    setLovedIds(keepIfSame(loved, sameStringSet));
+    setNeedItRestaurantIds(keepIfSame(neededRestaurants, sameStringSet));
+    setLovedItemKeys(keepIfSame(lovedItems, sameStringSet));
+    setNeedItItemKeys(keepIfSame(needItItems, sameStringSet));
+    setGotItItemCounts(keepIfSame(gotItItems, sameCountMap));
+    setGotItRestaurantCounts(keepIfSame(gotItRestaurants, sameCountMap));
+    setPersonalActivity(keepIfSame(readModel, samePersonalActivity));
     setIsActivityReady(true);
   }, []);
 
@@ -269,33 +278,53 @@ export function ActivityProvider({ children }: { children: React.ReactNode }) {
     [user]
   );
 
-  return (
-    <ActivityContext.Provider
-      value={{
-        lovedIds,
-        needItRestaurantIds,
-        lovedItemKeys,
-        needItItemKeys,
-        gotItItemCounts,
-        gotItRestaurantCounts,
-        restaurantRatingAverages: personalActivity.restaurantRatingAverages,
-        itemRatingAverages: personalActivity.itemRatingAverages,
-        personalActivity,
-        isActivityReady,
-        reloadActivity: reloadFromDb,
-        toggleLove,
-        toggleRestaurantNeedIt,
-        toggleItemLove,
-        toggleItemNeedIt,
-        addRestaurantGotIt,
-        addItemGotIt,
-        confirmGotIt,
-        undoGotIt,
-      }}
-    >
-      {children}
-    </ActivityContext.Provider>
+  // Memoized: this context is read by every restaurant card, menu row and
+  // detail header on screen. A fresh object per render meant one Love tap
+  // re-rendered every one of them plus every screen in every mounted tab.
+  const value = useMemo(
+    () => ({
+      lovedIds,
+      needItRestaurantIds,
+      lovedItemKeys,
+      needItItemKeys,
+      gotItItemCounts,
+      gotItRestaurantCounts,
+      restaurantRatingAverages: personalActivity.restaurantRatingAverages,
+      itemRatingAverages: personalActivity.itemRatingAverages,
+      personalActivity,
+      isActivityReady,
+      reloadActivity: reloadFromDb,
+      toggleLove,
+      toggleRestaurantNeedIt,
+      toggleItemLove,
+      toggleItemNeedIt,
+      addRestaurantGotIt,
+      addItemGotIt,
+      confirmGotIt,
+      undoGotIt,
+    }),
+    [
+      lovedIds,
+      needItRestaurantIds,
+      lovedItemKeys,
+      needItItemKeys,
+      gotItItemCounts,
+      gotItRestaurantCounts,
+      personalActivity,
+      isActivityReady,
+      reloadFromDb,
+      toggleLove,
+      toggleRestaurantNeedIt,
+      toggleItemLove,
+      toggleItemNeedIt,
+      addRestaurantGotIt,
+      addItemGotIt,
+      confirmGotIt,
+      undoGotIt,
+    ]
   );
+
+  return <ActivityContext.Provider value={value}>{children}</ActivityContext.Provider>;
 }
 
 export { ActivityContext };

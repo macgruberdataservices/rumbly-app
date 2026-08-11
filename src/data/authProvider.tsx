@@ -2,7 +2,7 @@
 // the root, exposed via context so any screen can read session state or
 // call sign-in/up/out without touching the client directly.
 
-import React, { createContext, useCallback, useEffect, useState } from 'react';
+import React, { createContext, useCallback, useEffect, useMemo, useState } from 'react';
 import type { Session, User } from '@supabase/supabase-js';
 import { supabase } from './supabaseClient';
 
@@ -82,23 +82,34 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return { error: null };
   }, []);
 
-  return (
-    <AuthContext.Provider
-      value={{
-        session,
-        user: session?.user ?? null,
-        initializing,
-        signUp,
-        signIn,
-        updateEmail,
-        updatePassword,
-        signOut,
-        deleteAccount,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+  // Memoized so a re-render here doesn't hand every consumer a new object.
+  // AuthProvider sits near the root, so an unstable value fanned out a
+  // re-render to every screen in every mounted tab.
+  const value = useMemo(
+    () => ({
+      session,
+      user: session?.user ?? null,
+      initializing,
+      signUp,
+      signIn,
+      updateEmail,
+      updatePassword,
+      signOut,
+      deleteAccount,
+    }),
+    [
+      session,
+      initializing,
+      signUp,
+      signIn,
+      updateEmail,
+      updatePassword,
+      signOut,
+      deleteAccount,
+    ]
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export { AuthContext };

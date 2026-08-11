@@ -1204,6 +1204,17 @@ export function FindHomeScreen({ navigation, route }: Props) {
               onScrollEndDrag={() => persistRestoreState()}
               onMomentumScrollEnd={() => persistRestoreState()}
               scrollEventThrottle={16}
+              // Virtualization was left at FlatList's defaults, which are
+              // tuned for cheap rows: windowSize 21 keeps ~10 screens of
+              // rows mounted either side of the viewport. These rows are not
+              // cheap -- each RestaurantCard/ItemResultRow subscribes to the
+              // activity, entitlement and data contexts and several wrap a
+              // Swipeable -- so that default kept hundreds of live
+              // subscribers mounted and made every context change O(list).
+              windowSize={7}
+              initialNumToRender={8}
+              maxToRenderPerBatch={8}
+              updateCellsBatchingPeriod={50}
               keyboardShouldPersistTaps="handled"
               ListHeaderComponent={allergyResultContextActive ? (
                 <View style={styles.allergyResultNotice}>

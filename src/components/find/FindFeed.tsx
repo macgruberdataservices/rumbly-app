@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useFocusEffect } from '@react-navigation/native';
 import {
   ActivityIndicator,
@@ -20,7 +20,9 @@ import { daysAgoStr, loadChangesForRange, todayStr } from '../../data/changes';
 import type { Coordinates } from '../../location/proximity';
 import { formatProximityDistance } from '../../location/proximity';
 import { loadSearchIndex } from '../../search/searchIndexLoader';
-import { buildFindFeed } from '../../recommendations/engine';
+import { scheduleAfterNavigation, scheduleChunk } from '../../navigation/scheduleAfterNavigation';
+import { PERF, perfNow, recordPerfSample } from '../../perf/perfLog';
+import { buildFindFeedSteps } from '../../recommendations/engine';
 import {
   loadRemoteFeedData,
   recordRecommendationEvent,
@@ -48,6 +50,13 @@ interface Props {
 
 const EMPTY_REMOTE: RemoteFeedData = { configs: [], content: [], events: [] };
 const DEFAULT_FEED_REFRESH_MINUTES = 60;
+
+// How long the feed build may hold the thread before yielding. Chosen under a
+// 16.7ms frame: chunks are sized so at least one usually fits, and exceeding
+// it costs a frame, not a stall. The engine also yields at finer granularity
+// than this, so the budget -- not the rail boundaries -- is what bounds a
+// pause on a slow device.
+const FEED_FRAME_BUDGET_MS = 12;
 
 interface CachedFeedData {
   searchIndex: SearchIndexEntry[];
@@ -258,45 +267,58 @@ export function FindFeed({
         };
       }
       setLoading(!cached);
-      Promise.all([
-        loadSearchIndex(),
-        // Remote editorial content must never take the local personalized
-        // feed down with it. A stale/future JWT or temporary Supabase
-        // outage used to reject this entire Promise.all, discarding the
-        // successfully loaded local search index and leaving only the
-        // challenge module (the one module that needs neither source).
-        loadRemoteFeedData(user?.id ?? null, previewMode ? 'preview' : 'live')
-          .catch((error) => {
-            console.warn('Find feed remote content refresh failed:', error);
-            return cached?.remote ?? EMPTY_REMOTE;
+      // Deferred off the first-paint path. loadSearchIndex() JSON.parses
+      // search_index.json -- ~31k entries, 16.6MB after the import-time
+      // dedupe -- and JSON.parse is synchronous, so it blocks the JS thread
+      // outright: no taps, no tab switches, no scrolling until it returns.
+      // This effect is the app's first focus effect on the default tab, so
+      // that block used to land squarely on cold launch and on every
+      // foreground that had lost the module cache. Yielding until
+      // interactions settle lets the tab bar and the rest of Find paint and
+      // become responsive first; the feed then fills in behind its own
+      // existing loading state, which is exactly what that state is for.
+      const cancelScheduledLoad = scheduleAfterNavigation(() => {
+        Promise.all([
+          loadSearchIndex(),
+          // Remote editorial content must never take the local personalized
+          // feed down with it. A stale/future JWT or temporary Supabase
+          // outage used to reject this entire Promise.all, discarding the
+          // successfully loaded local search index and leaving only the
+          // challenge module (the one module that needs neither source).
+          loadRemoteFeedData(user?.id ?? null, previewMode ? 'preview' : 'live')
+            .catch((error) => {
+              console.warn('Find feed remote content refresh failed:', error);
+              return cached?.remote ?? EMPTY_REMOTE;
+            }),
+          loadChangesForRange(daysAgoStr(30), todayStr()).catch((error) => {
+            console.warn('Find feed change log failed:', error);
+            return cached?.changes ?? [] as ChangeEvent[];
           }),
-        loadChangesForRange(daysAgoStr(30), todayStr()).catch((error) => {
-          console.warn('Find feed change log failed:', error);
-          return cached?.changes ?? [] as ChangeEvent[];
-        }),
-      ])
-        .then(([index, nextRemote, nextChanges]) => {
-          if (cancelled) return;
-          const nextCached: CachedFeedData = {
-            searchIndex: index,
-            remote: nextRemote,
-            changes: nextChanges,
-            loadedAt: Date.now(),
-            dataVersion: lastSyncedAt,
-          };
-          feedDataCache.set(cacheKey, nextCached);
-          setSearchIndex(index);
-          setRemote(nextRemote);
-          setChanges(nextChanges);
-          setLoading(false);
-        })
-        .catch((error) => {
-          if (cancelled) return;
-          console.warn('Find feed data refresh failed:', error);
-          setLoading(false);
-        });
+        ])
+          .then(([index, nextRemote, nextChanges]) => {
+            if (cancelled) return;
+            const nextCached: CachedFeedData = {
+              searchIndex: index,
+              remote: nextRemote,
+              changes: nextChanges,
+              loadedAt: Date.now(),
+              dataVersion: lastSyncedAt,
+            };
+            feedDataCache.set(cacheKey, nextCached);
+            setSearchIndex(index);
+            setRemote(nextRemote);
+            setChanges(nextChanges);
+            setLoading(false);
+          })
+          .catch((error) => {
+            if (cancelled) return;
+            console.warn('Find feed data refresh failed:', error);
+            setLoading(false);
+          });
+      });
       return () => {
         cancelled = true;
+        cancelScheduledLoad();
       };
     }, [cacheKey, lastSyncedAt, previewMode, user?.id])
   );
@@ -310,8 +332,22 @@ export function FindFeed({
     [isEntitled, previewMode, remote.content]
   );
 
-  const modules = useMemo(
-    () => buildFindFeed({
+  // Built across frames rather than in one go. As a useMemo this ran
+  // synchronously during render and measured ~1,980ms on device -- long
+  // enough to swallow a tap or a keystroke outright, which is the whole
+  // reason the app felt like it hung on launch and when returning to Find.
+  //
+  // The engine yields between rails (and mid-rail for the expensive one), so
+  // this pumps it: run steps until the frame budget is spent, hand the thread
+  // back, resume on the next tick. Rails appear progressively as they finish,
+  // which is why partial results are rendered rather than held back -- the
+  // feed filling in top-down reads far better than a spinner, and the search
+  // field above it stays live throughout either way.
+  const [modules, setModules] = useState<FeedModule[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const steps = buildFindFeedSteps({
       restaurants,
       searchIndex,
       activity: personalActivity,
@@ -321,19 +357,64 @@ export function FindFeed({
       configs: remote.configs,
       origin,
       isEntitled,
-    }),
-    [
-      changes,
-      isEntitled,
-      origin,
-      personalActivity,
-      remote.configs,
-      remote.events,
-      restaurants,
-      searchIndex,
-      visibleContent,
-    ]
-  );
+    });
+    let totalMs = 0;
+    let renderedCount = -1;
+
+    const pump = () => {
+      if (cancelled) return;
+      const budgetStartedAt = perfNow();
+      let latest: FeedModule[] = [];
+      let done = false;
+
+      do {
+        const stepStartedAt = perfNow();
+        const step = steps.next();
+        const stepMs = perfNow() - stepStartedAt;
+        totalMs += stepMs;
+        // Branch on step.done directly so the iterator result narrows -- the
+        // yielded step and the final return are different shapes.
+        if (step.done) {
+          done = true;
+          latest = step.value;
+          recordPerfSample(PERF.feedChunk, stepMs, 'final');
+        } else {
+          latest = step.value.modules;
+          recordPerfSample(PERF.feedChunk, stepMs, step.value.label);
+        }
+      } while (!done && perfNow() - budgetStartedAt < FEED_FRAME_BUDGET_MS);
+
+      // Only re-render when a rail actually landed. Every chunk yields a
+      // result, but most add nothing, and re-rendering the feed for each
+      // would hand back a good part of what the chunking just bought.
+      if (done || latest.length !== renderedCount) {
+        renderedCount = latest.length;
+        setModules(latest);
+      }
+
+      if (done) {
+        recordPerfSample(PERF.feedBuild, totalMs, `${searchIndex.length} entries`);
+        return;
+      }
+      cancelPump = scheduleChunk(pump);
+    };
+
+    let cancelPump = scheduleChunk(pump);
+    return () => {
+      cancelled = true;
+      cancelPump();
+    };
+  }, [
+    changes,
+    isEntitled,
+    origin,
+    personalActivity,
+    remote.configs,
+    remote.events,
+    restaurants,
+    searchIndex,
+    visibleContent,
+  ]);
 
   const trackOpen = useCallback(
     (event: Parameters<typeof recordRecommendationEvent>[1]) => {

@@ -108,6 +108,18 @@ function MainTabs() {
     <Tab.Navigator
         screenOptions={({ route }) => ({
           headerShown: false,
+          // react-native-screens ships with its global freeze flag OFF
+          // (core.ts: `let ENABLE_FREEZE = false`) and nothing here ever
+          // called enableFreeze(), so Screen.tsx's `freezeOnBlur =
+          // freezeEnabled()` default resolved to false for every screen and
+          // `freeze = freezeOnBlur && shouldFreeze` could never be true.
+          // Net effect: no tab was ever actually frozen -- every stack you'd
+          // visited stayed fully live and re-rendered on every context
+          // change for the rest of the session. Setting it explicitly here
+          // opts in per-tab rather than flipping the global, which would
+          // also change behaviour for every screen below the top of every
+          // native stack. My Rumbly overrides this back to false below.
+          freezeOnBlur: true,
           tabBarIcon: ({ color, focused }) => <TabIcon routeName={route.name} color={color} focused={focused} />,
           tabBarActiveTintColor: DAYLIGHT.ocean,
           tabBarInactiveTintColor: DAYLIGHT.muted,
@@ -171,7 +183,13 @@ function MainTabs() {
         <Tab.Screen
           name="MyRumbly"
           component={MyRumblyNavigator}
-          options={{ title: 'My Rumbly', freezeOnBlur: true }}
+          // Keep this explicit: freezing this nested native stack caused the
+          // selected tab and visible screen to diverge when leaving My Rumbly.
+          // Its expensive focus refresh is already deferred independently.
+          // Now that freezeOnBlur is genuinely live (see screenOptions above),
+          // this override is load-bearing rather than a no-op -- don't drop it
+          // without re-testing that divergence on a device.
+          options={{ title: 'My Rumbly', freezeOnBlur: false }}
         />
     </Tab.Navigator>
   );

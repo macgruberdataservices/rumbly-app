@@ -6,6 +6,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { Restaurant, SearchIndexEntry } from '../data/types';
 import { loadSearchIndex } from '../search/searchIndexLoader';
+import { scheduleAfterNavigation } from '../navigation/scheduleAfterNavigation';
+import { PERF, markSearchReady, measurePerf } from '../perf/perfLog';
 import { search as runSearch, type SearchResult } from '../search/rank';
 import { restaurantHasRelatedTag, tagsEqual, type RelatedTag } from '../search/relatedTaxonomy';
 import type { SearchCategory } from '../search/findState';
@@ -70,16 +72,29 @@ export function useSearch(
   // completed data refresh (lastSyncedAt change) -- see the lastSyncedAt
   // param comment above for why that's required, not just a mount-time
   // optimization.
+  // Scheduled rather than started inline: loadSearchIndex()'s JSON.parse is
+  // synchronous and multi-megabyte, so kicking it off during the mount that
+  // renders Find froze the JS thread before the first frame ever landed.
+  // Nothing here needs the index until a query is actually typed -- the
+  // effect below already re-runs on isIndexReady, so a search entered while
+  // it's still loading resolves correctly once it lands.
   useEffect(() => {
     let cancelled = false;
     setIsIndexReady(false);
-    loadSearchIndex().then((index) => {
-      if (cancelled) return;
-      searchIndexRef.current = index;
-      setIsIndexReady(true);
+    const cancelScheduledLoad = scheduleAfterNavigation(() => {
+      loadSearchIndex().then((index) => {
+        if (cancelled) return;
+        searchIndexRef.current = index;
+        setIsIndexReady(true);
+        // The headline number for "tap in -> search results": from here on a
+        // typed query returns complete results rather than restaurants only.
+        // Records once per launch -- see markSearchReady.
+        markSearchReady();
+      });
     });
     return () => {
       cancelled = true;
+      cancelScheduledLoad();
     };
   }, [lastSyncedAt]);
 
@@ -92,7 +107,17 @@ export function useSearch(
     }
     setIsSearching(true);
     debounceRef.current = setTimeout(() => {
-      setRawResults(runSearch(query, restaurants, searchIndexRef.current, dietary, allowAllergyByDefault));
+      // Timed with the query as the detail: cost here is driven by which
+      // query it is -- specifically whether rank.ts's fuzzy fallback opens --
+      // far more than by how many results come back. See
+      // Docs/SEARCH_PERFORMANCE.md.
+      setRawResults(
+        measurePerf(
+          PERF.searchQuery,
+          () => runSearch(query, restaurants, searchIndexRef.current, dietary, allowAllergyByDefault),
+          trimmedQuery
+        )
+      );
       setIsSearching(false);
     }, DEBOUNCE_MS);
     return () => {

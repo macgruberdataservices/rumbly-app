@@ -4,5 +4,5 @@
     "allowImportingTsExtensions": true,
     "strict": true
   },
-  "exclude": ["tests/askRumbly.test.mjs", "tests/askRumblySemantic.test.mjs", "src/askRumbly/**", "src/screens/AskRumblyScreen.tsx", "modules/ask-rumbly/scripts/ask-rumbly/**"]
+  "exclude": ["tests/askRumbly.test.mjs", "tests/askRumblySemantic.test.mjs", "src/askRumbly/**", "src/screens/AskRumblyScreen.tsx", "modules/ask-rumbly/scripts/ask-rumbly/**", "scripts/**"]
 }
