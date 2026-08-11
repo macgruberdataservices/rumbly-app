@@ -43,6 +43,7 @@ import {
   loadAskRumblyNegativeFeedback,
   saveAskRumblyNegativeFeedback,
   syncPendingAskRumblyNegativeFeedback,
+  type AskRumblyFeedbackReason,
 } from '../askRumbly/developmentFeedback';
 import type { AskRumblyStackParamList } from '../navigation/AskRumblyNavigator';
 import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
@@ -57,6 +58,14 @@ const QUERY_STARTERS = [
 ] as const;
 
 const INITIAL_RESULT_COUNT = 10;
+const FEEDBACK_REASONS: ReadonlyArray<{ value: AskRumblyFeedbackReason; label: string }> = [
+  { value: 'misunderstood', label: 'Misunderstood me' },
+  { value: 'missing_result', label: 'Missing something' },
+  { value: 'wrong_result', label: 'Wrong result' },
+  { value: 'wording', label: 'Hard to understand' },
+  { value: 'stale_data', label: 'Outdated data' },
+  { value: 'other', label: 'Something else' },
+];
 
 function DevelopmentDataDisclosure({
   response,
@@ -202,6 +211,7 @@ export function AskRumblyScreen({ navigation }: Props) {
   const [responseRating, setResponseRating] = useState<'up' | 'down' | null>(null);
   const [isSavingFeedback, setIsSavingFeedback] = useState(false);
   const [feedbackDelivery, setFeedbackDelivery] = useState<'sent' | 'pending' | null>(null);
+  const [feedbackReasonPickerVisible, setFeedbackReasonPickerVisible] = useState(false);
   const [negativeFeedbackCount, setNegativeFeedbackCount] = useState(0);
   const inputRef = useRef<TextInput>(null);
   const pendingLocationRetryRef = useRef<string | null>(null);
@@ -242,6 +252,12 @@ export function AskRumblyScreen({ navigation }: Props) {
   const itemResults = useMemo(() => {
     const result = response?.result;
     if (!result || result.kind !== 'answer') return [];
+    // A compound answer is proven by several menu rows at the same venue.
+    // Showing those rows as independent cards makes “chicken and beer” look
+    // like hundreds of unrelated possibilities and can separate the two
+    // witnesses. Present the qualifying restaurants instead; their pages own
+    // the detailed menu evidence.
+    if (response.plan.subject.foodTerms.length > 1) return [];
     if (result.itemKeys?.length) {
       const itemsByKey = new Map(menuItems.map((item) => [`${item.restaurant_id}:${item.item_id}`, item]));
       return dedupeByItemIdentity(
@@ -279,6 +295,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setShowAllResults(false);
     setResponseRating(null);
     setFeedbackDelivery(null);
+    setFeedbackReasonPickerVisible(false);
     try {
       let dataForQuery = askData;
       if (menuItems.length === 0 || searchIndex.length === 0) {
@@ -332,6 +349,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setShowAllResults(false);
     setResponseRating(null);
     setFeedbackDelivery(null);
+    setFeedbackReasonPickerVisible(false);
     inputRef.current?.focus();
   }, []);
 
@@ -344,6 +362,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setShowAllResults(false);
     setResponseRating(null);
     setFeedbackDelivery(null);
+    setFeedbackReasonPickerVisible(false);
     inputRef.current?.focus();
   }, []);
 
@@ -468,7 +487,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     setResponseRating('up');
   }, [isSavingFeedback, responseRating]);
 
-  const rateResponseDown = useCallback(async () => {
+  const rateResponseDown = useCallback(async (feedbackReason?: AskRumblyFeedbackReason) => {
     if (!response || !presentation || !submittedQuery || responseRating || isSavingFeedback) return;
     setIsSavingFeedback(true);
     try {
@@ -477,10 +496,12 @@ export function AskRumblyScreen({ navigation }: Props) {
         response,
         presentation,
         dataLastSyncedAt: lastSyncedAt,
+        feedbackReason,
       });
       const count = await saveAskRumblyNegativeFeedback(entry);
       setNegativeFeedbackCount(count);
       setResponseRating('down');
+      setFeedbackReasonPickerVisible(false);
       setFeedbackDelivery('pending');
       const delivered = await deliverAskRumblyNegativeFeedback(entry);
       setFeedbackDelivery(delivered ? 'sent' : 'pending');
@@ -541,7 +562,7 @@ export function AskRumblyScreen({ navigation }: Props) {
               </View>
               <Text style={styles.heroEyebrow}>YOUR DINING SIDEKICK</Text>
               <Text style={styles.intro}>
-                Menus, prices, places, hours, and published allergy labels—ask it like you’d ask a friend.
+                Menus, prices, places, hours, and published allergy labels. Ask it like you’d ask a friend.
               </Text>
             </View>
             <IllustrationSlot
@@ -713,7 +734,7 @@ export function AskRumblyScreen({ navigation }: Props) {
                   {result.safety?.kind === 'allergy' ? (
                     <View style={styles.allergyNotice}>
                       <Text style={styles.allergyNoticeText}>
-                        Disney lists these as matching the requested allergy label(s). Rumbly does not interpret ingredients or determine safety. Menus and preparation can change—confirm with a Disney Cast Member before ordering.
+                        Disney lists these as matching the requested allergy label(s). Rumbly does not interpret ingredients or determine safety. Menus and preparation can change. Confirm with a Disney Cast Member before ordering.
                       </Text>
                     </View>
                   ) : null}
@@ -765,38 +786,69 @@ export function AskRumblyScreen({ navigation }: Props) {
                     <Text style={styles.ratingThanks}>
                       {responseRating === 'down'
                         ? feedbackDelivery === 'sent'
-                          ? 'Thanks — anonymous feedback sent for review.'
-                          : 'Thanks — saved and queued to send.'
-                        : 'Thanks — that helps.'}
+                          ? 'Thanks. Anonymous feedback sent for review.'
+                          : 'Thanks. Saved and queued to send.'
+                        : 'Thanks. That helps.'}
                     </Text>
                   ) : (
                     <>
-                      <Text style={styles.ratingPrompt}>Did this response help?</Text>
-                      <Text style={styles.ratingPrivacy}>
-                        Thumbs down sends the question and response diagnostics anonymously.
-                      </Text>
-                      <View style={styles.ratingButtons}>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="This response was helpful"
-                          onPress={rateResponseUp}
-                          disabled={isSavingFeedback}
-                          style={({ pressed }) => [styles.ratingButton, pressed && styles.pressed]}
-                        >
-                          <Text style={styles.ratingIcon} allowFontScaling={false}>👍</Text>
-                        </Pressable>
-                        <Pressable
-                          accessibilityRole="button"
-                          accessibilityLabel="This response was not helpful and save it for development review"
-                          onPress={() => void rateResponseDown()}
-                          disabled={isSavingFeedback}
-                          style={({ pressed }) => [styles.ratingButton, pressed && styles.pressed]}
-                        >
-                          {isSavingFeedback
-                            ? <ActivityIndicator color={COLORS.forest} />
-                            : <Text style={styles.ratingIcon} allowFontScaling={false}>👎</Text>}
-                        </Pressable>
-                      </View>
+                      {feedbackReasonPickerVisible ? (
+                        <>
+                          <Text style={styles.ratingPrompt}>What was off?</Text>
+                          <View style={styles.feedbackReasonList}>
+                            {FEEDBACK_REASONS.map((reason) => (
+                              <Pressable
+                                key={reason.value}
+                                accessibilityRole="button"
+                                accessibilityLabel={reason.label}
+                                onPress={() => void rateResponseDown(reason.value)}
+                                disabled={isSavingFeedback}
+                                style={({ pressed }) => [styles.feedbackReasonChip, pressed && styles.pressed]}
+                              >
+                                <Text style={styles.feedbackReasonText}>{reason.label}</Text>
+                              </Pressable>
+                            ))}
+                          </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Send feedback without choosing a reason"
+                            onPress={() => void rateResponseDown()}
+                            disabled={isSavingFeedback}
+                            style={({ pressed }) => [styles.feedbackSkipButton, pressed && styles.pressed]}
+                          >
+                            {isSavingFeedback
+                              ? <ActivityIndicator color={COLORS.forest} />
+                              : <Text style={styles.feedbackSkipText}>Skip and send</Text>}
+                          </Pressable>
+                        </>
+                      ) : (
+                        <>
+                          <Text style={styles.ratingPrompt}>Did this response help?</Text>
+                          <Text style={styles.ratingPrivacy}>
+                            Thumbs down sends this question and response diagnostics without your account or exact location.
+                          </Text>
+                          <View style={styles.ratingButtons}>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="This response was helpful"
+                              onPress={rateResponseUp}
+                              disabled={isSavingFeedback}
+                              style={({ pressed }) => [styles.ratingButton, pressed && styles.pressed]}
+                            >
+                              <Text style={styles.ratingIcon} allowFontScaling={false}>👍</Text>
+                            </Pressable>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="This response was not helpful"
+                              onPress={() => setFeedbackReasonPickerVisible(true)}
+                              disabled={isSavingFeedback}
+                              style={({ pressed }) => [styles.ratingButton, pressed && styles.pressed]}
+                            >
+                              <Text style={styles.ratingIcon} allowFontScaling={false}>👎</Text>
+                            </Pressable>
+                          </View>
+                        </>
+                      )}
                     </>
                   )}
                 </View>
@@ -1097,6 +1149,39 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: SPACING.sm,
     marginTop: SPACING.sm,
+  },
+  feedbackReasonList: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: SPACING.xs,
+    marginTop: SPACING.sm,
+  },
+  feedbackReasonChip: {
+    minHeight: 36,
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: SPACING.xs,
+    borderRadius: RADII.xl,
+    backgroundColor: DAYLIGHT.mist,
+    borderWidth: 1,
+    borderColor: DAYLIGHT.border,
+  },
+  feedbackReasonText: {
+    ...text.buttonLabel,
+    fontSize: 12,
+    color: COLORS.ink,
+  },
+  feedbackSkipButton: {
+    minHeight: 36,
+    justifyContent: 'center',
+    marginTop: SPACING.sm,
+    paddingHorizontal: SPACING.md,
+  },
+  feedbackSkipText: {
+    ...text.buttonLabel,
+    fontSize: 12,
+    color: COLORS.forest,
   },
   ratingButton: {
     width: 48,

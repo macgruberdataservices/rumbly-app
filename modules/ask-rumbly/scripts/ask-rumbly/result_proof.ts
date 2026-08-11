@@ -1,7 +1,7 @@
 import type { ConstraintWitness, ResultProof } from '../../../../src/askRumbly/execution.ts';
 import type { QueryPlan } from '../../../../src/askRumbly/queryPlan.ts';
 import { normalizeForSearch } from '../../../../src/data/diacritics.ts';
-import { getTodayStatus } from '../../../../src/data/hoursStatus.ts';
+import { getStatusForDayOffset, getTodayStatus } from '../../../../src/data/hoursStatus.ts';
 import { DISNEY_SPRINGS_AREAS, parkDisplayName, THEME_PARK_ORDER } from '../../../../src/data/locationNames.ts';
 import type { MenuItem, Restaurant } from '../../../../src/data/types.ts';
 import { distanceMiles, type Coordinates } from '../../../../src/location/proximity.ts';
@@ -79,6 +79,16 @@ function termAlternatives(term: string): string[][] {
 
 export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
   const normalizedTerm = normalizeForSearch(term).trim();
+  if (/^chilis?$/.test(normalizedTerm)) {
+    // “Chili” as a guest food request means the dish, not every item with a
+    // chili rub, chili-lime seasoning, chili crisp, or chili sauce.
+    const itemName = normalizeForSearch(item.item).trim();
+    return /^(?:(?:a\s+)?(?:bowl|cup)\s+of\s+|1871\s+|plant[ -]based\s+)?chili(?:$|[ -](?:cheese|dog)\b)/.test(itemName);
+  }
+  if (/^(?:coke|coca cola)$/.test(normalizedTerm)) {
+    const itemName = normalizeForSearch(item.item);
+    return !item.is_alcoholic && /\b(?:coke|coca cola)\b/.test(itemName);
+  }
   if (normalizedTerm === 'french fries') {
     const itemEvidence = normalizeForSearch(`${item.item} ${item.category} ${item.category_group}`);
     // The singular word "fry" also appears in unrelated dishes such as
@@ -101,8 +111,10 @@ export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
     // A corn dog is a named preparation. Requiring the adjacent phrase keeps
     // unrelated rows such as "street corn ... hot dog" from being treated as
     // corn dogs merely because both words occur somewhere in the row.
-    const itemEvidence = normalizeForSearch(`${item.item} ${item.category} ${item.category_group}`);
-    return /\bcorn\s+dogs?\b|\bcorndogs?\b/.test(itemEvidence);
+    const itemName = normalizeForSearch(item.item);
+    if (/\bcorn\s+dogs?\b|\bcorndogs?\b/.test(itemName)) return true;
+    const category = normalizeForSearch(`${item.category} ${item.category_group}`);
+    return /\bcorn\s+dogs?\b|\bcorndogs?\b/.test(category) && /\bdogs?\b/.test(itemName);
   }
   const alternatives = termAlternatives(term);
   const nameTokens = tokens(item.item);
@@ -291,6 +303,12 @@ function restaurantProof(plan: QueryPlan, restaurant: Restaurant, items: MenuIte
     const hours = getTodayStatus(data.hoursData, restaurant.restaurant_id);
     if (hours.todayLabel.startsWith('Open today')) witnesses.push({ constraint: 'time:today', restaurantId: restaurant.restaurant_id, evidence: [hours.todayLabel] });
     else failures.push(`${restaurant.restaurant} is not proven open today`);
+  }
+  if (plan.constraints.time === 'tomorrow' && (plan.action === 'hours' || plan.claimType === 'restaurant_hours')) {
+    const hours = getStatusForDayOffset(data.hoursData, restaurant.restaurant_id, 1);
+    if (hours.kind !== 'unknown' && hours.kind !== 'none') {
+      witnesses.push({ constraint: 'time:tomorrow', restaurantId: restaurant.restaurant_id, evidence: [`Tomorrow: ${hours.todayLabel}`] });
+    } else failures.push(`${restaurant.restaurant} has no published hours for tomorrow in the current data`);
   }
   const hasSpecificFood = plan.subject.foodTerms.some((term) => !GENERIC_FOOD_TERMS.has(normalizeForSearch(term)));
   if (!hasSpecificFood && plan.constraints.mealPeriods.length > 0 && items.length === 0) {

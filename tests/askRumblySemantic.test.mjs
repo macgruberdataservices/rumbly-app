@@ -4,6 +4,7 @@ import test from 'node:test';
 import { assessPlanCapability } from '../src/askRumbly/capabilityRegistry.ts';
 import { runAskRumbly } from '../src/askRumbly/appExecutor.ts';
 import { buildAskRumblyPresentation } from '../src/askRumbly/presentation.ts';
+import { resultListTitle, subjectiveResultTitle } from '../src/askRumbly/responseCopy.ts';
 import { parseQueryPlan } from '../src/askRumbly/semanticParser.ts';
 import { loadData } from '../modules/ask-rumbly/scripts/ask-rumbly/data.ts';
 import { buildParserVocabulary } from '../modules/ask-rumbly/scripts/ask-rumbly/parser_vocabulary.ts';
@@ -80,6 +81,91 @@ test('suggest phrasing is treated as objective food discovery', () => {
     assert.equal(result.kind, 'answer', question);
     assert.match(result.text, /burger/i, question);
   }
+});
+
+test('known food names own meal words and retain every verified menu variant', () => {
+  const response = runAskRumbly('Where can I get a lunch box tart', data);
+  assert.deepEqual(response.plan.subject.foodTerms, ['lunch box tart']);
+  assert.deepEqual(response.plan.constraints.mealPeriods, []);
+  assert.equal(response.result.kind, 'answer');
+  assert.deepEqual(new Set(response.result.itemKeys), new Set([
+    'woodys-lunchbox:411801523',
+    'woodys-lunchbox:19014923',
+  ]));
+
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: 'item',
+    totalPossibilities: response.result.itemKeys?.length ?? 0,
+    hasCurrentLocation: false,
+  });
+  assert.match(presentation.title, /found|options|lineup/i);
+  assert.equal(presentation.message, 'Tap one to see it on the menu.');
+
+  const explicitMeal = runAskRumbly('Where can I get a lunch box tart for lunch?', data);
+  assert.deepEqual(explicitMeal.plan.subject.foodTerms, ['lunch box tart']);
+  assert.deepEqual(explicitMeal.plan.constraints.mealPeriods, ['lunch']);
+  assert.equal(explicitMeal.result.kind, 'answer');
+  assert.equal(explicitMeal.result.itemKeys?.length, 2);
+});
+
+test('single linked results use singular conversational copy', () => {
+  const response = runAskRumbly('Where can I get a pumpkin lunch box tart?', data);
+  assert.equal(response.result.kind, 'answer');
+  assert.equal(response.result.itemKeys?.length, 1);
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: 'item',
+    totalPossibilities: response.result.itemKeys?.length ?? 0,
+    hasCurrentLocation: false,
+  });
+  assert.equal(presentation.title, 'One menu item matches.');
+});
+
+test('ordinary food discovery mentions proximity when results are distance-ranked', () => {
+  const origin = { latitude: 28.4177, longitude: -81.5812 };
+  const response = runAskRumbly(
+    'I want ice cream',
+    data,
+    origin,
+  );
+  assert.equal(response.result.kind, 'answer');
+  assert.ok(Object.keys(response.result.distanceMilesByRestaurant ?? {}).length > 0);
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: 'item',
+    totalPossibilities: response.result.itemKeys?.length ?? 0,
+    hasCurrentLocation: true,
+  });
+  assert.match(presentation.title, /nearby|closest/i);
+  assert.equal(presentation.message, 'Tap one to see it on the menu.');
+
+  const pizza = runAskRumbly('I want pizza', data, origin);
+  assert.equal(pizza.result.kind, 'answer');
+  const pizzaPresentation = buildAskRumblyPresentation(pizza.plan, pizza.result, {
+    linkedKind: 'item',
+    totalPossibilities: pizza.result.itemKeys?.length ?? 0,
+    hasCurrentLocation: true,
+  });
+  assert.match(pizzaPresentation.title, /nearby|closest/i);
+});
+
+test('companion copy is deterministic, varied, proximity-aware, and em-dash-free', () => {
+  const questions = [
+    'I want pizza',
+    'Where can I get pizza?',
+    'Show me pizza nearby',
+    'Find pizza for us',
+    'Any pizza around?',
+    'Pizza please',
+  ];
+  const titles = questions.map((question) => resultListTitle(question, ['pizza'], true, 5));
+  assert.equal(resultListTitle(questions[0], ['pizza'], true, 5), titles[0]);
+  assert.ok(new Set(titles).size > 1);
+  assert.ok(titles.every((title) => /nearby|closest/i.test(title)));
+  assert.ok(titles.every((title) => !title.includes('—')));
+
+  const subjective = questions.map((question) => subjectiveResultTitle(question, true));
+  assert.ok(new Set(subjective).size > 1);
+  assert.ok(subjective.every((title) => /nearby|distance|close|around/i.test(title)));
+  assert.ok(subjective.every((title) => !title.includes('—')));
 });
 
 test('companion wrappers preserve the same bounded food request', () => {
@@ -195,6 +281,25 @@ test('guest presentation explains boundaries without exposing internal failure p
     suggestion.kind === 'query'
       && /search for pizza instead/i.test(suggestion.label)
       && /pizza in Hollywood Studios/i.test(suggestion.query)));
+
+  const restaurantScoped = runAskRumbly(
+    "I want some ice cream near Casey's Corner",
+    data,
+    { latitude: 28.4177, longitude: -81.5812 },
+  );
+  assert.equal(restaurantScoped.result.kind, 'no-match');
+  const restaurantRecovery = buildAskRumblyPresentation(
+    restaurantScoped.plan,
+    restaurantScoped.result,
+    { linkedKind: null, totalPossibilities: 0, hasCurrentLocation: true },
+  );
+  assert.equal(restaurantRecovery.title, "Sorry, I couldn't find what you're looking for.");
+  assert.match(restaurantRecovery.message, /without the restaurant name|different way/i);
+  assert.ok(restaurantRecovery.suggestions.some((suggestion) =>
+    suggestion.kind === 'query'
+      && suggestion.label === 'Search all Disney World'
+      && suggestion.query === 'Where can I get ice cream?'));
+  assert.ok(`${restaurantRecovery.title} ${restaurantRecovery.message}`.length < 180);
 });
 
 test('subjective food rankings transparently return verified options instead of a dead end', () => {
@@ -212,7 +317,7 @@ test('subjective food rankings transparently return verified options instead of 
     hasCurrentLocation: false,
     subjectiveOptions: true,
   });
-  assert.match(presentation.title, /can't tell you what's .*best.*options to try/i);
+  assert.match(presentation.title, /taste buds|best|rank flavor|stars/i);
   assert.match(presentation.message, /not a ranking/i);
   assert.deepEqual(presentation.suggestions, []);
 
@@ -253,7 +358,7 @@ test('subjective food rankings transparently return verified options instead of 
     hasCurrentLocation: true,
     subjectiveOptions: true,
   });
-  assert.match(nearbyPresentation.title, /nearby options/i);
+  assert.match(nearbyPresentation.title, /nearby|distance|close|around/i);
   assert.ok(Object.keys(nearby.result.distanceMilesByRestaurant ?? {}).length > 0);
 
   const ungrounded = runAskRumbly("i want to try something weird i've never had before", data);
@@ -480,6 +585,14 @@ test('typed allergy execution uses the exact Disney label taxonomy and acknowled
   assert.ok(items.every((item) => item.is_allergy_friendly && item.allergens.includes('gluten-wheat')));
   assert.equal(result.proof.status, 'proven');
   assert.ok(result.proof.witnesses.some((witness) => witness.constraint === 'disney-allergen:gluten-wheat'));
+  const presentation = buildAskRumblyPresentation(plan, result, {
+    linkedKind: 'item',
+    totalPossibilities: result.itemKeys.length,
+    hasCurrentLocation: false,
+  });
+  assert.equal(presentation.eyebrow, 'Disney allergy labels');
+  assert.match(`${presentation.title} ${presentation.message}`, /Disney-labeled|Disney lists/i);
+  assert.doesNotMatch(`${presentation.title} ${presentation.message}`, /taste buds|go forth|choose wisely|—/i);
 });
 
 test('generic allergy lists do not present guidance rows as orderable food', () => {
@@ -648,6 +761,8 @@ test('verified list answers retain the full linked result set for native expansi
   assert.equal(result.proof.status, 'proven');
   assert.ok(result.itemKeys.length > 12);
   assert.ok(result.restaurantIds.length > 12);
+  const firstTenRestaurants = result.itemKeys.slice(0, 10).map((key) => key.split(':')[0]);
+  assert.equal(new Set(firstTenRestaurants).size, firstTenRestaurants.length);
   assert.match(result.text, /and \d+ more/i);
 });
 
@@ -947,4 +1062,104 @@ test('french fries do not match explicitly non-potato fry dishes', () => {
   assert.equal(result.kind, 'answer');
   assert.equal(result.proof.status, 'proven');
   assert.doesNotMatch(result.text, /Hummus Fries|Home Fry Potatoes|Stir Fry/i);
+});
+
+test('everyday pop tart wording resolves to Disney Lunch Box Tarts with concise subjective copy', () => {
+  const response = runAskRumbly('Who has the best pop tart?', data);
+  assert.equal(response.adaptation?.kind, 'subjective_options');
+  assert.deepEqual(response.plan.subject.foodTerms, ['lunch box tart']);
+  assert.equal(response.result.kind, 'answer');
+  assert.equal(response.result.proof.status, 'proven');
+  assert.equal(response.result.itemKeys.length, 2);
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: 'item',
+    totalPossibilities: response.result.itemKeys.length,
+    hasCurrentLocation: false,
+    subjectiveOptions: true,
+  });
+  assert.equal(presentation.title, 'Disney calls these Lunch Box Tarts.');
+  assert.match(presentation.message, /can't rank|verified options/i);
+  assert.ok(`${presentation.title} ${presentation.message}`.length < 150);
+});
+
+test('hungry-for-a-snack phrasing returns Disney-categorized snack options instead of every snack-period row', () => {
+  const { plan, result } = execute("I'm hungry for a snack");
+  assert.equal(plan.diagnostics.confidence, 'high');
+  assert.deepEqual(plan.constraints.mealPeriods, ['snack']);
+  assert.equal(result.kind, 'answer');
+  assert.equal(result.proof.status, 'proven');
+  assert.ok(result.itemKeys.length > 0);
+  assert.ok(result.itemKeys.length < 1000);
+  const keys = new Set(result.itemKeys);
+  const rows = data.menuItems.filter((item) => keys.has(`${item.restaurant_id}:${item.item_id}`));
+  assert.ok(rows.every((item) => !item.is_alcoholic));
+  assert.ok(rows.every((item) => !/^(?:assorted fountain beverages|dasani)/i.test(item.item)));
+});
+
+test('what-place-has grammar retains compound chicken and beer requirements', () => {
+  const { plan, result } = execute('What place has chicken and beer?');
+  assert.deepEqual(plan.subject.foodTerms, ['chicken', 'beer']);
+  assert.equal(plan.diagnostics.confidence, 'high');
+  assert.equal(result.kind, 'answer');
+  assert.equal(result.proof.status, 'proven');
+});
+
+test('tomorrow restaurant hours use tomorrow data and proof', () => {
+  const { plan, result } = execute("What time does Casey's Corner open tomorrow?");
+  assert.equal(plan.constraints.time, 'tomorrow');
+  assert.equal(result.kind, 'answer');
+  assert.match(result.text, /Tomorrow: Open/i);
+  assert.doesNotMatch(result.text, /Open today/i);
+  assert.ok(result.proof.witnesses.some((witness) => witness.constraint === 'time:tomorrow'));
+});
+
+test('how-close restaurant phrasing is distance intent rather than closing-hours intent', () => {
+  const { plan, result } = runAskRumbly(
+    'How close is Terra Treats?',
+    data,
+    { latitude: 28.4177, longitude: -81.5812 },
+  );
+  assert.equal(plan.action, 'distance');
+  assert.equal(plan.claimType, 'restaurant_location');
+  assert.equal(plan.diagnostics.meaningfulUnconsumedText, '');
+  assert.equal(result.kind, 'answer');
+  assert.match(result.text, /away/i);
+  assert.doesNotMatch(result.text, /hours|open today/i);
+  const presentation = buildAskRumblyPresentation(plan, result, {
+    linkedKind: 'restaurant',
+    totalPossibilities: result.restaurantIds?.length ?? 0,
+    hasCurrentLocation: true,
+  });
+  assert.equal(presentation.eyebrow, 'Distance from you');
+  assert.equal(presentation.title, result.text);
+  assert.equal(presentation.message, 'Straight-line distance from your current location.');
+  assert.doesNotMatch(`${presentation.title} ${presentation.message}`, /place I found|possibilit/i);
+});
+
+test('specific food proof keeps Coke nonalcoholic, chili dish-shaped, and corn dogs named', () => {
+  const coke = execute('Who has Coke?').result;
+  assert.equal(coke.kind, 'answer');
+  const cokeKeys = new Set(coke.itemKeys);
+  assert.ok(data.menuItems.filter((item) => cokeKeys.has(`${item.restaurant_id}:${item.item_id}`)).every((item) => !item.is_alcoholic));
+
+  const chili = execute('Who has chili?').result;
+  assert.equal(chili.kind, 'answer');
+  assert.doesNotMatch(chili.text, /chili[- ](?:lime|rub|crisp|spice|sauce)/i);
+
+  const cornDog = execute('Where can I get a corn dog?').result;
+  assert.equal(cornDog.kind, 'answer');
+  assert.match(cornDog.text, /Blue Ribbon Corn Dogs/i);
+  assert.doesNotMatch(cornDog.text, /Giant Mozzarella/i);
+});
+
+test('unverified pita-pocket wording offers a useful broader recovery', () => {
+  const { plan, result } = execute('Where can I get a pita pocket?');
+  assert.equal(result.kind, 'no-match');
+  const presentation = buildAskRumblyPresentation(plan, result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  assert.ok(presentation.suggestions.some((suggestion) => suggestion.kind === 'query'
+    && suggestion.query === 'Where can I get pita?'));
 });

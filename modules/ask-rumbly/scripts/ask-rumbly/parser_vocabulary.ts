@@ -62,6 +62,8 @@ const RESERVED_PARK_ALIASES = new Set(['magic kingdom', 'epcot', 'animal kingdom
 
 const PARK_SHORT_ALIASES: Readonly<Record<string, string[]>> = {
   EPCOT: ['Epcot', 'Epoct'],
+  'Magic Kingdom Park': ['Magic Kingdom'],
+  "Disney's Magic Kingdom Theme Park": ['Magic Kingdom'],
   "Disney's Animal Kingdom Theme Park": ['Animal Kingdom'],
   "Disney's Hollywood Studios": ['Hollywood Studios'],
 };
@@ -106,6 +108,28 @@ const PROTECTED_FOOD_PHRASES = [
   'french fries',
 ];
 
+const MEAL_WORD_PATTERN = /\b(?:breakfast|lunch|dinner|snack)\b/i;
+
+function menuDerivedProtectedFoodPhrases(data: LoadedData): string[] {
+  const phrases = new Set<string>();
+  for (const item of data.menuItems) {
+    const searchableName = item.item
+      .replace(/\s+[-–—]\s+.*allergy[ -]friendly.*$/i, '')
+      .replace(/[®™*]/g, '')
+      .replace(/[^a-z0-9' -]+/gi, ' ')
+      .replace(/\s+/g, ' ')
+      .trim();
+    const mealMatch = searchableName.match(MEAL_WORD_PATTERN);
+    if (!mealMatch || mealMatch.index == null) continue;
+    const phrase = searchableName.slice(mealMatch.index).trim().toLowerCase();
+    // A meal word by itself remains a meal-period constraint. Protect only
+    // known multi-word menu names such as "lunch box tart" or
+    // "breakfast sandwich" where the meal word is part of the food name.
+    if (phrase.split(/\s+/).length > 1) phrases.add(phrase);
+  }
+  return Array.from(phrases);
+}
+
 export function buildParserVocabulary(data: LoadedData): ParserVocabulary {
   const restaurants: ParserEntity[] = data.restaurants.map((restaurant) => ({
     id: restaurant.restaurant_id,
@@ -125,5 +149,12 @@ export function buildParserVocabulary(data: LoadedData): ParserVocabulary {
     entity.aliases.push(...(LOCATION_ALIAS_OVERRIDES[entity.label] ?? []));
   }
   const cuisines = Array.from(new Set(data.restaurants.flatMap((restaurant) => restaurant.cuisine_tags ?? [])));
-  return { entities: [...restaurants, ...locations], protectedFoodPhrases: PROTECTED_FOOD_PHRASES, cuisines };
+  return {
+    entities: [...restaurants, ...locations],
+    protectedFoodPhrases: Array.from(new Set([
+      ...PROTECTED_FOOD_PHRASES,
+      ...menuDerivedProtectedFoodPhrases(data),
+    ])),
+    cuisines,
+  };
 }

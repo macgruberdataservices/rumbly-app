@@ -3,10 +3,20 @@ import Constants from 'expo-constants';
 import { Platform } from 'react-native';
 import { publicSupabase } from '../data/supabaseClient';
 import type { AskRumblyResponse } from './appExecutor';
+import { sanitizeAskRumblyFeedbackPayload } from './feedbackSanitization';
 import type { AskRumblyPresentation } from './presentation';
 
 const STORAGE_KEY = 'rumbly.development.askRumblyNegativeFeedback.v1';
 const MAX_ENTRIES = 100;
+export const ASK_RUMBLY_RUNTIME_VERSION = 'semantic-2026-08-11.1';
+
+export type AskRumblyFeedbackReason =
+  | 'misunderstood'
+  | 'missing_result'
+  | 'wrong_result'
+  | 'wording'
+  | 'stale_data'
+  | 'other';
 
 export interface AskRumblyNegativeFeedback {
   schemaVersion: 1;
@@ -19,6 +29,8 @@ export interface AskRumblyNegativeFeedback {
   result: AskRumblyResponse['result'];
   adaptation?: AskRumblyResponse['adaptation'];
   dataLastSyncedAt: number | null;
+  feedbackReason?: AskRumblyFeedbackReason;
+  runtimeVersion?: string;
   uploadedAt?: string;
 }
 
@@ -65,18 +77,22 @@ function remotePlatform(): 'ios' | 'android' | 'web' | 'unknown' {
 }
 
 export function askRumblyFeedbackRemoteRow(entry: AskRumblyNegativeFeedback) {
+  const presentedResponse = sanitizeAskRumblyFeedbackPayload(entry.presentedResponse);
+  const result = sanitizeAskRumblyFeedbackPayload(entry.result);
   return {
     client_feedback_id: entry.id,
     client_created_at: entry.createdAt,
     schema_version: entry.schemaVersion,
     question: entry.question,
-    response_title: entry.presentedResponse.title,
-    response_message: entry.presentedResponse.message,
-    presented_response: entry.presentedResponse,
+    response_title: presentedResponse.title,
+    response_message: presentedResponse.message,
+    presented_response: presentedResponse,
     result_kind: entry.resultKind,
     plan: entry.plan,
-    result: entry.result,
+    result,
     adaptation: entry.adaptation ?? null,
+    feedback_reason: entry.feedbackReason ?? null,
+    runtime_version: entry.runtimeVersion ?? ASK_RUMBLY_RUNTIME_VERSION,
     data_last_synced_at: entry.dataLastSyncedAt === null
       ? null
       : new Date(entry.dataLastSyncedAt).toISOString(),
@@ -133,12 +149,14 @@ export function createAskRumblyNegativeFeedback({
   response,
   presentation,
   dataLastSyncedAt,
+  feedbackReason,
   createdAt = new Date(),
 }: {
   question: string;
   response: AskRumblyResponse;
   presentation: AskRumblyPresentation;
   dataLastSyncedAt: number | null;
+  feedbackReason?: AskRumblyFeedbackReason;
   createdAt?: Date;
 }): AskRumblyNegativeFeedback {
   const timestamp = createdAt.toISOString();
@@ -159,6 +177,8 @@ export function createAskRumblyNegativeFeedback({
     result: response.result,
     ...(response.adaptation ? { adaptation: response.adaptation } : {}),
     dataLastSyncedAt,
+    ...(feedbackReason ? { feedbackReason } : {}),
+    runtimeVersion: ASK_RUMBLY_RUNTIME_VERSION,
   };
 }
 
@@ -166,7 +186,7 @@ export function formatAskRumblyFeedbackExport(entries: AskRumblyNegativeFeedback
   return JSON.stringify({
     schemaVersion: 1,
     exportedAt: new Date().toISOString(),
-    note: 'Ask Rumbly thumbs-down feedback. No account identifier or precise device location is recorded.',
-    entries,
+    note: 'Ask Rumbly thumbs-down feedback. No account identifier, coordinates, or exact distance measurements are recorded.',
+    entries: sanitizeAskRumblyFeedbackPayload(entries),
   }, null, 2);
 }

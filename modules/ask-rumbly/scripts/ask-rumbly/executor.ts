@@ -401,7 +401,7 @@ function answerAllergyLocations(
   const shown = sorted.slice(0, 12);
   const lines = shown.map(({ candidate, distance }) => {
     const distanceNote = distance === null ? '' : ` (${formatProximityDistance(distance)})`;
-    return `${candidate.restaurant.restaurant}${distanceNote} — ${candidate.item.item}`;
+    return `${candidate.restaurant.restaurant}${distanceNote}: ${candidate.item.item}`;
   });
   const remaining = sorted.length - shown.length;
   const suffix = remaining > 0 ? `, and ${remaining} more location${remaining === 1 ? '' : 's'}` : '';
@@ -1494,7 +1494,7 @@ function answerQueryCore(query: ClassifiedQuery, data: LoadedData, origin: Coord
     const shown = withDistance.slice(0, LIST_CAP);
     const lines = shown.map(({ candidate, distance }) => {
       const distanceNote = distance !== null ? ` (${formatProximityDistance(distance)})` : '';
-      return `${candidate.restaurant.restaurant}${distanceNote} — ${candidate.item.item}`;
+      return `${candidate.restaurant.restaurant}${distanceNote}: ${candidate.item.item}`;
     });
     const remaining = withDistance.length - shown.length;
     const suffix = remaining > 0 ? `, and ${remaining} more location${remaining === 1 ? '' : 's'}` : '';

@@ -65,6 +65,7 @@ const PARK_OPERATIONS_PATTERN = /\b(?:park|epcot|magic kingdom|animal kingdom|ho
 const GENERAL_PATTERN = /\b(?:weather|forecast|temperature|ride|attraction|parade|mickey mouse|parking|refill stations?|first aid|medical|emergency|records? of past allergy orders?)\b/i;
 const OFFICIAL_POLICY_PATTERN = /\b(?:outside food|bring (?:my|our|your|their|any )?(?:own )?food|mobile order (?:work|rules?)|dining plan|park hopper[\s\S]*dining|popcorn bucket[\s\S]*refill|cancel[\s\S]*reservation|reservation[\s\S]*(?:fee|deadline|rules?)|(?:need )?reservations?[\s\S]*(?:for )?quick[ -]service|quick[ -]service vs\.? table[ -]service|hotel restaurants?[\s\S]*park tickets?|tips? included|cash payment|physical register|dress code|adults? order (?:off )?(?:the )?(?:kids?|children'?s) (?:menu|meals?)|free cups? of water)\b/i;
 const FOOD_PROXIMITY_CLOSE_PATTERN = /\b(?:where|who)\b[\s\S]*\b(?:get|find|buy|order|grab|eat|has|serves?|sells?|offers?)\b[\s\S]*\bclose\s*[?.!]*$/i;
+const RESTAURANT_PROXIMITY_CLOSE_PATTERN = /\b(?:how\s+)?close(?:\s+by)?\s+(?:is|are)\b/i;
 
 function normalizeForMatching(value: string): string {
   return value
@@ -241,12 +242,14 @@ function requestedClaim(query: string, allergenKeys: string[], hasAllergyContext
   if (/\bquick[\s-]?service\b/i.test(query) && !/\b(?:vegan|vegetarian|allerg|meal|food|options?|items?|dishes?|serves?|get|find|eat|buy|order)\b/i.test(query)) return 'restaurant_feature';
   // In acquisition phrasing, a terminal “close” means nearby (“where can I
   // get fried rice close”), not a restaurant's closing time.
-  if (/\b(?:hours?|open|close|closing)\b/i.test(query) && !FOOD_PROXIMITY_CLOSE_PATTERN.test(query)) return 'restaurant_hours';
+  if (/\b(?:hours?|open|close|closing)\b/i.test(query)
+    && !FOOD_PROXIMITY_CLOSE_PATTERN.test(query)
+    && !RESTAURANT_PROXIMITY_CLOSE_PATTERN.test(query)) return 'restaurant_hours';
   if (/\bserving\b[\s\S]*\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(query)) return 'restaurant_hours';
   const nearestNamesAnObject = /\b(?:closest|nearest)\s+(?!restaurant\b|place\b|location\b|spot\b)[a-z][\w'-]*/i.test(query)
     && !/\b(?:closest|nearest)\b[\s\S]*\bfrom\b/i.test(query);
   const nearestPlaceNamesFood = /\b(?:closest|nearest)\s+(?:restaurant|place|location|spot)\s+(?:for|with)\s+[a-z]/i.test(query);
-  if (/\b(?:distance|far|walk|closest|nearest)\b/i.test(query)
+  if ((/\b(?:distance|far|walk|closest|nearest)\b/i.test(query) || RESTAURANT_PROXIMITY_CLOSE_PATTERN.test(query))
     && !/\b(?:food|dish|item|serve|get|eat|buy|order)\b/i.test(query)
     && !nearestNamesAnObject
     && !nearestPlaceNamesFood) return 'restaurant_location';
@@ -290,6 +293,7 @@ function foodCapture(query: string): string {
     /\b(?:suggest|suggests|suggested|recommend|recommends|recommended)\s+(?:me\s+)?(?:a\s+)?(?:place|restaurant|location|spot|stand|somewhere)\s+(?:to\s+)?(?:get|find|buy|order|grab|eat|have|try)\s+(.+?)\??$/i,
     /\b(?:suggest|suggests|suggested)\s+(?:me\s+)?(?:a\s+)?(.+?)\s+(?:place|restaurant|spot)\??$/i,
     /\b(?:does|do|has|have)\b[\s\S]*?\b(?:have|serve|sell|offer)\s+(.+?)\??$/i,
+    /\b(?:what|which)\s+(?:place|restaurant|location|spot|stand)\s+(?:has|have|serves?|sells?|offers?)\s+(.+?)\??$/i,
     /\b(?:where|what place|which place|what restaurant|which restaurant|which locations?|which spots?|which stands?|what [\w-]+ (?:dining )?(?:option|location))[\s\S]*?\b(?:get|find|serves?|sells?|offers?|buy|order|grab|eat)\s+(.+?)\??$/i,
     /\bcan i\s+(?:get|find|buy|order|grab)\s+(.+?)\??$/i,
     /\bwhere\s+are\s+(.+?)\??$/i,
@@ -297,6 +301,7 @@ function foodCapture(query: string): string {
     /\b(?:closest|nearest)\s+(?:restaurant|place|location|spot)\s+(?:for|with)\s+(.+?)\??$/i,
     /\b(?:cheapest|closest|nearest)\s+(?:place to get\s+)?(.+?)\??$/i,
     /\b(?:serve|serves|selling|sells)\s+(.+?)\??$/i,
+    /\b(?:(?:i['’]?m|i am|we['’]?re|we are)\s+)?hungry\s+for\s+(.+?)\??$/i,
     /\bi want\s+(.+?)(?:,\s*where\b|\s+(?:at|in|near)\b|[?.!]*$)/i,
     /\b(?:we need|i need|looking for)\s+(.+?)(?:\s+(?:at|in|near)\b|[?.!]*$)/i,
     /\b(?:i(?:'d| would) like|craving)\s+(.+?)\??$/i,
@@ -357,7 +362,7 @@ function extractCuisine(query: string, vocabulary: ParserVocabulary): { value?: 
 }
 
 function normalizeFoodTerm(term: string): string {
-  return term
+  const normalized = term
     .replace(/,/g, ' ')
     .replace(/^[\s,]+/, '')
     .replace(/^[\s,]*(?:(?:a|an|the|some|any|those|that)\s+)+/i, '')
@@ -375,6 +380,11 @@ function normalizeFoodTerm(term: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase();
+  // Disney publishes Pop-Tart-style pastries under its own “Lunch Box Tart”
+  // name. Normalize the everyday guest term at the semantic boundary so the
+  // executor can still demand exact menu evidence rather than fuzzy guessing.
+  if (/^pop[ -]?tarts?$/.test(normalized)) return 'lunch box tart';
+  return normalized;
 }
 
 function extractFoods(
@@ -406,11 +416,21 @@ function extractFoods(
   }
   if (!captured) return { terms: [], mode: 'all', spans: [] };
   const capturedSource = captured;
+  const protectedPhrases = (vocabulary.protectedFoodPhrases ?? []).sort((a, b) => b.length - a.length);
+  const preservedPhrases = new Map<string, string>();
+  protectedPhrases.forEach((phrase, index) => {
+    const token = `__preserved_food_${index}__`;
+    const regex = new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'ig');
+    if (!regex.test(captured)) return;
+    captured = captured.replace(regex, token);
+    preservedPhrases.set(token, phrase);
+  });
   for (const entity of entities.filter((entry) => entry.type === 'restaurant')) {
     captured = captured.replace(new RegExp(escapeRegExp(entity.text), 'ig'), '');
   }
   for (const allergen of allergens) captured = captured.replace(new RegExp(escapeRegExp(allergen.text), 'ig'), '');
   for (const constraint of constraintSpans) captured = captured.replace(new RegExp(escapeRegExp(constraint.text), 'ig'), '');
+  preservedPhrases.forEach((phrase, token) => { captured = captured.replace(token, phrase); });
   captured = captured.replace(/\b(?:at|in|near)\b\s*$/i, '');
   // Exclusions and price ceilings are constraints, not part of the food
   // phrase handed to the item matcher.
@@ -424,7 +444,6 @@ function extractFoods(
   captured = captured.replace(/\b(?:food|foods|options?|items?|dishes?|something|anything)\b/gi, '').trim();
   if (!captured) return { terms: [], mode: 'all', spans: [] };
 
-  const protectedPhrases = (vocabulary.protectedFoodPhrases ?? []).sort((a, b) => b.length - a.length);
   const placeholders = new Map<string, string>();
   let protectedText = captured;
   protectedPhrases.forEach((phrase, index) => {
@@ -530,20 +549,26 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   const requiredFeatures = features.features.filter((feature) => !excludedFeatures.includes(feature));
   const dietary = DIETARY_PATTERNS.flatMap((entry) => collectPatternSpans(analysisText, entry.pattern).length > 0 ? [entry.key] : []);
   const dietarySpans = DIETARY_PATTERNS.flatMap((entry) => collectPatternSpans(analysisText, entry.pattern));
-  const meals = MEAL_PATTERNS.flatMap((entry) => collectPatternSpans(analysisText, entry.pattern).length > 0 ? [entry.key] : []);
-  const mealSpans = MEAL_PATTERNS.flatMap((entry) => collectPatternSpans(analysisText, entry.pattern));
+  const protectedFoodSpans = (vocabulary.protectedFoodPhrases ?? []).flatMap((phrase) =>
+    collectPatternSpans(analysisText, new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi')));
+  const mealMatches = MEAL_PATTERNS.map((entry) => ({
+    key: entry.key,
+    spans: collectPatternSpans(analysisText, entry.pattern).filter((span) => !protectedFoodSpans.some(
+      (food) => span.start < food.end && food.start < span.end,
+    )),
+  }));
+  const meals = mealMatches.flatMap((entry) => entry.spans.length > 0 ? [entry.key] : []);
+  const mealSpans = mealMatches.flatMap((entry) => entry.spans);
   const characterDetailSpans = collectPatternSpans(analysisText, /\bprincess(?:es)?\b/gi);
   const extractedCuisine = extractCuisine(analysisText, vocabulary);
   const cuisineOverlapsEntity = extractedCuisine.spans.some((span) => linkedEntities.some((entity) => span.start < entity.end && entity.start < span.end));
-  const protectedFoodSpans = (vocabulary.protectedFoodPhrases ?? []).flatMap((phrase) =>
-    collectPatternSpans(analysisText, new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi')));
   const cuisineOverlapsProtectedFood = extractedCuisine.spans.some((span) => protectedFoodSpans.some((food) => span.start < food.end && food.start < span.end));
   const cuisine = cuisineOverlapsEntity || cuisineOverlapsProtectedFood ? { spans: [] as SourceSpan[], value: undefined } : extractedCuisine;
   const hungerOnly = /^\s*(?:(?:i['’]?m|i am|we['’]?re|we are)\s+)?(?:really\s+|so\s+|very\s+)?hungry\s*[?.!]*$/i.test(sourceText);
   const hungerSpans = hungerOnly ? collectPatternSpans(analysisText, /[\s\S]+/g) : [];
   const discourseSpans = collectPatternSpans(
     analysisText,
-    /\b(?:hey|hi|hello|okay|ok)[,\s]+(?:rumbly\b[,\s]*)?|\brumbly\b[,\s]*|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:help\s+(?:me|us)\s+)?(?:find|get|show|suggest|recommend)\s+(?:me|us\s+)?|\b(?:yo|asap|send help|or am i dreaming|my wife'?s|i'?m broke|we'?re)\b/gi
+    /\b(?:hey|hi|hello|okay|ok)[,\s]+(?:rumbly\b[,\s]*)?|\brumbly\b[,\s]*|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:help\s+(?:me|us)\s+)?(?:find|get|show|suggest|recommend)\s+(?:me|us\s+)?|\b(?:(?:i['’]?m|i am|we['’]?re|we are)\s+)?hungry\s+for\s+|\b(?:yo|asap|send help|or am i dreaming|my wife'?s|i'?m broke|we'?re)\b/gi
   );
   const menuRoutingSpans = collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi);
   const excludedFoods = extractExcludedFoods(analysisText);
@@ -591,7 +616,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     ...collectPatternSpans(analysisText, /\b(?:do not|don't|does not|doesn't|without)\s+(?:require|requiring|need|needing)?\s*(?:advance dining )?reservations?\s+for\s+walk[ -]in seating\b/gi),
     ...(proximityClose ? collectPatternSpans(analysisText, /\bclose(?=\s*[?.!]*$)/gi) : []),
     ...(claimType === 'restaurant_hours' ? collectPatternSpans(analysisText, /\b(?:hours?|open|close|closing|when|what\s+time)\b/gi) : []),
-    ...(claimType === 'restaurant_location' ? collectPatternSpans(analysisText, /\bfar(?:\s+away)?\b/gi) : []),
+    ...(claimType === 'restaurant_location' ? collectPatternSpans(analysisText, /\b(?:how\s+)?(?:far(?:\s+away)?|close(?:\s+by)?)\b/gi) : []),
     ...collectPatternSpans(analysisText, /\b(?:cart|stand|location)(?=\s+(?:at|in|near|around|by)?\s*[a-z]|\s*[?.!]*$)/gi),
     ...collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi),
     ...(claimType === 'editorial_judgment' ? collectPatternSpans(analysisText, EDITORIAL_PATTERN) : []),

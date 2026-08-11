@@ -1,5 +1,11 @@
 import type { PlanExecutionResult } from './execution';
 import type { QueryPlan } from './queryPlan';
+import {
+  cheapestResultTitle,
+  restaurantInfoTitle,
+  resultListTitle,
+  subjectiveResultTitle,
+} from './responseCopy';
 
 export type AskRumblySuggestion =
   | { kind: 'query'; label: string; query: string }
@@ -147,7 +153,9 @@ function dedupeSuggestions(suggestions: AskRumblySuggestion[]): AskRumblySuggest
 function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
   const suggestions: AskRumblySuggestion[] = [];
   const terms = usefulFoodTerms(plan);
-  const hasLocation = locationLabels(plan).length > 0 || plan.constraints.locationSet === 'theme_parks';
+  const hasLocation = locationLabels(plan).length > 0
+    || plan.constraints.locationSet === 'theme_parks'
+    || plan.subject.restaurantIds.length > 0;
   if (plan.constraints.allergenKeys.length > 0 && terms.length > 0) {
     suggestions.push({
       kind: 'query',
@@ -165,7 +173,7 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
     }
   }
   if (terms.length === 1) {
-    const broader = broaderFoodTerm(terms[0]);
+    const broader = /\bpita\s+pocket\b/i.test(terms[0]) ? 'pita' : broaderFoodTerm(terms[0]);
     if (broader) {
       suggestions.push({
         kind: 'query',
@@ -214,36 +222,36 @@ function unsupportedCopy(plan: QueryPlan): Pick<AskRumblyPresentation, 'title' |
   if (plan.claimType === 'live_park_operations' || plan.claimType === 'general_information') {
     return {
       title: "That's outside my dining lane.",
-      message: "I'm focused on Disney World food and restaurants, so I don't have a trustworthy answer for park operations, weather, attractions, or general information.",
+      message: 'I can help with Disney World food and restaurants, but not weather, attractions, or park operations.',
     };
   }
   if (plan.claimType === 'editorial_judgment') {
     return {
-      title: "I can't honestly choose “best” from the data I have.",
-      message: 'I do not have reliable guest ratings or editorial rankings. I can still narrow the choice by food, price, location, or distance.',
+      title: "I don't have ratings or taste buds.",
+      message: 'Try asking for something nearby, inexpensive, or in a specific place.',
     };
   }
   if (plan.claimType === 'venue_amenity') {
     return {
-      title: "I don't have reliable atmosphere details.",
-      message: 'My dining data does not verify seating, shade, views, noise, entertainment, or other venue amenities. I can still find food and restaurants in that area.',
+      title: "Sorry, I can't confirm that detail.",
+      message: 'Try asking for a food or restaurant in that area instead.',
     };
   }
   if (plan.claimType === 'ingredient_content' || plan.claimType === 'sensory_attribute') {
     return {
-      title: "I can't verify that from a menu listing.",
-      message: 'Menu descriptions are not complete ingredient, nutrition, preparation, or taste evidence. I would rather say that clearly than guess.',
+      title: "Sorry, I can't confirm that from the menu.",
+      message: 'Try searching for the dish itself, or ask a Cast Member about ingredients.',
     };
   }
   if (plan.claimType === 'cross_contact' || plan.claimType === 'kitchen_process') {
     return {
-      title: 'That needs a Cast Member, not a menu search.',
-      message: 'Rumbly does not have reliable cross-contact, fryer, equipment, or kitchen-process data. I can search only the allergy labels Disney publishes.',
+      title: 'A Cast Member is the best helper for that.',
+      message: 'I can search Disney allergy labels, but not cross-contact or kitchen practices.',
     };
   }
   return {
-    title: "I can't support that request with the data I have.",
-    message: 'I can reliably help with Disney World food, menus, restaurants, prices, locations, hours, dining features, and Disney-published allergy labels.',
+    title: "Sorry, that's outside what I can answer.",
+    message: 'Try asking about Disney World food, menus, restaurants, prices, locations, or hours.',
   };
 }
 
@@ -287,40 +295,77 @@ export function buildAskRumblyPresentation(
     const possibilityLabel = count === 1 ? 'Possibility' : 'Possibilities';
     const nearest = plan.constraints.distanceOperation === 'nearest';
     const cheapest = plan.constraints.priceOperation === 'cheapest';
+    const proximityRanked = Object.keys(result.distanceMilesByRestaurant ?? {}).length > 0;
     const noun = context.linkedKind === 'item'
       ? count === 1 ? 'menu item' : 'menu items'
       : count === 1 ? 'place' : 'places';
-    const directAnswer = ['open_menu', 'compare', 'check_feature', 'hours'].includes(plan.action);
-    const title = context.subjectiveOptions
-      ? context.hasCurrentLocation
-        ? "I can't tell you what's “best,” but here are some nearby options to try."
-        : "I can't tell you what's “best,” but here are some options to try."
+    const distanceAnswer = plan.action === 'distance';
+    const directAnswer = ['open_menu', 'compare', 'check_feature', 'hours', 'distance'].includes(plan.action);
+    const allergyAnswer = result.safety?.kind === 'allergy' || plan.constraints.allergenKeys.length > 0;
+    const popTartAlias = /\bpop[ -]?tarts?\b/i.test(plan.sourceText)
+      && usefulFoodTerms(plan).includes('lunch box tart');
+    const title = allergyAnswer
+      ? proximityRanked
+        ? count === 1 ? 'This is the closest Disney-labeled menu match.' : 'Here are the closest Disney-labeled menu matches.'
+        : count === 1 ? 'One Disney-labeled menu item matches.' : 'Here are the Disney-labeled menu matches.'
+      : popTartAlias
+      ? 'Disney calls these Lunch Box Tarts.'
+      : context.subjectiveOptions
+      ? subjectiveResultTitle(plan.sourceText, proximityRanked)
       : directAnswer
-      ? plan.action === 'open_menu'
-        ? 'I found that restaurant menu.'
+      ? distanceAnswer
+        ? result.text
+        : plan.action === 'open_menu'
+        ? restaurantInfoTitle(plan.sourceText)
         : plan.action === 'compare'
           ? 'These restaurant pages have the current menus.'
           : plan.action === 'hours'
-            ? 'Here are the current hours in Rumbly.'
+            ? plan.constraints.time === 'tomorrow'
+              ? "Here are tomorrow's hours in Rumbly."
+              : 'Here are the current hours in Rumbly.'
             : 'Here is what the restaurant data says.'
       : context.linkedKind
       ? nearest
         ? `Here's the closest ${noun} I could verify.`
         : cheapest
-          ? `Here's the cheapest ${noun} I could verify.`
-          : `Here's a list of ${noun} I found.`
+          ? cheapestResultTitle(plan.sourceText, noun, count)
+          : context.linkedKind === 'item'
+            ? resultListTitle(plan.sourceText, usefulFoodTerms(plan), proximityRanked, count)
+          : proximityRanked
+            ? count === 1
+              ? `Here's the closest matching ${noun} I found.`
+              : `Here are some of the closest ${noun} I found.`
+          : count === 1
+            ? `Here's one ${noun} I found.`
+            : `Here's a list of ${noun} I found.`
       : 'I found the right place to continue.';
     return {
       tone: 'answer',
-      eyebrow: context.subjectiveOptions
+      eyebrow: allergyAnswer
+        ? 'Disney allergy labels'
+        : popTartAlias
+        ? 'Disney menu name'
+        : context.subjectiveOptions
         ? 'A few options'
+        : distanceAnswer
+        ? context.hasCurrentLocation ? 'Distance from you' : 'Distance'
         : context.linkedKind ? `Found ${count} ${possibilityLabel}` : 'Ready',
       title,
-      message: context.subjectiveOptions
-        ? "Rumbly doesn't have reliable guest ratings, so these are verified menu matches—not a ranking."
+      message: allergyAnswer
+        ? 'Disney lists these for the requested allergy label. Review the allergy note below.'
+        : popTartAlias
+        ? context.subjectiveOptions
+          ? "I can't rank which is best, but here are the verified options I found."
+          : 'Here are the verified menu options I found.'
+        : context.subjectiveOptions
+        ? 'These are menu matches, not a ranking.'
+        : distanceAnswer
+        ? 'Straight-line distance from your current location.'
         : directAnswer || !context.linkedKind
         ? result.text
-        : 'Verified against the current Rumbly dining data.',
+        : context.linkedKind === 'item'
+          ? 'Tap one to see it on the menu.'
+          : 'Tap one to see the restaurant.',
       suggestions: [],
       trustNote,
     };
@@ -328,16 +373,30 @@ export function buildAskRumblyPresentation(
 
   if (result.kind === 'no-match') {
     const allergy = result.safety?.kind === 'allergy' || plan.constraints.allergenKeys.length > 0;
+    const pitaPocket = usefulFoodTerms(plan).some((term) => /\bpita\s+pocket\b/i.test(term));
+    const terms = usefulFoodTerms(plan);
+    const restaurantScoped = plan.subject.restaurantIds.length > 0;
+    const suggestions = noMatchSuggestions(plan);
     return {
       tone: 'no-match',
-      eyebrow: 'No verified match',
-      title: context.subjectiveOptions
-        ? "I can't choose what's “best,” and I couldn't verify a matching option."
-        : 'I understood the request, but could not verify a match.',
-      message: allergy
-        ? 'I checked only the menu items Disney labels for the requested allergy information, and none satisfied every part of the request. That does not mean an option is unavailable—only that Rumbly cannot verify one from Disney’s published labels.'
-        : 'I checked the current menu and restaurant data without dropping any part of your request. Nothing I found supported every detail, so I am not going to substitute a weaker match.',
-      suggestions: noMatchSuggestions(plan),
+      eyebrow: "Let's try that again",
+      title: pitaPocket
+        ? "I couldn't verify “pita pocket” as a current menu name."
+        : allergy
+        ? "Sorry, I couldn't find a Disney-labeled match."
+        : context.subjectiveOptions
+        ? "Sorry, I couldn't find a matching menu item."
+        : "Sorry, I couldn't find what you're looking for.",
+      message: pitaPocket
+        ? 'Try searching for pita instead.'
+        : allergy
+        ? "Try another food or area. Disney's labels can be limited, so check with a Cast Member before ordering."
+        : restaurantScoped && terms.length > 0
+          ? `Try searching for ${joinTerms(terms, plan.subject.foodMode)} without the restaurant name, or ask a different way.`
+          : context.subjectiveOptions
+            ? 'Try a broader food name, another area, or ask a different way.'
+            : 'Try a food, restaurant, park, or resort. You can also ask a different way.',
+      suggestions: suggestions.length > 0 ? suggestions : defaultSuggestions(),
       trustNote,
     };
   }
@@ -351,19 +410,19 @@ export function buildAskRumblyPresentation(
       tone: 'clarification',
       eyebrow: 'One quick detail',
       title: unknownAllergyLabel
-        ? 'I could not map that to a Disney allergy label in Rumbly.'
+        ? "Sorry, I don't recognize that Disney allergy label."
         : allergySafety
-        ? 'I can search Disney allergy labels, but I cannot decide what is safe.'
+        ? "I can search Disney's labels, but I can't decide what's safe."
         : needsLocation
           ? 'Where should I measure from?'
-          : 'I caught part of that, but I do not want to guess.',
+          : 'I need one more detail.',
       message: unknownAllergyLabel
-        ? 'The structured labels I can search are gluten/wheat, milk, egg, fish, shellfish, peanut, tree nut, sesame, soy, and general Allergy-Friendly. I will not substitute one of those for a different allergy.'
+        ? 'Try gluten/wheat, milk, egg, fish, shellfish, peanut, tree nut, sesame, or soy.'
         : allergySafety
-        ? 'If you continue, I will use only the allergy information Disney attaches directly to menu items.'
+        ? 'Continue to see only Disney-labeled items, then confirm with a Cast Member.'
         : needsLocation
-          ? 'Turn on the location button for a result based on where you are, or name a park, resort, or area in the question.'
-          : 'Try one of the choices below, or rephrase with a food, restaurant, park, resort, price, or dining feature.',
+          ? 'Use your location, or name a park, resort, or area.'
+          : 'Try adding a food, restaurant, park, resort, price, or dining feature.',
       suggestions: clarificationSuggestions(plan, context.hasCurrentLocation),
       trustNote,
     };
@@ -372,9 +431,9 @@ export function buildAskRumblyPresentation(
   if (result.kind === 'handoff') {
     return {
       tone: 'handoff',
-      eyebrow: 'Official or live information',
-      title: 'Disney has the reliable answer for this one.',
-      message: 'This depends on current availability or official policy that Rumbly does not maintain locally. Use the Disney link below when one is available.',
+      eyebrow: 'Check with Disney',
+      title: 'Disney has the live answer for this one.',
+      message: 'Open the Disney page below to check current availability or policy.',
       suggestions: [],
     };
   }
@@ -392,8 +451,8 @@ export function buildAskRumblyPresentation(
   return {
     tone: 'error',
     eyebrow: 'Something went wrong',
-    title: 'I could not finish that search.',
-    message: 'Your question is fine. Please try it once more; if it keeps happening, a data or app error needs attention.',
-    suggestions: [],
+    title: "Sorry, I couldn't finish that search.",
+    message: 'Please try it again or ask a different way.',
+    suggestions: defaultSuggestions(),
   };
 }

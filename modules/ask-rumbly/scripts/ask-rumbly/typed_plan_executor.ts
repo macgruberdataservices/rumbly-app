@@ -6,7 +6,7 @@ import { ALLERGY_ACKNOWLEDGEMENT_VERSION } from '../../../../src/data/allergyPol
 import { parkDisplayName, DISNEY_SPRINGS_AREAS, THEME_PARK_ORDER } from '../../../../src/data/locationNames.ts';
 import type { MenuItem, Restaurant } from '../../../../src/data/types.ts';
 import { distanceMiles, distanceToRestaurant, formatProximityDistance, type Coordinates } from '../../../../src/location/proximity.ts';
-import { getTodayStatus } from '../../../../src/data/hoursStatus.ts';
+import { getStatusForDayOffset, getTodayStatus } from '../../../../src/data/hoursStatus.ts';
 import { resortsShareGuestFacingFamily } from './location_aliases.ts';
 import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/dataTypes.ts';
 import { answerQuery, DEFAULT_ORIGIN, type ExecutorAction, type ExecutorResult } from './executor.ts';
@@ -138,6 +138,17 @@ function orderableItem(item: MenuItem): boolean {
   return true;
 }
 
+function disneyCategorizesAsSnack(item: MenuItem): boolean {
+  if (item.is_alcoholic) return false;
+  const itemName = normalizeForSearch(item.item);
+  if (/\b(?:bottled water|fountain beverage|soft drink|coke|coca[ -]cola|sprite|coffee|espresso|tea|lemonade|juice|beer|lager|ale|wine|cocktail|mocktail)\b/.test(itemName)) return false;
+  const category = normalizeForSearch(`${item.category_group} ${item.category} ${(item.norm_categories ?? []).join(' ')}`);
+  // A broad “snack” request should still be grounded in Disney's own menu
+  // grouping. Dining-period metadata alone is too permissive: thousands of
+  // drinks and full entrées are also orderable during snack hours.
+  return /\b(?:snacks?|desserts?|pastries?|treats?|cookies?|ice cream|gelato|sundaes?|sorbet|pretzels?|cupcakes?|candied apples?|crisped rice cereal treats?|cake slices?|fudge|marshmallows?|cotton candy|churros?|popcorn)\b/.test(category);
+}
+
 function cloneWithoutAppliedConstraints(plan: QueryPlan, genericFood: boolean): QueryPlan {
   return {
     ...plan,
@@ -208,6 +219,7 @@ function adaptLegacyNonAnswer(
 
 function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates | null, trace: ExecutionTrace): UnprovenPlanExecution {
   const listableItems = data.menuItems.filter((item) => orderableItem(item)
+    && (!plan.constraints.mealPeriods.includes('snack') || disneyCategorizesAsSnack(item))
     && (plan.constraints.priceOperation === 'cheapest' || plan.constraints.maxPrice != null ? item.price_value > 0 : true));
   if (listableItems.length === 0) {
     const labelNote = plan.constraints.allergenKeys.length > 0
@@ -292,10 +304,13 @@ function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates | nul
 }
 
 function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordinates | null, trace: ExecutionTrace): UnprovenPlanExecution {
+  const dayOffset = plan.constraints.time === 'tomorrow' ? 1 : 0;
   let rows = data.restaurants.map((restaurant) => ({
     restaurant,
     distance: restaurantDistance(origin, restaurant),
-    hours: getTodayStatus(data.hoursData, restaurant.restaurant_id),
+    hours: dayOffset === 1
+      ? getStatusForDayOffset(data.hoursData, restaurant.restaurant_id, dayOffset)
+      : getTodayStatus(data.hoursData, restaurant.restaurant_id),
   }));
   const wantsHours = plan.action === 'hours' || plan.claimType === 'restaurant_hours';
   if (plan.constraints.time === 'now') {
@@ -320,8 +335,12 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
   const resultRows = plan.constraints.distanceOperation === 'nearest' ? rows.slice(0, 1) : rows;
   const shown = resultRows.slice(0, 12);
   const labels = shown.map(({ restaurant, distance, hours }) => {
-    const hoursLabel = plan.constraints.time === 'now' ? hours.label : hours.todayLabel;
-    const schedule = wantsHours && hoursLabel ? ` — ${hoursLabel}` : '';
+    const hoursLabel = plan.constraints.time === 'now'
+      ? hours.label
+      : plan.constraints.time === 'tomorrow'
+        ? hours.todayLabel ? `Tomorrow: ${hours.todayLabel}` : ''
+        : hours.todayLabel;
+    const schedule = wantsHours && hoursLabel ? `: ${hoursLabel}` : '';
     return `${restaurant.restaurant}${distance == null ? '' : ` (${formatProximityDistance(distance)})`}${schedule}`;
   });
   const result: UnprovenPlanExecution = {
@@ -374,7 +393,11 @@ function nativeVerifiedFoodAnswer(
           if (plan.constraints.priceOperation === 'cheapest') return (a.price_value || Infinity) - (b.price_value || Infinity);
           return a.item.localeCompare(b.item);
         });
-        return sorted.slice(0, 1);
+        // Objective searches need one price witness per requested term.
+        // Ordinary and nearest searches retain every verified match at the
+        // qualifying restaurant; the app can bound presentation without
+        // silently discarding menu variants from the proven result set.
+        return plan.constraints.priceOperation === 'cheapest' ? sorted.slice(0, 1) : sorted;
       })
       .forEach((item) => selectedByKey.set(`${item.restaurant_id}:${item.item_id}`, item));
     const selected = Array.from(selectedByKey.values());
@@ -407,7 +430,7 @@ function nativeVerifiedFoodAnswer(
   const shown = resultRows.slice(0, 12);
   const labels = shown.map(({ restaurant, items, distance }) => {
     const itemLabel = items.map((item) => `${item.item}${item.price_value > 0 ? ` (${item.price_display})` : ''}`).join(' + ');
-    return `${restaurant.restaurant}${distance == null ? '' : ` (${formatProximityDistance(distance)})`} — ${itemLabel}`;
+    return `${restaurant.restaurant}${distance == null ? '' : ` (${formatProximityDistance(distance)})`}: ${itemLabel}`;
   });
   const requested = plan.subject.foodTerms.join(plan.subject.foodMode === 'any' ? ' or ' : ' and ');
   const prefix = plan.constraints.priceOperation === 'cheapest'
@@ -417,7 +440,14 @@ function nativeVerifiedFoodAnswer(
       : plan.action === 'check_menu' && resultRows.length === 1
     ? `Yes, ${resultRows[0].restaurant.restaurant} has a verified match for "${requested}": `
     : `${rows.length} verified location${rows.length === 1 ? '' : 's'} for "${requested}": `;
-  const selectedItems = resultRows.flatMap((row) => row.items);
+  const selectedItemRows = resultRows.flatMap((row) => row.items.map((item) => ({
+    item,
+    restaurant: row.restaurant,
+  })));
+  const selectedItems = (plan.constraints.priceOperation === 'cheapest' || plan.constraints.distanceOperation === 'nearest'
+    ? selectedItemRows
+    : diversifyRestaurants(selectedItemRows))
+    .map((row) => row.item);
   const result: UnprovenPlanExecution = {
     kind: 'answer',
     text: `${prefix}${labels.join('; ')}${plan.constraints.priceOperation !== 'cheapest' && plan.constraints.distanceOperation !== 'nearest' && resultRows.length > shown.length ? `; and ${resultRows.length - shown.length} more` : ''}.`,
