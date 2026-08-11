@@ -1,3 +1,10 @@
+// NOTE on norm_item, 2026-08-11: nothing reads this column yet. The search
+// port it was added for is parked (see sqlSearch.ts), and the column is kept
+// deliberately -- removing it would mean another LOCAL_DATA_SCHEMA_VERSION
+// bump and another forced reimport for every install, to reclaim one indexed
+// text column. Leaving it costs a little database size and ~50ms of import
+// time, and keeps the port cheap to resume.
+//
 // Schema ownership for db.ts's menu_items table, split out from it for the
 // same reason activitySql.ts and journalSchema.ts are separate: this file
 // imports nothing from the Expo runtime, only the SqlDatabase interface, so

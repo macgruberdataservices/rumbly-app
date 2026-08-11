@@ -1,3 +1,36 @@
+// PARKED, 2026-08-11. Complete, tested, and deliberately unreferenced.
+//
+// This works and is proven equivalent to the in-memory path against the real
+// 31k dataset (tests/sqlSearch.test.mjs). It is not wired up because on its
+// own it buys almost nothing, and that is worth understanding before picking
+// it back up.
+//
+// The prize was supposed to be the ~390ms JSON.parse of search_index.json on
+// every cold launch, plus the ~31MB it retains. But useSearch is only one of
+// five callers of loadSearchIndex(). FindFeed is another, and Find is the
+// default tab -- so the parse still happens on every launch and the array
+// stays resident regardless of where search gets its candidates. Switching
+// search to SQL changes query latency (in an unmeasured direction, since it
+// adds a bridge crossing the in-memory path does not have) and nothing else.
+//
+// What would unblock it: FindFeed sourcing its candidates from SQLite too.
+// That is not a straight swap -- buildFindFeed scans the whole item set to
+// score, and marshalling ~25k rows across the bridge could cost as much as
+// the parse it replaces, so the rails would need their filters pushed into
+// SQL. MyActivityScreen, JournalComposerScreen and AskRumblyScreen also read
+// the index, but they are on-demand screens, so they pay the parse when
+// opened rather than at launch. AskRumblyScreen already loads
+// getAllMenuItems() from SQLite alongside it.
+//
+// If tests/sqlSearch.test.mjs ever fails because rank.ts changed and this did
+// not: that is the intended alarm, not a nuisance. Either update this to
+// match, or delete both files -- do not weaken the test to keep parked code
+// green.
+//
+// See Docs/SEARCH_PERFORMANCE.md in the parent repo for the measurements.
+//
+// ---
+//
 // The SQL-backed search path, running alongside the in-memory one.
 //
 // Deliberately calls rank.ts's search() unmodified. Nothing about tiers,

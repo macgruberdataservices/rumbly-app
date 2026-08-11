@@ -1,3 +1,6 @@
+// PARKED, 2026-08-11 -- see the header of sqlSearch.ts for why. Complete and
+// tested; nothing calls it.
+//
 // SQL candidate retrieval for item search.
 //
 // This is deliberately only the RETRIEVAL half of the port. Tier assignment,
