@@ -71,7 +71,7 @@ export function ItemResultPreviewCard({
   const translateY0 = originCenterY - screenHeight / 2;
 
   const statusLabels = [
-    isNeeded && '★ Need It',
+    isNeeded && 'Need It',
     gotItCount > 0 && `✓ Got It ×${gotItCount}`,
     isLoved && '♥ Love It',
   ].filter(Boolean) as string[];

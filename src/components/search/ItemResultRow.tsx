@@ -20,6 +20,7 @@ import { COLORS, DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 import { NativeItemResultRow } from './NativeItemResultRow';
 import { MenuItemRatingSummary } from '../MenuItemRatingSummary';
+import { ActivityMarks, ActivitySymbol } from '../ActivityMarks';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -174,7 +175,12 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
           accessibilityState={{ selected: isNeeded }}
         >
           <View style={[styles.actionCircle, isNeeded && styles.actionCircleNeed]}>
-            <Text style={[styles.actionGlyph, isNeeded && styles.actionGlyphActive]}>★</Text>
+            <ActivitySymbol
+              kind="needIt"
+              active={isNeeded}
+              size={16}
+              tintColor={isNeeded ? COLORS.surface : COLORS.ink}
+            />
           </View>
           <Text style={styles.actionLabel}>Need It</Text>
         </Pressable>
@@ -262,6 +268,9 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
             restaurantLocationLabel(restaurant),
             distanceMiles === null || distanceMiles === undefined ? null : formatProximityDistance(distanceMiles),
             item.price_display,
+            needItEnabled && isNeeded && 'Need It',
+            gotItEnabled && gotItCount > 0 && 'Got It',
+            isLoved && 'Love It',
           ]
             .filter(Boolean)
             .join(', ')}
@@ -294,9 +303,16 @@ const ClassicItemResultRow = forwardRef<View, ItemResultRowProps>(function Class
               </View>
             )}
           </View>
-          <Text style={[text.body, styles.restaurant]} numberOfLines={1}>
-            {restaurant.restaurant}
-          </Text>
+          <View style={styles.restaurantRow}>
+            <Text style={[text.body, styles.restaurant]} numberOfLines={1}>
+              {restaurant.restaurant}
+            </Text>
+            <ActivityMarks
+              isNeeded={needItEnabled && isNeeded}
+              hasGotIt={gotItEnabled && gotItCount > 0}
+              isLoved={isLoved}
+            />
+          </View>
           <View style={styles.metaRow}>
             <Text style={[text.bodyMuted, styles.location]} numberOfLines={1}>
               {metaLabel}
@@ -399,8 +415,15 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     color: COLORS.ink,
   },
-  restaurant: {
+  restaurantRow: {
+    minHeight: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
     marginTop: 2,
+  },
+  restaurant: {
+    flex: 1,
     fontSize: 13,
   },
   metaRow: {

@@ -1,6 +1,42 @@
 import ExpoModulesCore
 import SwiftUI
 
+private struct ActivityMarksView: View {
+  let isNeeded: Bool
+  let hasGotIt: Bool
+  let isLoved: Bool
+
+  private var labels: [String] {
+    [
+      isNeeded ? "Need It" : nil,
+      hasGotIt ? "Got It" : nil,
+      isLoved ? "Love It" : nil,
+    ].compactMap { $0 }
+  }
+
+  var body: some View {
+    if !labels.isEmpty {
+      HStack(spacing: 3) {
+        if isNeeded {
+          Image(systemName: "bookmark.fill")
+            .foregroundStyle(Color(red: 0.12, green: 0.38, blue: 0.47))
+        }
+        if hasGotIt {
+          Image(systemName: "checkmark.circle.fill")
+            .foregroundStyle(Color(red: 0.47, green: 0.31, blue: 0.00))
+        }
+        if isLoved {
+          Image(systemName: "heart.fill")
+            .foregroundStyle(Color(red: 0.85, green: 0.44, blue: 0.30))
+        }
+      }
+      .font(.system(size: 11, weight: .semibold))
+      .fixedSize(horizontal: true, vertical: false)
+      .accessibilityHidden(true)
+    }
+  }
+}
+
 private struct NativeMenuItem: Codable, Identifiable, Equatable {
   let anchorId: String
   let itemId: String
@@ -728,11 +764,25 @@ private struct NativeSwipeMenuRow: View {
             .font(.system(size: 14))
         }
       }
-      if let description = item.description, !description.isEmpty {
-        Text(description)
-          .font(.system(size: 13))
-          .foregroundStyle(Color(red: 0.42, green: 0.46, blue: 0.48))
-          .lineLimit(1)
+      if item.description?.isEmpty == false
+        || (item.needItEnabled && item.isNeeded)
+        || (item.gotItEnabled && item.gotItCount > 0)
+        || item.isLoved
+      {
+        HStack(spacing: 8) {
+          if let description = item.description, !description.isEmpty {
+            Text(description)
+              .font(.system(size: 13))
+              .foregroundStyle(Color(red: 0.42, green: 0.46, blue: 0.48))
+              .lineLimit(1)
+          }
+          Spacer(minLength: 4)
+          ActivityMarksView(
+            isNeeded: item.needItEnabled && item.isNeeded,
+            hasGotIt: item.gotItEnabled && item.gotItCount > 0,
+            isLoved: item.isLoved
+          )
+        }
       }
     }
     .padding(.horizontal, 18)
@@ -759,7 +809,15 @@ private struct NativeSwipeMenuRow: View {
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel(item.name)
     .accessibilityValue(
-      [item.isNew ? "New" : nil, item.price, item.description, item.rating]
+      [
+        item.isNew ? "New" : nil,
+        item.price,
+        item.description,
+        item.rating,
+        item.needItEnabled && item.isNeeded ? "Need It" : nil,
+        item.gotItEnabled && item.gotItCount > 0 ? "Got It" : nil,
+        item.isLoved ? "Love It" : nil,
+      ]
         .compactMap { $0 }
         .filter { !$0.isEmpty }
         .joined(separator: ", ")
@@ -847,7 +905,7 @@ private struct NativeSwipeMenuRow: View {
       if item.needItEnabled {
         actionButton(
           title: "Need It",
-          systemImage: item.isNeeded ? "star.fill" : "star",
+          systemImage: item.isNeeded ? "bookmark.fill" : "bookmark",
           color: Color(red: 0.35, green: 0.42, blue: 0.95),
           action: "needIt"
         )
@@ -1145,9 +1203,17 @@ private struct NativeSearchItemRowRootView: View {
         }
       }
 
-      Text(row.restaurant)
-        .font(.system(size: 14))
-        .lineLimit(1)
+      HStack(spacing: 8) {
+        Text(row.restaurant)
+          .font(.system(size: 14))
+          .lineLimit(1)
+        Spacer(minLength: 4)
+        ActivityMarksView(
+          isNeeded: row.needItEnabled && row.isNeeded,
+          hasGotIt: row.gotItEnabled && row.gotItCount > 0,
+          isLoved: row.isLoved
+        )
+      }
 
       HStack(spacing: 8) {
         Text(row.meta)
@@ -1217,7 +1283,15 @@ private struct NativeSearchItemRowRootView: View {
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel(row.name)
     .accessibilityValue(
-      [row.restaurant, row.meta, row.price, row.rating]
+      [
+        row.restaurant,
+        row.meta,
+        row.price,
+        row.rating,
+        row.needItEnabled && row.isNeeded ? "Need It" : nil,
+        row.gotItEnabled && row.gotItCount > 0 ? "Got It" : nil,
+        row.isLoved ? "Love It" : nil,
+      ]
         .compactMap { $0 }
         .filter { !$0.isEmpty }
         .joined(separator: ", ")
@@ -1253,7 +1327,7 @@ private struct NativeSearchItemRowRootView: View {
       if row.needItEnabled {
         actionButton(
           title: "Need It",
-          systemImage: row.isNeeded ? "star.fill" : "star",
+          systemImage: row.isNeeded ? "bookmark.fill" : "bookmark",
           color: Color(red: 0.35, green: 0.42, blue: 0.95),
           action: "needIt"
         )
@@ -1471,19 +1545,27 @@ private struct NativeSearchRestaurantRowRootView: View {
         Text(highlightedName(row))
           .font(.system(size: 17, weight: .bold))
           .lineLimit(1)
-        Spacer(minLength: 4)
-        if row.isNeeded || row.isLoved || row.gotItCount > 0 {
-          Circle()
-            .fill(Color(red: 0.54, green: 0.78, blue: 0.88))
-            .frame(width: 7, height: 7)
-        }
       }
 
-      if !row.meta.isEmpty {
-        Text(row.meta)
-          .font(.system(size: 13))
-          .foregroundStyle(.secondary)
-          .lineLimit(1)
+      if !row.meta.isEmpty
+        || (row.needItEnabled && row.isNeeded)
+        || (row.gotItEnabled && row.gotItCount > 0)
+        || row.isLoved
+      {
+        HStack(spacing: 8) {
+          if !row.meta.isEmpty {
+            Text(row.meta)
+              .font(.system(size: 13))
+              .foregroundStyle(.secondary)
+              .lineLimit(1)
+          }
+          Spacer(minLength: 4)
+          ActivityMarksView(
+            isNeeded: row.needItEnabled && row.isNeeded,
+            hasGotIt: row.gotItEnabled && row.gotItCount > 0,
+            isLoved: row.isLoved
+          )
+        }
       }
 
       if let description = row.description, !description.isEmpty {
@@ -1553,7 +1635,13 @@ private struct NativeSearchRestaurantRowRootView: View {
     .accessibilityAddTraits(.isButton)
     .accessibilityLabel(row.name)
     .accessibilityValue(
-      [row.meta, row.description]
+      [
+        row.meta,
+        row.description,
+        row.needItEnabled && row.isNeeded ? "Need It" : nil,
+        row.gotItEnabled && row.gotItCount > 0 ? "Got It" : nil,
+        row.isLoved ? "Love It" : nil,
+      ]
         .compactMap { $0 }
         .filter { !$0.isEmpty }
         .joined(separator: ", ")
@@ -1596,7 +1684,7 @@ private struct NativeSearchRestaurantRowRootView: View {
       if row.needItEnabled {
         actionButton(
           title: "Need It",
-          systemImage: row.isNeeded ? "star.fill" : "star",
+          systemImage: row.isNeeded ? "bookmark.fill" : "bookmark",
           color: Color(red: 0.35, green: 0.42, blue: 0.95),
           action: "needIt"
         )

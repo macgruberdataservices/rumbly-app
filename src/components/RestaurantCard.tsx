@@ -16,6 +16,7 @@ import { restaurantLocationLabel } from '../data/locationNames';
 import { formatRatingAverage } from '../data/ratingAverage';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { NativeRestaurantResultRow } from './search/NativeRestaurantResultRow';
+import { ActivityMarks } from './ActivityMarks';
 
 const AnimatedPressable = Animated.createAnimatedComponent(Pressable);
 
@@ -73,13 +74,15 @@ const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function Cla
   ref
 ) {
   const description = showDescription ? sanitizeRestaurantDescription(restaurant.description) : '';
-  const { lovedIds, gotItRestaurantCounts, restaurantRatingAverages } = useActivity();
+  const { lovedIds, needItRestaurantIds, gotItRestaurantCounts, restaurantRatingAverages } = useActivity();
+  const needItEnabled = useEntitlement('need_it');
   const gotItEnabled = useEntitlement('got_it');
   const ratingAveragesEnabled = useEntitlement('rating_averages');
   const { hoursData } = useDataProvider();
+  const isNeeded = needItRestaurantIds.has(restaurant.restaurant_id);
   const isLoved = lovedIds.has(restaurant.restaurant_id);
   const gotItCount = gotItRestaurantCounts.get(restaurant.restaurant_id) ?? 0;
-  const hasActivity = isLoved || (gotItEnabled && gotItCount > 0);
+  const hasVisibleActivity = (needItEnabled && isNeeded) || (gotItEnabled && gotItCount > 0) || isLoved;
   const ratingAverage = ratingAveragesEnabled ? restaurantRatingAverages.get(restaurant.restaurant_id) : undefined;
   const ratingAverageLabel = formatRatingAverage(ratingAverage);
 
@@ -137,7 +140,14 @@ const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function Cla
           });
         }}
         accessibilityRole="button"
-        accessibilityLabel={[restaurant.restaurant, ...metaParts, description].filter(Boolean).join(', ')}
+        accessibilityLabel={[
+          restaurant.restaurant,
+          ...metaParts,
+          description,
+          needItEnabled && isNeeded && 'Need It',
+          gotItEnabled && gotItCount > 0 && 'Got It',
+          isLoved && 'Love It',
+        ].filter(Boolean).join(', ')}
         style={[
           styles.card,
           {
@@ -157,10 +167,18 @@ const ClassicRestaurantCard = forwardRef<View, RestaurantCardProps>(function Cla
             query={highlightQuery}
             style={[text.restaurantName, highlightQuery && styles.searchTitle]}
           />
-          {hasActivity && <View style={styles.activityDot} />}
         </View>
-        {metaParts.length > 0 && (
-          <Text style={[text.bodyMuted, styles.meta]}>{metaParts.join(' · ')}</Text>
+        {(metaParts.length > 0 || hasVisibleActivity) && (
+          <View style={styles.metaRow}>
+            {metaParts.length > 0 && (
+              <Text style={[text.bodyMuted, styles.meta]} numberOfLines={1}>{metaParts.join(' · ')}</Text>
+            )}
+            <ActivityMarks
+              isNeeded={needItEnabled && isNeeded}
+              hasGotIt={gotItEnabled && gotItCount > 0}
+              isLoved={isLoved}
+            />
+          </View>
         )}
         {!!description && (
           <Text style={[text.bodyMuted, styles.description]} numberOfLines={1}>
@@ -204,14 +222,15 @@ const styles = StyleSheet.create({
   searchTitle: {
     fontSize: 17,
   },
-  activityDot: {
-    width: 6,
-    height: 6,
-    borderRadius: 3,
-    backgroundColor: DAYLIGHT.ocean,
+  metaRow: {
+    minHeight: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+    marginTop: 2,
   },
   meta: {
-    marginTop: 2,
+    flex: 1,
   },
   description: {
     marginTop: 2,

@@ -8,6 +8,7 @@ import type { HoursStatus } from '../../data/hoursStatus';
 import type { CapabilityKind } from './CapabilityDetailSheet';
 import { hasMobileOrder, openMobileOrderInOfficialApp, openRestaurantInOfficialApp } from '../../data/mdxDeepLink';
 import { formatRatingAverage } from '../../data/ratingAverage';
+import { ActivitySymbol } from '../ActivityMarks';
 import { useActivity } from '../../hooks/useActivity';
 import { useEntitlement } from '../../hooks/useEntitlement';
 import { useJournalComposer } from '../../hooks/useJournalComposer';
@@ -305,7 +306,7 @@ export function ExpandedHeader({
           accessibilityState={{ selected: isNeeded }}
         >
           <View style={[styles.actionCircle, styles.actionCircleNeed]}>
-            <Text style={[styles.actionGlyph, styles.actionGlyphActive]}>{isNeeded ? '★' : '☆'}</Text>
+            <ActivitySymbol kind="needIt" active={isNeeded} size={18} tintColor={COLORS.surface} />
           </View>
           <Text style={[styles.actionLabel, styles.actionLabelNeed]}>Need It</Text>
         </Pressable>

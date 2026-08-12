@@ -18,6 +18,7 @@ import { sanitizeRestaurantDescription } from '../data/restaurantDescription';
 import { COLORS, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 import { MenuItemRatingSummary } from './MenuItemRatingSummary';
+import { ActivityMarks, ActivitySymbol } from './ActivityMarks';
 
 // Fixed so every row lays out identically regardless of description
 // length -- name and description each get one line with ellipsis
@@ -92,6 +93,7 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
   const isLoved = lovedItemKeys.has(key);
   const isNeeded = needItItemKeys.has(key);
   const gotItCount = gotItItemCounts.get(key) ?? 0;
+  const hasVisibleActivity = (needItEnabled && isNeeded) || (gotItEnabled && gotItCount > 0) || isLoved;
   const ratingAverage = ratingAveragesEnabled ? itemRatingAverages.get(key) : undefined;
 
   const swipeableRef = useRef<Swipeable>(null);
@@ -169,7 +171,12 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
           accessibilityState={{ selected: isNeeded }}
         >
           <View style={[styles.actionCircle, isNeeded && styles.actionCircleNeed]}>
-            <Text style={[styles.actionGlyph, isNeeded && styles.actionGlyphActive]}>★</Text>
+            <ActivitySymbol
+              kind="needIt"
+              active={isNeeded}
+              size={16}
+              tintColor={isNeeded ? COLORS.surface : COLORS.ink}
+            />
           </View>
           <Text style={styles.actionLabel}>Need It</Text>
         </Pressable>
@@ -257,7 +264,16 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
               });
             }}
             accessible
-            accessibilityLabel={[item.item, isNew && 'New', item.price_display, description, ...badges].filter(Boolean).join(', ')}
+            accessibilityLabel={[
+              item.item,
+              isNew && 'New',
+              item.price_display,
+              description,
+              ...badges,
+              needItEnabled && isNeeded && 'Need It',
+              gotItEnabled && gotItCount > 0 && 'Got It',
+              isLoved && 'Love It',
+            ].filter(Boolean).join(', ')}
             accessibilityState={{ selected: highlighted }}
             style={[
               styles.row,
@@ -282,10 +298,19 @@ export function MenuItemRow({ item, highlighted = false }: { item: MenuItem; hig
               )}
               <Text style={[text.body, styles.price]}>{item.price_display}</Text>
             </View>
-            {!!description && (
-              <Text style={[text.bodyMuted, styles.description]} numberOfLines={1}>
-                {description}
-              </Text>
+            {(!!description || hasVisibleActivity) && (
+              <View style={styles.detailRow}>
+                {!!description && (
+                  <Text style={[text.bodyMuted, styles.description]} numberOfLines={1}>
+                    {description}
+                  </Text>
+                )}
+                <ActivityMarks
+                  isNeeded={needItEnabled && isNeeded}
+                  hasGotIt={gotItEnabled && gotItCount > 0}
+                  isLoved={isLoved}
+                />
+              </View>
             )}
           </AnimatedPressable>
         </Animated.View>
@@ -401,8 +426,15 @@ const styles = StyleSheet.create({
     lineHeight: 11,
     color: COLORS.ink,
   },
-  description: {
+  detailRow: {
+    minHeight: 18,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
     marginTop: 2,
+  },
+  description: {
+    flex: 1,
   },
   actionsRow: {
     flexDirection: 'row',
