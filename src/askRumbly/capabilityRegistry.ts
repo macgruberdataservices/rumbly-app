@@ -23,6 +23,10 @@ export const CAPABILITY_REGISTRY: Readonly<Record<ClaimType, CapabilityRule>> = 
     disposition: 'execute', evidence: ['menu_item_fields'],
     reason: 'Menu presence is supported by current structured menu rows.',
   },
+  menu_recency: {
+    disposition: 'execute', evidence: ['menu_item_fields'],
+    reason: "A row's first_seen date supports when Rumbly first saw it, which is not the same as when Disney added it.",
+  },
   restaurant_feature: {
     disposition: 'execute', evidence: ['restaurant_fields'],
     reason: 'Restaurant feature flags support this question without claiming live availability.',

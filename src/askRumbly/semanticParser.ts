@@ -64,6 +64,10 @@ const MEAL_PATTERNS = [
 ];
 
 const NAMED_ANCHOR_NEAR_RADIUS_MILES = 0.25;
+// How far back "new" reaches. Rolling, so it stays meaningful as Rumbly's
+// collection history lengthens.
+const RECENCY_WINDOW_DAYS = 30;
+const RECENCY_PATTERN = /\b(?:what(?:'s|s| is)?\s+new|anything\s+new|any\s+new|newly\s+(?:added|released)|recently\s+(?:added|released|new)|just\s+(?:added|released|dropped)|new\s+(?:items?|snacks?|foods?|menu items?|treats?|drinks?|desserts?|things?|additions?)|latest\s+(?:items?|snacks?|additions?|treats?)|\bnew\b)/gi;
 
 function normalizeForMatching(value: string): string {
   return value
@@ -695,6 +699,8 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   );
   const menuRoutingSpans = collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi);
   const excludedFoods = extractExcludedFoods(analysisText);
+  const asksWhatsNew = /\b(?:what(?:'s|s| is)?\s+new|anything\s+new|any\s+new|newly\s+(?:added|released)|recently\s+(?:added|released|new)|just\s+(?:added|released|dropped)|new\s+(?:items?|snacks?|foods?|menu items?|treats?|drinks?|desserts?|things?|additions?)|latest\s+(?:items?|snacks?|additions?|treats?))\b/i.test(analysisText);
+  const recencySpans = asksWhatsNew ? collectPatternSpans(analysisText, RECENCY_PATTERN) : [];
   // The resort's own name is a scope, not a food or a leftover word.
   const resortScopeSpans = collectPatternSpans(analysisText, /\b(?:walt\s+)?disney\s+world\b/gi);
   const semanticText = withoutSpans(analysisText, linkedEntities).replace(/\s+/g, ' ');
@@ -716,7 +722,8 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     // Excluded foods are claimed here so a "not a hot dog" exclusion cannot
     // also be recognised as the food being requested.
     [...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans,
-      ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...excludedFoods.spans, ...resortScopeSpans],
+      ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...excludedFoods.spans, ...resortScopeSpans,
+      ...recencySpans],
     vocabulary
   );
   let foodTerms = foods.terms.filter((term) => normalizeForMatching(term) !== normalizeForMatching(cuisine.value ?? ''));
@@ -739,6 +746,10 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   // the proof layer validates the restaurant route rather than inventing a
   // menu-item requirement.
   if (action === 'open_menu') foodTerms = [];
+  // Constraint spans are stripped in order, so an earlier meal span can consume
+  // "snacks" out of "new snacks" before the recency span matches, leaving the
+  // bare adjective behind as a food term.
+  if (asksWhatsNew) foodTerms = foodTerms.filter((term) => !/^(?:new|newest|latest|recent|recently)$/i.test(term));
   // A named restaurant with nothing else being asked about is a request for
   // that restaurant's menu. Without this the executor is handed an item search
   // with no item and returns a raw adapter error to the guest.
@@ -769,7 +780,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   // "In Fantasyland" remains a strict scope, while "near Fantasyland" and
   // "nearest to Fantasyland" use the trusted central-area coordinate only.
   const scopedLocations = parsedLocations.filter((location) => location.entityId !== distanceAnchor?.entityId);
-  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
+  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...recencySpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
   const unconsumed = meaningfulUnconsumed(analysisText, consumedSpans);
   const reasons: string[] = [];
 
@@ -873,6 +884,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       excludedFeatures,
       serviceStyle: requiredFeatures.includes('quick_service') ? 'Quick Service' : undefined,
       cuisine: cuisine.value,
+      recency: asksWhatsNew ? { withinDays: RECENCY_WINDOW_DAYS } : undefined,
       priceOperation: /\b(?:cheapest|lowest priced|least expensive)\b/i.test(grammarText)
         ? 'cheapest'
         : /\b(?:under|below|less than|up to)\s*\$/i.test(grammarText) ? 'maximum' : undefined,

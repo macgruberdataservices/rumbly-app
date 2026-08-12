@@ -223,8 +223,40 @@ function adaptLegacyNonAnswer(
   };
 }
 
+/**
+ * Rumbly's own collection start, derived from the data rather than configured.
+ *
+ * Every row imported on that first day has an unknown true age -- Rumbly
+ * cannot see before its own birth -- so those rows are never "new". Once the
+ * collection start falls outside the rolling window this stops mattering and
+ * the window alone decides, which is how the answer sharpens as the app's
+ * history lengthens.
+ */
+const collectionStartCache = new WeakMap<object, string>();
+
+function collectionStart(data: LoadedData): string {
+  const cached = collectionStartCache.get(data as unknown as object);
+  if (cached !== undefined) return cached;
+  let earliest = '';
+  for (const item of data.menuItems) {
+    const seen = (item.first_seen ?? '').slice(0, 10);
+    if (seen && (earliest === '' || seen < earliest)) earliest = seen;
+  }
+  collectionStartCache.set(data as unknown as object, earliest);
+  return earliest;
+}
+
+export function itemIsRecent(item: MenuItem, data: LoadedData, withinDays: number): boolean {
+  const seen = (item.first_seen ?? '').slice(0, 10);
+  if (!seen) return false;
+  if (seen <= collectionStart(data)) return false;
+  const cutoff = new Date(Date.now() - withinDays * 86400000).toISOString().slice(0, 10);
+  return seen >= cutoff;
+}
+
 function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates | null, trace: ExecutionTrace): UnprovenPlanExecution {
   const listableItems = data.menuItems.filter((item) => orderableItem(item)
+    && (plan.constraints.recency == null || itemIsRecent(item, data, plan.constraints.recency.withinDays))
     && (!plan.constraints.mealPeriods.includes('snack') || disneyCategorizesAsSnack(item))
     && (plan.constraints.priceOperation === 'cheapest' || plan.constraints.maxPrice != null ? item.price_value > 0 : true));
   if (listableItems.length === 0) {
@@ -620,6 +652,11 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     menuItems = menuItems.filter((item) => directAllergenMatch(item, plan.constraints.allergenKeys));
     applied.push('disney-allergen-label');
   }
+  if (plan.constraints.recency != null) {
+    const { withinDays } = plan.constraints.recency;
+    menuItems = menuItems.filter((item) => itemIsRecent(item, source, withinDays));
+    applied.push(`first-seen-within:${withinDays}d`);
+  }
   if (genericFood && plan.subject.foodTerms.some((term) => /^meals?$/.test(normalizeForSearch(term)))) {
     menuItems = menuItems.filter((item) => /entr[ée]e|entr-es|kids-meals/.test(normalizeForSearch(`${item.category} ${item.category_group}`)));
     applied.push('generic-meal-as-entree');
@@ -689,7 +726,10 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     || plan.constraints.priceOperation === 'cheapest'
     || plan.constraints.allergenKeys.length > 0
     || plan.constraints.dietaryKeys.length > 0
-    || plan.constraints.mealPeriods.length > 0;
+    || plan.constraints.mealPeriods.length > 0
+    // "What's new" is a question about rows, not venues. Without this the
+    // answer is every restaurant in the park rather than the new items.
+    || plan.constraints.recency != null;
   const restaurantListing = plan.action === 'hours'
     || plan.action === 'distance'
     || plan.claimType === 'restaurant_hours'

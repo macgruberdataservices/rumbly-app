@@ -9,6 +9,7 @@ import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/data
 import { resortsShareGuestFacingFamily } from './location_aliases.ts';
 import { distanceAnchorById } from '../../../../src/askRumbly/distanceAnchors.ts';
 import { CLASS_TERM_CATEGORIES, FOOD_TERM_ALTERNATIVES } from '../../../../src/askRumbly/foodSynonyms.ts';
+import { itemIsRecent } from './typed_plan_executor.ts';
 
 export interface ProofTarget {
   restaurantIds?: string[];
@@ -249,6 +250,18 @@ function proveItemConstraints(plan: QueryPlan, item: MenuItem, witnesses: Constr
   }
 }
 
+function proveRecency(plan: QueryPlan, item: MenuItem, data: LoadedData, witnesses: ConstraintWitness[], failures: string[]): void {
+  if (plan.constraints.recency == null) return;
+  const key = `${item.restaurant_id}:${item.item_id}`;
+  if (itemIsRecent(item, data, plan.constraints.recency.withinDays)) {
+    witnesses.push({
+      constraint: `first-seen-within:${plan.constraints.recency.withinDays}d`,
+      itemKey: key,
+      evidence: [`first_seen=${(item.first_seen ?? '').slice(0, 10)}`],
+    });
+  } else failures.push(`${item.item} was not first seen inside the requested window`);
+}
+
 function restaurantProof(
   plan: QueryPlan,
   restaurant: Restaurant,
@@ -380,7 +393,10 @@ function restaurantProof(
     });
   }
   if (missing.length > 0) failures.push(`${restaurant.restaurant} lacks item evidence for: ${missing.join(', ')}`);
-  for (const item of items) proveItemConstraints(plan, item, witnesses, failures);
+  for (const item of items) {
+    proveItemConstraints(plan, item, witnesses, failures);
+    proveRecency(plan, item, data, witnesses, failures);
+  }
   return { witnesses, failures };
 }
 

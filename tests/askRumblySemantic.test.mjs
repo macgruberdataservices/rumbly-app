@@ -1381,3 +1381,46 @@ test('claim resolution reports the deciding rule and its evidence', () => {
   assert.equal(scoped.claimType, 'restaurant_hours');
   assert.notEqual(scoped.diagnostics.claimRule, 'park-hours-subject');
 });
+
+test('whats-new answers from first-seen dates without claiming Disney added them', () => {
+  const response = runAskRumbly("what's new at Epcot", data);
+  assert.equal(response.plan.claimType, 'menu_recency');
+  assert.equal(response.plan.diagnostics.claimRule, 'whats-new');
+  assert.deepEqual(response.plan.constraints.recency, { withinDays: 30 });
+  // "New" is grammar here, not a food request.
+  assert.deepEqual(response.plan.subject.foodTerms, []);
+  assert.equal(response.plan.diagnostics.meaningfulUnconsumedText, '');
+  assert.equal(response.result.kind, 'answer');
+  assert.equal(response.result.proof.status, 'proven');
+
+  // Rumbly cannot see before its own first collection, so every row imported
+  // on that first day has an unknown age and can never count as new.
+  const earliest = data.menuItems
+    .map((item) => (item.first_seen ?? '').slice(0, 10))
+    .filter(Boolean)
+    .sort()[0];
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const keys = new Set(response.result.itemKeys);
+  const returned = data.menuItems.filter((item) => keys.has(`${item.restaurant_id}:${item.item_id}`));
+  assert.ok(returned.length > 0);
+  assert.ok(returned.every((item) => (item.first_seen ?? '').slice(0, 10) > earliest), 'no birth-import rows');
+  assert.ok(returned.every((item) => (item.first_seen ?? '').slice(0, 10) >= cutoff), 'inside the window');
+
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: 'item',
+    totalPossibilities: response.result.itemKeys.length,
+    hasCurrentLocation: false,
+  });
+  assert.match(presentation.title, /new to Rumbly/i);
+  // The wording must not imply Disney recently added the item.
+  assert.match(presentation.trustNote ?? '', /first saw/i);
+  assert.doesNotMatch(presentation.trustNote ?? '', /Disney (?:added|introduced|released)/i);
+});
+
+test('new as part of a dish name is not a recency request', () => {
+  for (const question of ['I want a new york strip', 'new orleans style food', 'where can I get new england clam chowder']) {
+    const { plan } = parse(question);
+    assert.equal(plan.constraints.recency, undefined, question);
+    assert.notEqual(plan.claimType, 'menu_recency', question);
+  }
+});

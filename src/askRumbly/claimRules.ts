@@ -63,7 +63,8 @@ export type ClaimFeature =
   | 'restaurant_entity'
   | 'location_is_hours_subject'
   | 'location_entity'
-  | 'needs_reservation';
+  | 'needs_reservation'
+  | 'asks_whats_new';
 
 // These three are exported because the parser also consumes their spans outside
 // claim detection: editorial wording is marked consumed, and the two proximity
@@ -203,6 +204,12 @@ const FEATURE_TESTS: ReadonlyArray<{ feature: ClaimFeature; test: (input: ClaimI
   { feature: 'restaurant_entity', test: ({ hasRestaurantEntity }) => Boolean(hasRestaurantEntity) },
   { feature: 'location_is_hours_subject', test: ({ locationIsHoursSubject }) => Boolean(locationIsHoursSubject) },
   { feature: 'location_entity', test: ({ hasLocationEntity }) => Boolean(hasLocationEntity) },
+  {
+    // "What's new", "anything new", "recently added", "just added", "latest".
+    // Not "new to me" or "new restaurant to try", which are ordinary searches.
+    feature: 'asks_whats_new',
+    test: ({ text }) => /\b(?:what(?:'s|s| is)?\s+new|anything\s+new|any\s+new|newly\s+(?:added|released)|recently\s+(?:added|released|new)|just\s+(?:added|released|dropped)|new\s+(?:items?|snacks?|foods?|menu items?|treats?|drinks?|desserts?|things?|additions?)|latest\s+(?:items?|snacks?|additions?|treats?))\b/i.test(text),
+  },
   { feature: 'needs_reservation', test: ({ text }) => /\bneed\s+(?:a\s+|an\s+)?reservations?\b|\breservations?\s+required\b/i.test(text) },
 ];
 
@@ -247,6 +254,7 @@ export const CLAIM_RULES: ReadonlyArray<ClaimRule> = [
   { name: 'price-comparison', claim: 'price_comparison', all: ['price_comparison'], why: 'A comparable item pair must be identified first.' },
   { name: 'ingredient-content', claim: 'ingredient_content', all: ['ingredient'], why: 'Menu descriptions are not complete ingredient statements.' },
   { name: 'disney-allergy-label', claim: 'disney_label', all: ['allergy_present'], why: 'An allergen was named and no stronger claim applies.' },
+  { name: 'whats-new', claim: 'menu_recency', all: ['asks_whats_new'], why: 'Recency is answerable from when a row first appeared in Rumbly\'s data.' },
   { name: 'restaurant-feature', claim: 'restaurant_feature', all: ['feature_subject'], why: 'Mobile Order, Walk-Up List, and reservations are restaurant flags.' },
   { name: 'quick-service-subject', claim: 'restaurant_feature', all: ['quick_service'], none: ['dining_object'], why: 'Quick service alone asks about the service style, not a menu.' },
   { name: 'park-hours-subject', claim: 'live_park_operations', all: ['hours_language', 'location_is_hours_subject'], none: ['restaurant_entity', 'food_proximity_close', 'restaurant_proximity_close'], why: 'The park itself is what opens, so this is park operations rather than restaurant hours.' },

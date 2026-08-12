@@ -15,6 +15,7 @@ export type QueryAction =
 export type ClaimType =
   | 'disney_label'
   | 'menu_presence'
+  | 'menu_recency'
   | 'restaurant_feature'
   | 'restaurant_hours'
   | 'restaurant_location'
@@ -102,6 +103,13 @@ export interface QueryPlan {
     excludedFeatures: RestaurantFeature[];
     serviceStyle?: string;
     cuisine?: string;
+    /**
+     * "What's new". Deliberately not a claim that Disney added the item
+     * recently — Rumbly cannot see before its own first collection, and early
+     * classification work can attribute an old item to a recent first sighting.
+     * All this constrains is when the row first appeared in Rumbly's data.
+     */
+    recency?: { withinDays: number };
     priceOperation?: 'cheapest' | 'maximum';
     maxPrice?: number;
     distanceOperation?: 'nearest';

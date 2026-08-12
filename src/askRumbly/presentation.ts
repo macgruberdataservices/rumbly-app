@@ -316,7 +316,13 @@ export function buildAskRumblyPresentation(
   context: PresentationContext,
 ): AskRumblyPresentation {
   const trace = 'trace' in result ? result.trace : undefined;
-  const trustNote = trace?.locationApproximation && !plan.constraints.distanceAnchor
+  // "New" is a claim about Rumbly's own observation window, never about when
+  // Disney added something. Rumbly cannot see before its first collection, and
+  // an older item can still be recorded with a recent first sighting, so the
+  // guest is told exactly what the date means.
+  const trustNote = plan.constraints.recency
+    ? `Sorted by when Rumbly first saw each item, within the last ${plan.constraints.recency.withinDays} days. Rumbly can't see further back than it has been collecting, so an older item may show up as newly seen.`
+    : trace?.locationApproximation && !plan.constraints.distanceAnchor
     ? 'Nearby-area distances are straight-line estimates from known dining locations, not walking routes.'
     : undefined;
 
@@ -332,9 +338,12 @@ export function buildAskRumblyPresentation(
     const distanceAnswer = plan.action === 'distance';
     const directAnswer = ['open_menu', 'compare', 'check_feature', 'hours', 'distance'].includes(plan.action);
     const allergyAnswer = result.safety?.kind === 'allergy' || plan.constraints.allergenKeys.length > 0;
+    const recencyAnswer = plan.constraints.recency != null;
     const popTartAlias = /\bpop[ -]?tarts?\b/i.test(plan.sourceText)
       && usefulFoodTerms(plan).includes('lunch box tart');
-    const title = allergyAnswer
+    const title = recencyAnswer
+      ? count === 1 ? 'One item is new to Rumbly recently.' : 'These are new to Rumbly recently.'
+      : allergyAnswer
       ? proximityRanked
         ? count === 1 ? 'This is the closest Disney-labeled menu match.' : 'Here are the closest Disney-labeled menu matches.'
         : count === 1 ? 'Found one Disney-labeled match.' : 'Here are the Disney-labeled menu matches.'
