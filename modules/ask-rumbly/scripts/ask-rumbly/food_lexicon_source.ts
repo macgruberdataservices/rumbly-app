@@ -11,6 +11,7 @@
 import { normalizeForSearch } from '../../../../src/data/diacritics.ts';
 import { classifyWord } from '../../../../src/askRumbly/closedClass.ts';
 import { singularize } from '../../../../src/askRumbly/foodLexicon.ts';
+import { knownSynonymTerms } from '../../../../src/askRumbly/foodSynonyms.ts';
 import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/dataTypes.ts';
 
 // A menu-row n-gram must appear on this many distinct items, across at least
@@ -197,5 +198,7 @@ export function buildFoodLexiconPhrases(data: LoadedData): string[] {
 
   // Curated terms lead so their guest-facing surface form wins when a derived
   // n-gram normalizes to the same key.
-  return [...CURATED_TERMS, ...derived];
+  // Anything the synonym layer can verify must also be recognisable, or the
+  // parser would decline a term the proof layer was ready to prove.
+  return [...CURATED_TERMS, ...knownSynonymTerms(), ...derived];
 }

@@ -40,12 +40,24 @@ export function runAskRumbly(
 ): AskRumblyResponse {
   const vocabulary = buildParserVocabulary(data);
   let plan = parseQueryPlan(query, vocabulary);
+  // Capability first. A question Rumbly cannot answer at all must not be met
+  // with a request for the guest's location: "where is the closest bathroom"
+  // asked for Near Me before declining, which reads as though turning location
+  // on would have produced an answer.
+  // "Not a decline" rather than "executable": a low-confidence plan should
+  // still get the specific budget or location prompt, which is more useful than
+  // the generic unresolved-text clarification it would otherwise fall through
+  // to. Only unsupported and handoff claims skip these branches.
+  const initialCapability = assessPlanCapability(plan);
+  const answerable = initialCapability.disposition === 'execute'
+    || initialCapability.disposition === 'clarify';
   const locations = plan.constraints.locations?.length
     ? plan.constraints.locations
     : plan.constraints.location ? [plan.constraints.location] : [];
   const hasDistanceAnchor = locations.some((location) => location.relation === 'near');
   const namedDistanceAnchor = plan.constraints.distanceAnchor;
-  const needsCurrentLocation = !origin
+  const needsCurrentLocation = answerable
+    && !origin
     && !hasDistanceAnchor
     && !namedDistanceAnchor
     && (plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest');
@@ -69,7 +81,8 @@ export function runAskRumbly(
       },
     };
   }
-  const broadBudgetWithoutContext = !origin
+  const broadBudgetWithoutContext = answerable
+    && !origin
     && locations.length === 0
     && plan.constraints.locationSet == null
     && plan.constraints.maxPrice != null

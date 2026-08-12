@@ -93,7 +93,8 @@ const DINING_SCAFFOLDING = new Set([
   'hour', 'hours', 'time', 'times', 'now', 'today', 'tonight', 'tomorrow',
   'morning', 'afternoon', 'evening', 'night', 'late', 'early', 'currently',
   'right', 'rn', 'asap', 'soon', 'later', 'cheap', 'cheapest', 'cheaper',
-  'price', 'prices', 'priced', 'expensive', 'budget', 'closest', 'nearest',
+  'price', 'prices', 'priced', 'expensive', 'budget', 'broke', 'affordable',
+  'pricey', 'splurge', 'deal', 'deals', 'closest', 'nearest',
   'far', 'close', 'distance', 'walk', 'walking', 'best', 'better', 'good',
   'decent', 'solid', 'amazing', 'awesome', 'worst', 'value', 'quality',
   'great', 'top', 'favorite', 'worth', 'family', 'kid', 'kids', 'child',
@@ -111,6 +112,7 @@ const DINING_SCAFFOLDING = new Set([
   // describe the request rather than narrowing it.
   'accommodate', 'accommodates', 'accommodation', 'accommodations', 'booth',
   'booths', 'unique', 'year', 'years', 'standing', 'still', 'anymore',
+  'service', 'services', 'counter', 'quick', 'table',
 ]);
 
 export type WordClass = 'function' | 'scaffolding' | 'content';

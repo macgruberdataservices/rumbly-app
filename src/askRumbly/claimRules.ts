@@ -96,7 +96,7 @@ const PARK_OPERATIONS_PATTERN = /\bparks?\b[\s\S]*\b(?:open|close|hours?|rope dr
 // "Records of past allergy orders" was one corpus sentence. An identity
 // question ("who is ...") generalizes the Mickey Mouse example from the product
 // contract without hard-coding a character name.
-const GENERAL_PATTERN = /\b(?:weather|forecast|temperature|ride|attraction|parade|fireworks show|parking|refill stations?|first aid|medical|emergency|restrooms?|bathrooms?|lockers?|stroller)\b|\bwho\s+(?:is|are|was|were)\s+(?!open\b|serving\b|still\b)/i;
+const GENERAL_PATTERN = /\b(?:weather|forecast|temperature|rides?|attractions?|parade|fireworks show|parking|refill stations?|first aid|medical|emergency|restrooms?|bathrooms?|lockers?|strollers?|wheelchairs?|ecv|guest services?|guest relations|concierge|monorail|buses|bus stop|skyliner|tram|ferry|transportation|atm|baby care|nursing|wifi|wi-fi|charging|gift shops?|merchandise|souvenirs?|photopass|memory maker|lost and found)\b|\bwho\s+(?:is|are|was|were)\s+(?!open\b|serving\b|still\b)/i;
 // Policy topics, stated as topics. Removed: "popcorn bucket refill",
 // "physical register", "free cups of water", "hotel restaurants ... park
 // tickets", "quick-service vs table-service", and the adults-ordering-kids-meals

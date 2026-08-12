@@ -11,6 +11,7 @@ import type {
 } from './queryPlan.ts';
 import { classifyWord, stripFunctionWordEdges } from './closedClass.ts';
 import { matchFoodSpans } from './foodLexicon.ts';
+import { canonicalGuestTerm } from './foodSynonyms.ts';
 import {
   EDITORIAL_PATTERN,
   FOOD_PROXIMITY_CLOSE_PATTERN,
@@ -316,17 +317,6 @@ function extractCuisine(query: string, vocabulary: ParserVocabulary): { value?: 
   return { spans: [] };
 }
 
-/**
- * Everyday guest wording that Disney publishes under a different name.
- * Applied on both the lexicon and the fallback path so the executor can still
- * demand exact menu evidence rather than fuzzy-matching the guest's word.
- */
-function canonicalFoodAlias(term: string): string {
-  // Disney publishes Pop-Tart-style pastries as “Lunch Box Tart”.
-  if (/^pop[ -]?tarts?$/.test(term)) return 'lunch box tart';
-  return term;
-}
-
 function normalizeFoodTerm(term: string): string {
   const normalized = stripFunctionWordEdges(term
     .replace(/,/g, ' ')
@@ -346,7 +336,7 @@ function normalizeFoodTerm(term: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase());
-  return canonicalFoodAlias(normalized);
+  return canonicalGuestTerm(normalized);
 }
 
 // Adjectives that decorate a request without narrowing what would satisfy it.
@@ -449,7 +439,7 @@ function recognizeFoods(
     .trim());
 
   const mode: 'all' | 'any' = groups.some((group) => group.union) ? 'any' : 'all';
-  const resolved = terms.map(canonicalFoodAlias).filter(Boolean);
+  const resolved = terms.map((term) => canonicalGuestTerm(term)).filter((term) => term.length > 0);
   if (resolved.length === 0) return null;
   return { terms: resolved, mode, spans };
 }

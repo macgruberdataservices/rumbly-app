@@ -8,6 +8,7 @@ import { distanceMiles, type Coordinates } from '../../../../src/location/proxim
 import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/dataTypes.ts';
 import { resortsShareGuestFacingFamily } from './location_aliases.ts';
 import { distanceAnchorById } from '../../../../src/askRumbly/distanceAnchors.ts';
+import { CLASS_TERM_CATEGORIES, FOOD_TERM_ALTERNATIVES } from '../../../../src/askRumbly/foodSynonyms.ts';
 
 export interface ProofTarget {
   restaurantIds?: string[];
@@ -34,21 +35,6 @@ const CUISINE_NAME_EVIDENCE: Record<string, RegExp> = {
   barbecue: /\b(?:bbq|barbecue|smokehouse)\b/,
 };
 
-const WHOLE_TERM_ALTERNATIVES: Record<string, string[][]> = {
-  burger: [['burger'], ['hamburger'], ['cheeseburger']],
-  burgers: [['burger'], ['hamburger'], ['cheeseburger']],
-  hamburger: [['hamburger'], ['burger'], ['cheeseburger']],
-  hamburgers: [['hamburger'], ['burger'], ['cheeseburger']],
-  'corn dog': [['corn', 'dog'], ['corn', 'dogs']],
-  'corn dogs': [['corn', 'dog'], ['corn', 'dogs']],
-  corndog: [['corn', 'dog'], ['corn', 'dogs']],
-  corndogs: [['corn', 'dog'], ['corn', 'dogs']],
-  fries: [['fries'], ['fry']],
-  'french fries': [['french', 'fries'], ['fries'], ['fry']],
-  'ice cream': [['ice', 'cream'], ['gelato'], ['sundae'], ['sorbet'], ['soft', 'serve'], ['softserve'], ['scoop']],
-  'chicken fingers': [['chicken', 'finger'], ['chicken', 'strip'], ['chicken', 'tender']],
-  'chicken tenders': [['chicken', 'tender'], ['chicken', 'strip'], ['chicken', 'finger']],
-};
 
 function singularize(token: string): string {
   if (token.length <= 3) return token;
@@ -69,7 +55,7 @@ function tokens(value: string): Set<string> {
 
 function termAlternatives(term: string): string[][] {
   const normalized = normalizeForSearch(term).trim();
-  const known = WHOLE_TERM_ALTERNATIVES[normalized];
+  const known = FOOD_TERM_ALTERNATIVES[normalized];
   if (known) return known.map((alternative) => alternative.map(singularize));
   const required = normalized
     .replace(/soft[ -]serve/g, 'softserve')
@@ -79,30 +65,13 @@ function termAlternatives(term: string): string[][] {
   return required.length > 0 ? [required] : [];
 }
 
-// Broad food *classes* that Disney publishes directly in `norm_categories`.
-// Item names rarely repeat the class ("Chocolate Cake" is a dessert but never
-// says so), which made a whole family of ordinary requests fail as honest
-// no-matches. Only unambiguous single-concept slugs are listed: combined ones
-// such as `soups-salads` cannot prove which side of the pair a row belongs to,
-// which is the same rule already applied to mixed `category` strings below.
-const CLASS_TERM_CATEGORIES: Record<string, string> = {
-  dessert: 'desserts',
-  desserts: 'desserts',
-  appetizer: 'appetizers',
-  appetizers: 'appetizers',
-  starter: 'appetizers',
-  starters: 'appetizers',
-  entree: 'entrees',
-  entrees: 'entrees',
-  seafood: 'seafood',
-  sushi: 'sushi',
-};
 
 export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
   const normalizedTerm = normalizeForSearch(term).trim();
-  const classCategory = CLASS_TERM_CATEGORIES[normalizedTerm];
-  if (classCategory && (item.norm_categories ?? []).some((value) => normalizeForSearch(value) === classCategory)) {
-    return true;
+  const classCategories = CLASS_TERM_CATEGORIES[normalizedTerm];
+  if (classCategories) {
+    const published = (item.norm_categories ?? []).map((value) => normalizeForSearch(value));
+    if (classCategories.some((category) => published.includes(category))) return true;
   }
   if (/^chilis?$/.test(normalizedTerm)) {
     // “Chili” as a guest food request means the dish, not every item with a
