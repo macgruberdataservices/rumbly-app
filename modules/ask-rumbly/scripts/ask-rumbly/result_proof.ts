@@ -9,7 +9,7 @@ import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/data
 import { resortsShareGuestFacingFamily } from './location_aliases.ts';
 import { distanceAnchorById } from '../../../../src/askRumbly/distanceAnchors.ts';
 import { CLASS_TERM_CATEGORIES, FOOD_TERM_ALTERNATIVES } from '../../../../src/askRumbly/foodSynonyms.ts';
-import { itemIsRecent } from './typed_plan_executor.ts';
+import { itemIsRecent } from '../../../../src/askRumbly/recency.ts';
 
 export interface ProofTarget {
   restaurantIds?: string[];

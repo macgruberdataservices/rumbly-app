@@ -12,6 +12,7 @@ import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/data
 import { answerQuery, DEFAULT_ORIGIN, type ExecutorAction, type ExecutorResult } from './executor.ts';
 import { compileQueryPlan } from './plan_compiler.ts';
 import { itemProvesFoodTerm, proveExecutionResult, proveGlobalObjective, restaurantProvesCuisine, type ObjectiveCandidate } from './result_proof.ts';
+import { itemIsRecent } from '../../../../src/askRumbly/recency.ts';
 
 export type TypedPlanExecution = PlanExecutionResult<ExecutorAction>;
 // Candidate gathering intentionally runs before the independent proof pass.
@@ -230,37 +231,6 @@ function adaptLegacyNonAnswer(
     text,
     capability: assessPlanCapability(plan),
   };
-}
-
-/**
- * Rumbly's own collection start, derived from the data rather than configured.
- *
- * Every row imported on that first day has an unknown true age -- Rumbly
- * cannot see before its own birth -- so those rows are never "new". Once the
- * collection start falls outside the rolling window this stops mattering and
- * the window alone decides, which is how the answer sharpens as the app's
- * history lengthens.
- */
-const collectionStartCache = new WeakMap<object, string>();
-
-function collectionStart(data: LoadedData): string {
-  const cached = collectionStartCache.get(data as unknown as object);
-  if (cached !== undefined) return cached;
-  let earliest = '';
-  for (const item of data.menuItems) {
-    const seen = (item.first_seen ?? '').slice(0, 10);
-    if (seen && (earliest === '' || seen < earliest)) earliest = seen;
-  }
-  collectionStartCache.set(data as unknown as object, earliest);
-  return earliest;
-}
-
-export function itemIsRecent(item: MenuItem, data: LoadedData, withinDays: number): boolean {
-  const seen = (item.first_seen ?? '').slice(0, 10);
-  if (!seen) return false;
-  if (seen <= collectionStart(data)) return false;
-  const cutoff = new Date(Date.now() - withinDays * 86400000).toISOString().slice(0, 10);
-  return seen >= cutoff;
 }
 
 function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates | null, trace: ExecutionTrace): UnprovenPlanExecution {
