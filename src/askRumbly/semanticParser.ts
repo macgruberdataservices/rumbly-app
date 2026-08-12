@@ -57,6 +57,19 @@ const DIETARY_PATTERNS = [
   { key: 'kids' as const, pattern: /\b(?:kids?|children'?s|toddler)\b/gi },
 ];
 
+// Disney sells the same named drink both ways -- a DOLE Whip cup and a DOLE
+// Whip cup with alcohol -- so "with alcohol" narrows the request rather than
+// decorating it. Left unclaimed it was absorbed into the food term, and
+// "dole whip with alcohol" was searched as one literal dish name.
+//
+// Excluded is listed first and matched first: "non-alcoholic" contains
+// "alcoholic", and a guest asking for the virgin version must not be read as
+// asking for the opposite.
+const ALCOHOL_PATTERNS = [
+  { key: 'excluded' as const, pattern: /\b(?:non[\s-]?alcoholic|alcohol[\s-]?free|without\s+(?:the\s+)?alcohol|no\s+alcohol|virgin|mocktails?)\b/gi },
+  { key: 'required' as const, pattern: /\bwith\s+(?:alcohol|booze|liquor)\b|\b(?:alcoholic|spiked|boozy)\b/gi },
+];
+
 const MEAL_PATTERNS = [
   { key: 'breakfast' as const, pattern: /\bbreakfasts?\b/gi },
   { key: 'lunch' as const, pattern: /\blunch\b/gi },
@@ -68,7 +81,20 @@ const NAMED_ANCHOR_NEAR_RADIUS_MILES = 0.25;
 // How far back "new" reaches. Rolling, so it stays meaningful as Rumbly's
 // collection history lengthens.
 const RECENCY_WINDOW_DAYS = 30;
-const RECENCY_PATTERN = /\b(?:what(?:'s|s| is)?\s+new|anything\s+new|any\s+new|newly\s+(?:added|released)|recently\s+(?:added|released|new)|just\s+(?:added|released|dropped)|new\s+(?:items?|snacks?|foods?|menu items?|treats?|drinks?|desserts?|things?|additions?)|latest\s+(?:items?|snacks?|additions?|treats?)|\bnew\b)/gi;
+// The phrasings that actually mean "what has Rumbly started seeing lately".
+// Both the detector and the span collector are built from this one source:
+// they were previously written out twice, and the copies had already drifted
+// apart by the postposed form below.
+//
+// English puts the adjective either before the noun ("any new snacks") or
+// after the verb ("what snacks are new") and guests use both freely. Only the
+// first was listed, so "What snacks are new at EPCOT?" left "new" unconsumed
+// and fell through to a clarification.
+const RECENCY_PHRASES = String.raw`what(?:'s|s| is)?\s+new|anything\s+new|any\s+new|(?:are|is|were|was)\s+new|newly\s+(?:added|released)|recently\s+(?:added|released|new)|just\s+(?:added|released|dropped)|new\s+(?:items?|snacks?|foods?|menu items?|treats?|drinks?|desserts?|things?|additions?)|latest\s+(?:items?|snacks?|additions?|treats?)`;
+const RECENCY_INTENT = new RegExp(String.raw`\b(?:${RECENCY_PHRASES})\b`, 'i');
+// The bare adjective is a span but never an intent on its own: "new" alone
+// would claim recency from "New England Clam Chowder".
+const RECENCY_PATTERN = new RegExp(String.raw`\b(?:${RECENCY_PHRASES}|\bnew\b)`, 'gi');
 
 function normalizeForMatching(value: string): string {
   return value
@@ -677,6 +703,14 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     .filter((span) => !insideEntity(span));
   const dietary = DIETARY_PATTERNS.flatMap((entry) =>
     collectPatternSpans(analysisText, entry.pattern).some((span) => !insideEntity(span)) ? [entry.key] : []);
+  const alcoholMatches = ALCOHOL_PATTERNS.map((entry) => ({
+    key: entry.key,
+    spans: collectPatternSpans(analysisText, entry.pattern).filter((span) => !insideEntity(span)),
+  }));
+  // First match wins, and `excluded` is first: a request that says both is a
+  // request for the version without.
+  const alcohol = alcoholMatches.find((entry) => entry.spans.length > 0)?.key;
+  const alcoholSpans = alcoholMatches.flatMap((entry) => entry.spans);
   const protectedFoodSpans = (vocabulary.protectedFoodPhrases ?? []).flatMap((phrase) =>
     collectPatternSpans(analysisText, new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi')));
   const mealMatches = MEAL_PATTERNS.map((entry) => ({
@@ -700,7 +734,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   );
   const menuRoutingSpans = collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi);
   const excludedFoods = extractExcludedFoods(analysisText);
-  const asksWhatsNew = /\b(?:what(?:'s|s| is)?\s+new|anything\s+new|any\s+new|newly\s+(?:added|released)|recently\s+(?:added|released|new)|just\s+(?:added|released|dropped)|new\s+(?:items?|snacks?|foods?|menu items?|treats?|drinks?|desserts?|things?|additions?)|latest\s+(?:items?|snacks?|additions?|treats?))\b/i.test(analysisText);
+  const asksWhatsNew = RECENCY_INTENT.test(analysisText);
   const recencySpans = asksWhatsNew ? collectPatternSpans(analysisText, RECENCY_PATTERN) : [];
   // The resort's own name is a scope, not a food or a leftover word.
   const resortScopeSpans = collectPatternSpans(analysisText, /\b(?:walt\s+)?disney\s+world\b/gi);
@@ -724,7 +758,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     // also be recognised as the food being requested.
     [...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans,
       ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...excludedFoods.spans, ...resortScopeSpans,
-      ...recencySpans],
+      ...recencySpans, ...alcoholSpans],
     vocabulary
   );
   let foodTerms = foods.terms.filter((term) => normalizeForMatching(term) !== normalizeForMatching(cuisine.value ?? ''));
@@ -804,7 +838,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       }];
     }
   }
-  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...recencySpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
+  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...recencySpans, ...alcoholSpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
   const unconsumed = meaningfulUnconsumed(analysisText, consumedSpans);
   const reasons: string[] = [];
 
@@ -828,6 +862,27 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     && !distanceAnchor) {
     action = 'clarify';
     reasons.push('I cannot yet measure from that exact landmark. Did you mean near the linked park area, or nearest to your current location?');
+  }
+
+  // "How close am I to Space Mountain" asks how far the *guest* is from a
+  // ride. Rumbly knows where its restaurants are, so it happily answered with
+  // every venue ranked by distance to the attraction -- 409 of them, under the
+  // heading "here are the closest places I found". That is a confident answer
+  // to a question nobody asked, and the guest marked it wrong.
+  //
+  // Distance *to a restaurant* is still a dining question and still answered;
+  // so is "dining near Space Mountain", which uses the same anchor. Only the
+  // guest's own position relative to a non-dining landmark is out of scope.
+  const asksOwnDistance = /\bhow\s+(?:close|far)\b[^?]{0,40}?\b(?:am\s+i|are\s+we)\b|\b(?:am\s+i|are\s+we)\b[^?]{0,20}?\bhow\s+(?:close|far)\b/i.test(grammarText);
+  if (asksOwnDistance
+    && foodTerms.length === 0
+    && linkedEntities.some((entity) => entity.type === 'attraction')
+    && !linkedEntities.some((entity) => entity.type === 'restaurant')) {
+    claimType = 'live_park_operations';
+    // Otherwise "how far am I from X" stays a `distance` action, and the
+    // missing-restaurant rule below turns an out-of-scope question into a
+    // request for a restaurant name the guest never meant to give.
+    action = 'find';
   }
 
   const needsRestaurant = ['check_menu', 'check_feature', 'open_menu', 'hours', 'distance'].includes(action);
@@ -909,6 +964,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       serviceStyle: requiredFeatures.includes('quick_service') ? 'Quick Service' : undefined,
       cuisine: cuisine.value,
       recency: asksWhatsNew ? { withinDays: RECENCY_WINDOW_DAYS } : undefined,
+      alcohol,
       priceOperation: /\b(?:cheapest|lowest priced|least expensive)\b/i.test(grammarText)
         ? 'cheapest'
         : /\b(?:under|below|less than|up to)\s*\$/i.test(grammarText) ? 'maximum' : undefined,

@@ -11,7 +11,7 @@ import { resortsShareGuestFacingFamily } from './location_aliases.ts';
 import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/dataTypes.ts';
 import { answerQuery, DEFAULT_ORIGIN, type ExecutorAction, type ExecutorResult } from './executor.ts';
 import { compileQueryPlan } from './plan_compiler.ts';
-import { itemProvesFoodTerm, proveExecutionResult, proveGlobalObjective, restaurantProvesCuisine, type ObjectiveCandidate } from './result_proof.ts';
+import { FOOD_MATCH_PRIMARY, foodMatchStrength, itemProvesFoodTerm, proveExecutionResult, proveGlobalObjective, restaurantProvesCuisine, type ObjectiveCandidate } from './result_proof.ts';
 import { itemIsRecent } from '../../../../src/askRumbly/recency.ts';
 
 export type TypedPlanExecution = PlanExecutionResult<ExecutorAction>;
@@ -52,6 +52,21 @@ function diversifyRestaurants<T extends { restaurant: Restaurant }>(rows: T[]): 
     }
   }
   return [...first, ...remaining];
+}
+
+/**
+ * Ordering rank for a proven row: how well it matches, minus how much the
+ * guest probably did not want it. Ordering only -- never admission.
+ *
+ * The alcohol demotion exists because Disney names cocktails after the food
+ * they riff on. "How much are churros in EPCOT" proved four rows, and the one
+ * a guest saw first was a Churro Margarita. An alcoholic row is still a real
+ * answer when someone asks for a churro, just never the headline one.
+ */
+function presentationRank(item: MenuItem, term: string, plan: QueryPlan): number {
+  const strength = foodMatchStrength(item, term);
+  const wantsAlcohol = plan.constraints.alcohol === 'required';
+  return item.is_alcoholic && !wantsAlcohol ? strength - FOOD_MATCH_PRIMARY : strength;
 }
 
 function hasGenericFood(plan: QueryPlan): boolean {
@@ -162,7 +177,7 @@ function disneyCategorizesAsSnack(item: MenuItem): boolean {
   // A broad “snack” request should still be grounded in Disney's own menu
   // grouping. Dining-period metadata alone is too permissive: thousands of
   // drinks and full entrées are also orderable during snack hours.
-  return /\b(?:snacks?|desserts?|pastries?|treats?|cookies?|ice cream|gelato|sundaes?|sorbet|pretzels?|cupcakes?|candied apples?|crisped rice cereal treats?|cake slices?|fudge|marshmallows?|cotton candy|churros?|popcorn)\b/.test(category);
+  return /\b(?:snacks?|desserts?|pastries?|treats?|sweets?|cookies?|ice cream|gelato|sundaes?|sorbet|pretzels?|cupcakes?|candied apples?|crisped rice cereal treats?|cake slices?|fudge|marshmallows?|cotton candy|churros?|popcorn)\b/.test(category);
 }
 
 function cloneWithoutAppliedConstraints(plan: QueryPlan, genericFood: boolean): QueryPlan {
@@ -395,6 +410,8 @@ function nativeVerifiedFoodAnswer(
   for (const item of data.menuItems) {
     if (!item.show_in_menu || !orderableItem(item)) continue;
     if (plan.constraints.priceOperation === 'cheapest' && item.price_value <= 0) continue;
+    if (plan.constraints.alcohol === 'required' && !item.is_alcoholic) continue;
+    if (plan.constraints.alcohol === 'excluded' && item.is_alcoholic) continue;
     const list = byRestaurant.get(item.restaurant_id) ?? [];
     list.push(item);
     byRestaurant.set(item.restaurant_id, list);
@@ -419,7 +436,10 @@ function nativeVerifiedFoodAnswer(
       .flatMap((entry) => {
         const sorted = [...entry.items].sort((a, b) => {
           if (plan.constraints.priceOperation === 'cheapest') return (a.price_value || Infinity) - (b.price_value || Infinity);
-          return a.item.localeCompare(b.item);
+          // Alphabetical order put "Churro Margarita" -- an $18 cocktail --
+          // ahead of the $6.50 churros for a guest asking what churros cost.
+          const rankDifference = presentationRank(b, entry.term, plan) - presentationRank(a, entry.term, plan);
+          return rankDifference || a.item.localeCompare(b.item);
         });
         // Objective searches need one price witness per requested term.
         // Ordinary and nearest searches retain every verified match at the
@@ -435,11 +455,24 @@ function nativeVerifiedFoodAnswer(
       : plan.constraints.distanceOperation === 'nearest' || origin
         ? distance ?? Infinity
         : 0;
-    return [{ restaurant, items: selected, distance, objectiveScore }];
+    // How well this venue's best row answers the question, independent of how
+    // close it is. Without it the nearest venue wins outright, which is how a
+    // guest asking for chicken nuggets was shown Pretzel Nuggets: both are
+    // proven `nugget` rows, and Block & Hans was simply closer.
+    const bestRank = Math.max(...matchingTerms.flatMap((entry) =>
+      entry.items.map((item) => presentationRank(item, entry.term, plan))));
+    return [{ restaurant, items: selected, distance, objectiveScore, bestRank }];
   });
+  // Rank only separates ordinary lists. Objective winner sets are exact and
+  // must not be reweighted, and a guest who said "near me" or "cheapest" asked
+  // for that ordering explicitly -- reordering it would be answering a
+  // different question. Distance still ranks the rest, but as an incidental
+  // tiebreak it yields to how well a row actually answers the question.
+  const objectivelyOrdered = plan.constraints.priceOperation != null || plan.constraints.distanceOperation != null;
   rows.sort((a, b) => {
+    const rankDifference = objectivelyOrdered ? 0 : b.bestRank - a.bestRank;
     const objectiveDifference = a.objectiveScore - b.objectiveScore;
-    return objectiveDifference || a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
+    return rankDifference || objectiveDifference || a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
   });
   if (rows.length === 0) return null;
 

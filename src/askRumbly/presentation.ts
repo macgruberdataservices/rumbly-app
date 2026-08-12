@@ -320,6 +320,16 @@ function unsupportedSuggestions(plan: QueryPlan, hasCurrentLocation: boolean): A
       ];
     }
   }
+  // Rumbly cannot say how far the guest is from a ride, but the landmark they
+  // named is one it can search around. Offering that is the difference between
+  // a dead end and a redirect to the thing they were probably heading for.
+  const attraction = plan.linkedEntities.find((entity) => entity.type === 'attraction');
+  if (plan.claimType === 'live_park_operations' && attraction) {
+    return [
+      { kind: 'query', label: `Find food near ${attraction.label}`, query: `Where can I get food near ${attraction.label}?` },
+      { kind: 'query', label: `Find snacks near ${attraction.label}`, query: `Where can I get a snack near ${attraction.label}?` },
+    ];
+  }
   if ((plan.claimType === 'cross_contact' || plan.claimType === 'kitchen_process')
     && plan.constraints.allergenKeys.length > 0) {
     return [{ kind: 'query', label: 'Search Disney labels instead', query: searchQuery(plan) }];
@@ -331,6 +341,22 @@ function unsupportedSuggestions(plan: QueryPlan, hasCurrentLocation: boolean): A
     }
   }
   return defaultSuggestions(plan.sourceText);
+}
+
+/** Whether the returned venues are genuinely in nearest-first order. */
+function orderedByDistance(
+  restaurantIds: string[] | undefined,
+  distances: Record<string, number> | undefined,
+): boolean {
+  if (!distances) return true;
+  let previous = -Infinity;
+  for (const id of new Set(restaurantIds ?? [])) {
+    const distance = distances[id];
+    if (distance == null) continue;
+    if (distance < previous) return false;
+    previous = distance;
+  }
+  return true;
 }
 
 export function buildAskRumblyPresentation(
@@ -440,7 +466,13 @@ export function buildAskRumblyPresentation(
         ? (() => {
           const places = new Set(result.restaurantIds ?? []).size;
           if (places <= 1) return 'Closest match';
-          return `${places} places nearby, closest first`;
+          // Read the claim off the list rather than assuming it. The executor
+          // ranks a closer venue below a better match -- a real chicken nugget
+          // outranks Pretzel Nuggets next door -- and when it does, "closest
+          // first" is simply untrue. Checking the order it actually produced
+          // cannot drift out of sync with it the way a duplicated rule would.
+          const order = orderedByDistance(result.restaurantIds, result.distanceMilesByRestaurant);
+          return `${places} places nearby, ${order ? 'closest' : 'best match'} first`;
         })()
         : context.linkedKind === 'item' && new Set(result.restaurantIds ?? []).size > 1
         // Both numbers matter to a decision: how much there is to choose from,

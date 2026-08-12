@@ -227,7 +227,11 @@ test('companion wrappers preserve the same bounded food request', () => {
     const { plan, result } = execute(question);
     assert.equal(plan.claimType, 'menu_presence', question);
     assert.deepEqual(plan.subject.foodTerms, ['burger'], question);
-    assert.equal(plan.constraints.location?.label, 'Magic Kingdom', question);
+    // Disney publishes "Magic Kingdom Park"; hand-coded venues carry the bare
+    // "Magic Kingdom". Which one a query links to depends on the data, not on
+    // the wrapper being tested here, so accept either -- the same tolerance
+    // the park-alias test below already applies.
+    assert.match(plan.constraints.location?.label ?? '', /^Magic Kingdom(?: Park)?$/i, question);
     assert.equal(plan.diagnostics.confidence, 'high', question);
     assert.equal(result.kind, 'answer', question);
   }
@@ -438,7 +442,7 @@ test('guest presentation explains boundaries without exposing internal failure p
   assert.ok(recovery.suggestions.some((suggestion) =>
     suggestion.kind === 'query'
       && /search for pizza instead/i.test(suggestion.label)
-      && /pizza in Hollywood Studios/i.test(suggestion.query)));
+      && /pizza in (?:Disney's )?Hollywood Studios/i.test(suggestion.query)));
 
   const restaurantScoped = runAskRumbly(
     "I want some ice cream near Casey's Corner",
@@ -1533,4 +1537,131 @@ test('country phrasing scopes to World Showcase', () => {
   // A scope the guest named themselves is never overridden.
   const scoped = parseQueryPlan('which country in Epcot has beer', pavilionVocabulary);
   assert.match(scoped.constraints.location?.label ?? '', /EPCOT/i);
+});
+
+// --- Regressions found in real thumbs-down feedback (ask_rumbly_negative_feedback).
+// Every question below is one a guest actually typed and then told us was
+// wrong. Replay them with `feedback_replay.ts`; these lock in the fixes.
+
+test('an explicit alcohol request narrows the drink instead of becoming the dish name', () => {
+  const response = runAskRumbly('Where can I get a dole whip with alcohol', data, { latitude: 28.4177, longitude: -81.5812 });
+  // "with alcohol" used to be swallowed into the food term, so Rumbly searched
+  // for a dish literally named "dole whip with alcohol" and missed the real
+  // spiked ones.
+  assert.deepEqual(response.plan.subject.foodTerms, ['dole whip']);
+  assert.equal(response.plan.constraints.alcohol, 'required');
+  assert.equal(response.result.kind, 'answer');
+  const returned = new Set(response.result.itemKeys ?? []);
+  const items = data.menuItems.filter((item) => returned.has(`${item.restaurant_id}:${item.item_id}`));
+  assert.ok(items.length > 0);
+  assert.ok(items.every((item) => item.is_alcoholic), 'every returned row is actually alcoholic');
+});
+
+test('a virgin request excludes alcohol rather than requiring it', () => {
+  const plan = parseQueryPlan('non-alcoholic dole whip', vocabulary);
+  assert.equal(plan.constraints.alcohol, 'excluded');
+  assert.equal(plan.diagnostics.meaningfulUnconsumedText, '');
+});
+
+test('the dish a guest named outranks a weaker match that happens to be closer', () => {
+  const response = runAskRumbly('Where can I get chicken nuggets', data, { latitude: 28.4177, longitude: -81.5812 });
+  assert.equal(response.result.kind, 'answer');
+  const first = data.menuItems.find((item) => item.item_id === (response.result.itemIds ?? [])[0]);
+  // "chicken nuggets" accepts a bare `nugget`, which let Pretzel Nuggets at the
+  // nearest venue lead the list. The fallback still qualifies -- it just never
+  // outranks the thing that was asked for.
+  assert.match(first?.item ?? '', /chicken/i);
+});
+
+test('a cocktail named after a food never leads a plain food request', () => {
+  const response = runAskRumbly('How much are churros in Epcot', data);
+  assert.equal(response.result.kind, 'answer');
+  const ids = response.result.itemIds ?? [];
+  const items = ids.map((id) => data.menuItems.find((item) => item.item_id === id)).filter(Boolean);
+  const firstAlcoholic = items.findIndex((item) => item.is_alcoholic);
+  // A Churro Margarita is a real churro row and stays in the results; it just
+  // cannot be the answer a guest sees first.
+  if (firstAlcoholic !== -1) {
+    assert.ok(items.slice(0, firstAlcoholic).some((item) => !item.is_alcoholic));
+    assert.equal(firstAlcoholic, items.length - 1, 'alcoholic rows sort last');
+  }
+});
+
+test('"what is new" works with the adjective on either side of the noun', () => {
+  for (const question of [
+    'What snacks are new at EPCOT?',
+    'any new snacks at EPCOT',
+    'which items are new at Magic Kingdom',
+  ]) {
+    const plan = parseQueryPlan(question, vocabulary);
+    assert.equal(plan.constraints.recency?.withinDays, 30, question);
+    assert.equal(plan.diagnostics.meaningfulUnconsumedText, '', question);
+  }
+});
+
+test('the guest’s own distance to an attraction is out of scope, with a dining redirect', () => {
+  for (const question of ['How close am I to space mountain', 'How far am I from Space Mountain']) {
+    const response = runAskRumbly(question, data, { latitude: 28.4177, longitude: -81.5812 });
+    // Answering with every restaurant ranked by distance to the ride was a
+    // confident answer to a question nobody asked.
+    assert.equal(response.result.kind, 'unsupported', question);
+    const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+      linkedKind: null,
+      totalPossibilities: 0,
+      hasCurrentLocation: true,
+    });
+    assert.ok(presentation.suggestions.some((suggestion) =>
+      suggestion.kind === 'query' && /Space Mountain/i.test(suggestion.query)), question);
+  }
+  // Distance to a restaurant is still a dining question.
+  const restaurant = runAskRumbly('How close is Terra treats?', data, { latitude: 28.4177, longitude: -81.5812 });
+  assert.equal(restaurant.result.kind, 'answer');
+  // So is searching around the same landmark.
+  const nearby = runAskRumbly('snacks near space mountain', data, { latitude: 28.4177, longitude: -81.5812 });
+  assert.equal(nearby.result.kind, 'answer');
+});
+
+test('venue names Disney runs together are recognised spaced out, and vice versa', () => {
+  for (const [question, expected] of [
+    ['What time does Base Line Tap House open', 'BaseLine Tap House'],
+    ['Is Board Walk Deli open', 'BoardWalk Deli'],
+    ['menu for Abracada Bar', 'AbracadaBar'],
+    ['Where is Ye Sake', 'YeSake Kiosk'],
+  ]) {
+    const plan = parseQueryPlan(question, vocabulary);
+    const linked = plan.linkedEntities.filter((entity) => entity.type === 'restaurant').map((entity) => entity.label);
+    assert.ok(linked.includes(expected), `${question} -> ${linked.join(', ') || 'nothing'}`);
+  }
+  // A shortened camel split must not swallow the resort area of the same name.
+  const area = parseQueryPlan('restaurants on the Board Walk', vocabulary);
+  assert.ok(!area.linkedEntities.some((entity) => entity.type === 'restaurant' && entity.label === 'BoardWalk Deli'));
+});
+
+test('guests asking for pizza are shown the flatbreads Disney renamed', () => {
+  const response = runAskRumbly('Pizza in Magic kingdom', data);
+  assert.equal(response.result.kind, 'answer');
+  const ids = new Set(response.result.itemIds ?? []);
+  const items = data.menuItems.filter((item) => ids.has(item.item_id));
+  // Pinocchio's publishes All-Meat/Pepperoni/Gourmet Cheese *Flatbread*; its
+  // only row still named "pizza" is the plant-based one, which was the whole
+  // answer a guest used to get for "pizza in Magic Kingdom".
+  assert.ok(items.some((item) => /flatbread/i.test(item.item)), 'flatbreads count as pizza');
+  assert.ok(items.length > 2);
+});
+
+test('a list only claims to be closest-first when it actually is', () => {
+  const response = runAskRumbly('Where can I get chicken nuggets', data, { latitude: 28.4177, longitude: -81.5812 });
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: 'item',
+    totalPossibilities: response.result.itemIds?.length ?? 0,
+    hasCurrentLocation: true,
+  });
+  const distances = response.result.distanceMilesByRestaurant ?? {};
+  const ordered = [...new Set(response.result.restaurantIds ?? [])]
+    .map((id) => distances[id])
+    .filter((value) => value != null);
+  const ascending = ordered.every((value, index) => index === 0 || value >= ordered[index - 1]);
+  if (/places nearby/.test(presentation.eyebrow)) {
+    assert.match(presentation.eyebrow, ascending ? /closest first/ : /best match first/);
+  }
 });

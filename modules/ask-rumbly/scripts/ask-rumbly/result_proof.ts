@@ -130,6 +130,47 @@ export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
   return alternatives.some((alternative) => alternative.every((token) => boundedTokens.has(token)));
 }
 
+/**
+ * How directly a row witnesses the requested food, for ordering only.
+ *
+ * `itemProvesFoodTerm` is deliberately binary: a row either carries evidence
+ * or it does not, and nothing weaker is ever admitted. But the alternatives it
+ * accepts are not equally good. "Chicken nuggets" accepts a bare `nugget` so
+ * that a row named only "Nuggets" under a chicken category still counts --
+ * which also let Pretzel Nuggets at the nearest venue lead the results for a
+ * guest who asked for chicken nuggets.
+ *
+ * So admission stays binary and *presentation order* gets this. Rank never
+ * adds a row and never removes one; it decides which proven row a guest sees
+ * first. Higher is better.
+ */
+export const FOOD_MATCH_PRIMARY = 3;
+export const FOOD_MATCH_SECONDARY = 2;
+export const FOOD_MATCH_INDIRECT = 1;
+
+export function foodMatchStrength(item: MenuItem, term: string): number {
+  const alternatives = termAlternatives(term);
+  const nameTokens = tokens(item.item);
+  const index = alternatives.findIndex((alternative) => alternative.every((token) => nameTokens.has(token)));
+  if (index === 0) return FOOD_MATCH_PRIMARY;
+  if (index > 0) return FOOD_MATCH_SECONDARY;
+  // The row was admitted, but not by its name matching a listed alternative.
+  // Either a bounded per-dish rule accepted it (chili, coke, beer, corn dog,
+  // French fries) or its Disney category completed an abbreviated name. The
+  // per-dish rules are stricter than generic token matching, so they rank as
+  // primary; a category completion is the genuinely indirect case.
+  const normalizedTerm = normalizeForSearch(term).trim();
+  if (CLASS_TERM_CATEGORIES[normalizedTerm]) return FOOD_MATCH_INDIRECT;
+  const categorySegments = item.category.split(/[&/,]|\s+and\s+/i).map((segment) => segment.trim()).filter(Boolean);
+  if (categorySegments.length === 1) {
+    const boundedTokens = tokens(`${item.item} ${categorySegments[0]}`);
+    if (alternatives.some((alternative) => alternative.every((token) => boundedTokens.has(token)))) {
+      return FOOD_MATCH_INDIRECT;
+    }
+  }
+  return FOOD_MATCH_PRIMARY;
+}
+
 export function restaurantProvesCuisine(restaurant: Restaurant, cuisine: string): string | null {
   const normalizedCuisine = normalizeForSearch(cuisine);
   const tag = restaurant.cuisine_tags.find((value) => normalizeForSearch(value) === normalizedCuisine);
@@ -257,6 +298,18 @@ function proveItemConstraints(plan: QueryPlan, item: MenuItem, witnesses: Constr
       witnesses.push({ constraint: 'meal-period', itemKey: key, evidence: [item.dining_period] });
     } else failures.push(`${item.item} lacks the requested meal-period evidence`);
   }
+}
+
+function proveAlcohol(plan: QueryPlan, item: MenuItem, witnesses: ConstraintWitness[], failures: string[]): void {
+  if (plan.constraints.alcohol == null) return;
+  const wanted = plan.constraints.alcohol === 'required';
+  if (item.is_alcoholic === wanted) {
+    witnesses.push({
+      constraint: `alcohol:${plan.constraints.alcohol}`,
+      itemKey: `${item.restaurant_id}:${item.item_id}`,
+      evidence: [`is_alcoholic=${item.is_alcoholic}`],
+    });
+  } else failures.push(`${item.item} is ${wanted ? 'not ' : ''}alcoholic`);
 }
 
 function proveRecency(plan: QueryPlan, item: MenuItem, data: LoadedData, witnesses: ConstraintWitness[], failures: string[]): void {
@@ -405,6 +458,7 @@ function restaurantProof(
   for (const item of items) {
     proveItemConstraints(plan, item, witnesses, failures);
     proveRecency(plan, item, data, witnesses, failures);
+    proveAlcohol(plan, item, witnesses, failures);
   }
   return { witnesses, failures };
 }

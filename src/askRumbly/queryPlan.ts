@@ -114,6 +114,16 @@ export interface QueryPlan {
      * All this constrains is when the row first appeared in Rumbly's data.
      */
     recency?: { withinDays: number };
+    /**
+     * An explicit ask for (or against) alcohol: "a Dole Whip with alcohol",
+     * "a virgin piña colada". Distinct from ordering preference -- when this
+     * is unset the executor still shows alcoholic rows, just not first.
+     *
+     * Needed because Disney sells both versions of the same named drink, so
+     * without it "Dole Whip with alcohol" was captured as one long food term
+     * and matched almost nothing.
+     */
+    alcohol?: 'required' | 'excluded';
     priceOperation?: 'cheapest' | 'maximum';
     maxPrice?: number;
     /**

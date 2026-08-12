@@ -48,6 +48,14 @@ export const FOOD_TERM_ALTERNATIVES: Readonly<Record<string, string[][]>> = {
   'bottled water': [['bottled', 'water'], ['dasani'], ['aquafina'], ['smartwater']],
   nuggets: [['nugget']],
   'chicken nuggets': [['chicken', 'nugget'], ['nugget']],
+  // Disney has been renaming pizzas to "flatbread" -- Pinocchio's Village Haus
+  // now publishes All-Meat, Pepperoni, and Gourmet Cheese *Flatbread*, and its
+  // only remaining row with "pizza" in the name is the plant-based one. A
+  // guest asking for pizza in Magic Kingdom was being handed the plant-based
+  // pizza as though it were the whole answer. Listed as a fallback rather than
+  // an equal, so an actual pizza still ranks first where one exists.
+  pizza: [['pizza'], ['flatbread']],
+  pizzas: [['pizza'], ['flatbread']],
   milkshake: [['milkshake'], ['milk', 'shake'], ['shake']],
   milkshakes: [['milkshake'], ['milk', 'shake'], ['shake']],
   'tater tots': [['tot'], ['tater', 'tot']],

@@ -18,7 +18,7 @@ function slug(value: string): string {
 // "Flame Tree Barbecue" gets asked about as "Flame Tree" or "flame tree bbq",
 // and every one of those failed to link while this list held only four
 // descriptors.
-const VENUE_DESCRIPTOR = /\s+(?:restaurants?|cafe|caf\u00e9|theatre|theater|soda shop|dining room|barbecue|bbq|grille?|kitchen|bar|lounge|tavern|taverna|pub|eatery|bakery|canteen|cantina|hall|marketplace|market|creamery|parlou?r|company|co\.?|ltd\.?|inn|outpost|stand|shop|terrace|gardens?|club|boulangerie|patisserie|p\u00e2tisserie|bistro|brasserie|trattoria|ristorante|pizzeria|steakhouse|smokehouse|taphouse|tap house|alehouse|roastery|creperie|cr\u00eaperie|sweets|treats|confectionery|k\u00fcche|kuche)$/i;
+const VENUE_DESCRIPTOR = /\s+(?:restaurants?|cafe|caf\u00e9|theatre|theater|soda shop|dining room|barbecue|bbq|grille?|kitchen|bar|lounge|tavern|taverna|pub|eatery|bakery|canteen|cantina|hall|marketplace|market|creamery|parlou?r|company|co\.?|ltd\.?|inn|outpost|stand|shop|terrace|gardens?|club|boulangerie|patisserie|p\u00e2tisserie|bistro|brasserie|trattoria|ristorante|pizzeria|steakhouse|smokehouse|taphouse|tap house|alehouse|roastery|creperie|cr\u00eaperie|sweets|treats|confectionery|k\u00fcche|kuche|kiosk|deli|refreshments?)$/i;
 
 function restaurantAliases(name: string, reservedNames: ReadonlySet<string>): string[] {
   const plain = name
@@ -35,16 +35,35 @@ function restaurantAliases(name: string, reservedNames: ReadonlySet<string>): st
     // resort itself.
     if (trimmed.length < 4) return;
     if (reservedNames.has(trimmed.toLowerCase())) return;
+    // Compared with spaces removed as well, because the camel split invents
+    // spellings the reserved list does not carry: "BoardWalk Deli" shortens to
+    // "Board Walk", which is the resort area, not this one kiosk.
+    const collapsed = trimmed.toLowerCase().replace(/\s+/g, '');
+    if ([...reservedNames].some((reserved) => reserved.replace(/\s+/g, '') === collapsed)) return;
     aliases.add(trimmed);
     aliases.add(trimmed.replace(/'/g, ''));
   };
 
-  let shortened = plain;
-  let previous = '';
-  while (shortened !== previous) {
-    previous = shortened;
-    shortened = shortened.replace(VENUE_DESCRIPTOR, '').trim();
-    if (shortened !== plain) add(shortened);
+  // Disney runs words together and marks the seam with a capital -- BaseLine,
+  // BoardWalk, AbracadaBar, YeSake. Guests type the seam as a space, because
+  // that is how the name is said out loud. Splitting on the internal capital
+  // covers every such venue at once instead of one override each.
+  const camelSplit = plain.replace(/([a-z])([A-Z])/g, '$1 $2');
+  // The reverse too, for a guest who closes up a name Disney spaces.
+  if (camelSplit !== plain) add(plain.replace(/([a-z]) ([A-Z])/g, '$1$2'));
+
+  // Both spellings then shorten the same way, so "YeSake Kiosk" reaches
+  // "Ye Sake" and not just "Ye Sake Kiosk". Dropping the descriptor is what
+  // guests actually do -- nobody says the word "Kiosk" out loud.
+  for (const full of new Set([plain, camelSplit])) {
+    if (full !== plain) add(full);
+    let shortened = full;
+    let previous = '';
+    while (shortened !== previous) {
+      previous = shortened;
+      shortened = shortened.replace(VENUE_DESCRIPTOR, '').trim();
+      if (shortened !== full) add(shortened);
+    }
   }
   // Disney writes "Barbecue"; guests write "BBQ", and the reverse.
   if (/\bbarbecue\b/i.test(plain)) add(plain.replace(/\bbarbecue\b/i, 'BBQ'));
