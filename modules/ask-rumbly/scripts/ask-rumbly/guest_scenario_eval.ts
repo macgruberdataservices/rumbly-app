@@ -29,10 +29,11 @@ interface Scenario {
 const verbose = process.argv.includes('--verbose');
 const failuresOnly = process.argv.includes('--failures');
 const withLocation = process.argv.includes('--with-location');
+const secondSet = process.argv.includes('--set2');
 const SIMULATED_ORIGIN = { latitude: 28.4177, longitude: -81.5812 };
 
 const corpus = JSON.parse(
-  readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'guest-scenarios.json'), 'utf8'),
+  readFileSync(join(dirname(fileURLToPath(import.meta.url)), secondSet ? 'guest-scenarios-2.json' : 'guest-scenarios.json'), 'utf8'),
 ) as { scenarios: Scenario[] };
 
 const data = await loadData();

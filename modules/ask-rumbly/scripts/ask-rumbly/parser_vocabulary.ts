@@ -18,7 +18,7 @@ function slug(value: string): string {
 // "Flame Tree Barbecue" gets asked about as "Flame Tree" or "flame tree bbq",
 // and every one of those failed to link while this list held only four
 // descriptors.
-const VENUE_DESCRIPTOR = /\s+(?:restaurants?|cafe|caf\u00e9|theatre|theater|soda shop|dining room|barbecue|bbq|grille?|kitchen|bar|lounge|tavern|taverna|pub|eatery|bakery|canteen|cantina|hall|marketplace|market|creamery|parlou?r|company|co\.?|ltd\.?|inn|outpost|stand|shop|terrace|gardens?|club)$/i;
+const VENUE_DESCRIPTOR = /\s+(?:restaurants?|cafe|caf\u00e9|theatre|theater|soda shop|dining room|barbecue|bbq|grille?|kitchen|bar|lounge|tavern|taverna|pub|eatery|bakery|canteen|cantina|hall|marketplace|market|creamery|parlou?r|company|co\.?|ltd\.?|inn|outpost|stand|shop|terrace|gardens?|club|boulangerie|patisserie|p\u00e2tisserie|bistro|brasserie|trattoria|ristorante|pizzeria|steakhouse|smokehouse|taphouse|tap house|alehouse|roastery|creperie|cr\u00eaperie|sweets|treats|confectionery|k\u00fcche|kuche)$/i;
 
 function restaurantAliases(name: string, reservedNames: ReadonlySet<string>): string[] {
   const plain = name
@@ -33,8 +33,7 @@ function restaurantAliases(name: string, reservedNames: ReadonlySet<string>): st
     // park, area, or resort name -- "Grand Floridian Cafe" shortening to
     // "Grand Floridian" would otherwise capture every question about the
     // resort itself.
-    if (trimmed.length < 5) return;
-    if (trimmed.split(/\s+/).length < 2 && trimmed.length < 7) return;
+    if (trimmed.length < 4) return;
     if (reservedNames.has(trimmed.toLowerCase())) return;
     aliases.add(trimmed);
     aliases.add(trimmed.replace(/'/g, ''));

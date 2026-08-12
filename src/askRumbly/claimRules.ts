@@ -163,7 +163,7 @@ const FEATURE_TESTS: ReadonlyArray<{ feature: ClaimFeature; test: (input: ClaimI
         || /\b(?:avoid|steer clear|stay away|skip)\b/i.test(text)
         // A universal claim ("dairy-free everywhere it's served") cannot be
         // supported by per-row labels.
-        || /\b(?:everywhere|anywhere|always|every (?:location|place|time)|all locations)\b/i.test(text)),
+        || /\b(?:everywhere|always|every (?:location|place|time)|all locations|all of them)\b/i.test(text)),
   },
   { feature: 'wait_time', test: ({ text }) => /\bwait\s?times?\b|\b(?:current|shortest|short|long|longest|huge|no|big)\b[\s\S]{0,12}\b(?:wait|line|queue)\b/i.test(text) },
   { feature: 'editorial_language', test: ({ text }) => EDITORIAL_PATTERN.test(text) },

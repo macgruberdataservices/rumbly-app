@@ -67,6 +67,8 @@ const NAMED_ANCHOR_NEAR_RADIUS_MILES = 0.25;
 
 function normalizeForMatching(value: string): string {
   return value
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/[\u2010-\u2015]/g, '-')
@@ -660,13 +662,21 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     ? ['reservations']
     : [];
   const requiredFeatures = features.features.filter((feature) => !excludedFeatures.includes(feature));
-  const dietary = DIETARY_PATTERNS.flatMap((entry) => collectPatternSpans(analysisText, entry.pattern).length > 0 ? [entry.key] : []);
-  const dietarySpans = DIETARY_PATTERNS.flatMap((entry) => collectPatternSpans(analysisText, entry.pattern));
+  // Spans inside a linked entity belong to its name, not to the request:
+  // "Woody's Lunch Box" is a venue, not a lunch request, and "Sunshine
+  // Seasons" is not a season.
+  const insideEntity = (span: SourceSpan) =>
+    linkedEntities.some((entity) => span.start < entity.end && entity.start < span.end);
+  const dietarySpans = DIETARY_PATTERNS
+    .flatMap((entry) => collectPatternSpans(analysisText, entry.pattern))
+    .filter((span) => !insideEntity(span));
+  const dietary = DIETARY_PATTERNS.flatMap((entry) =>
+    collectPatternSpans(analysisText, entry.pattern).some((span) => !insideEntity(span)) ? [entry.key] : []);
   const protectedFoodSpans = (vocabulary.protectedFoodPhrases ?? []).flatMap((phrase) =>
     collectPatternSpans(analysisText, new RegExp(`\\b${escapeRegExp(phrase)}\\b`, 'gi')));
   const mealMatches = MEAL_PATTERNS.map((entry) => ({
     key: entry.key,
-    spans: collectPatternSpans(analysisText, entry.pattern).filter((span) => !protectedFoodSpans.some(
+    spans: collectPatternSpans(analysisText, entry.pattern).filter((span) => !insideEntity(span) && !protectedFoodSpans.some(
       (food) => span.start < food.end && food.start < span.end,
     )),
   }));
