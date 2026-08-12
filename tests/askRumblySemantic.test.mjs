@@ -163,14 +163,16 @@ test('ordinary food discovery mentions proximity when results are distance-ranke
 
 test('terse Dole Whip proximity requests retain the food and return the nearest proven options', () => {
   const origin = { latitude: 28.4177, longitude: -81.5812 };
-  for (const question of [
-    'Find a Dole Whip near me',
-    'Dole Whip nearby?',
-    "What's the closest Dole Whip?",
+  for (const [question, operation] of [
+    ['Find a Dole Whip near me', 'nearby'],
+    ['Dole Whip nearby?', 'nearby'],
+    ["What's the closest Dole Whip?", 'nearest'],
   ]) {
     const response = runAskRumbly(question, data, origin);
     assert.deepEqual(response.plan.subject.foodTerms, ['dole whip'], question);
-    assert.equal(response.plan.constraints.distanceOperation, 'nearest', question);
+    // Only the superlative is a single-winner request; "near me" and "nearby"
+    // ask for options near the guest.
+    assert.equal(response.plan.constraints.distanceOperation, operation, question);
     assert.equal(response.plan.diagnostics.confidence, 'high', question);
     assert.equal(response.result.kind, 'answer', question);
     assert.ok((response.result.itemKeys?.length ?? 0) > 0, question);
@@ -179,7 +181,9 @@ test('terse Dole Whip proximity requests retain the food and return the nearest 
       totalPossibilities: response.result.itemKeys?.length ?? 0,
       hasCurrentLocation: true,
     });
-    assert.equal(presentation.eyebrow, 'Closest match', question);
+    // The superlative names one winner; "near me" is a ranked list, and its
+    // label says so rather than implying a single answer.
+    assert.match(presentation.eyebrow, operation === 'nearest' ? /^Closest match$/ : /closest first|Closest match/i, question);
     assert.match(presentation.title, /Dole Whip|pineapple/i, question);
     assert.doesNotMatch(presentation.title, /could verify|menu items/i, question);
   }
@@ -1134,12 +1138,20 @@ test('terminal close in a food request means nearest rather than closing hours',
   const { plan, result } = execute('where can i get fried rice close');
   assert.equal(plan.claimType, 'menu_presence');
   assert.deepEqual(plan.subject.foodTerms, ['fried rice']);
-  assert.equal(plan.constraints.distanceOperation, 'nearest');
+  // A terminal "close" is "near me", not the superlative.
+  assert.equal(plan.constraints.distanceOperation, 'nearby');
   assert.equal(plan.diagnostics.meaningfulUnconsumedText, '');
   assert.equal(result.kind, 'answer');
   assert.equal(result.proof.status, 'proven');
-  assert.match(result.text, /^Nearest verified match for "fried rice"/i);
-  assert.equal(result.restaurantIds.length, 1);
+  // A terminal "close" now returns proximity-ranked options rather than a
+  // single winner, so a guest can weigh distance against what is on offer.
+  assert.match(result.text, /verified locations for "fried rice"/i);
+  assert.match(result.text, /ft away|mi away/i);
+  assert.ok(result.restaurantIds.length > 1, 'a nearby request returns options, not one winner');
+  // Ordered closest first, which is the property that makes the list useful.
+  const distances = result.restaurantIds.map((id) => result.distanceMilesByRestaurant[id]);
+  assert.ok(distances.every((value) => typeof value === 'number'));
+  assert.deepEqual(distances, [...distances].sort((a, b) => a - b));
 });
 
 test('short mobile keyword queries preserve food, location, and GF semantics', () => {

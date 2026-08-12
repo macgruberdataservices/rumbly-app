@@ -112,7 +112,14 @@ export interface QueryPlan {
     recency?: { withinDays: number };
     priceOperation?: 'cheapest' | 'maximum';
     maxPrice?: number;
-    distanceOperation?: 'nearest';
+    /**
+     * `nearest` is the superlative — "the closest churro" has one winner, and
+     * the proof layer holds it to a global optimum. `nearby` is a request for
+     * options near the guest, which wants a proximity-ranked list across
+     * several venues. Treating them alike returned ten beers from whichever
+     * single restaurant happened to be closest.
+     */
+    distanceOperation?: 'nearest' | 'nearby';
     distanceAnchor?: DistanceAnchorConstraint;
     distanceRadiusMiles?: number;
     time?: 'now' | 'today' | 'tomorrow';

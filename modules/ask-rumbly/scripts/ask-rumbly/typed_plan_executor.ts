@@ -304,15 +304,32 @@ function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates | nul
     : plan.constraints.distanceOperation === 'nearest'
       ? sorted.filter((row) => restaurantDistance(origin, row.restaurant) === restaurantDistance(origin, sorted[0].restaurant))
       : sorted;
-  const winners = plan.constraints.priceOperation === 'cheapest' || plan.constraints.distanceOperation === 'nearest'
+  // Every row tied for nearest sits at the same venue, so listing all of them
+  // repeats one restaurant's drinks menu back at the guest. One row per
+  // restaurant is the whole of the useful information; the siblings are
+  // counted instead. Cheapest ties are left alone -- those are genuinely
+  // different winners.
+  const nearestWinners = plan.constraints.distanceOperation === 'nearest';
+  const siblingCount = new Map<string, number>();
+  for (const row of objectiveRows) {
+    siblingCount.set(row.restaurant.restaurant_id, (siblingCount.get(row.restaurant.restaurant_id) ?? 0) + 1);
+  }
+  const winners = plan.constraints.priceOperation === 'cheapest'
     ? objectiveRows
-    : diversifyRestaurants(objectiveRows);
+    : nearestWinners
+      ? objectiveRows.filter((row, index) =>
+        objectiveRows.findIndex((other) => other.restaurant.restaurant_id === row.restaurant.restaurant_id) === index)
+      : diversifyRestaurants(objectiveRows);
   const shown = winners.slice(0, 12);
   const allergyPrefix = plan.constraints.allergenKeys.length > 0 ? 'Disney lists these menu items for the requested allergy label(s): ' : '';
   const plantNote = plan.constraints.dietaryKeys.some((key) => key === 'plant-based' || key === 'vegetarian')
     ? ' These are the items Disney categorizes as Plant-Based; that label does not establish individual dietary or allergy suitability.'
     : '';
-  const lines = shown.map(({ item, restaurant }) => `${item.item} at ${restaurant.restaurant}${item.price_value > 0 ? ` (${item.price_display})` : ''}`);
+  const lines = shown.map(({ item, restaurant }) => {
+    const siblings = nearestWinners ? (siblingCount.get(restaurant.restaurant_id) ?? 1) - 1 : 0;
+    const alsoHere = siblings > 0 ? ` (plus ${siblings} more here)` : '';
+    return `${item.item} at ${restaurant.restaurant}${item.price_value > 0 ? ` (${item.price_display})` : ''}${alsoHere}`;
+  });
   const remaining = winners.length - shown.length;
   const result: UnprovenPlanExecution = {
     kind: 'answer',

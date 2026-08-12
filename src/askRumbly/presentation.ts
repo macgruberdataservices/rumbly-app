@@ -234,7 +234,7 @@ function clarificationSuggestions(plan: QueryPlan, hasCurrentLocation: boolean):
       ];
     }
   }
-  const needsLocation = (plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest')
+  const needsLocation = (plan.action === 'distance' || plan.constraints.distanceOperation != null)
     && !plan.constraints.distanceAnchor;
   if (needsLocation && !hasCurrentLocation) return [{ kind: 'enable_location', label: 'Use my location' }];
   if (plan.constraints.maxPrice != null && usefulFoodTerms(plan).length === 0) {
@@ -330,8 +330,19 @@ export function buildAskRumblyPresentation(
     const count = context.totalPossibilities;
     const possibilityLabel = count === 1 ? 'Possibility' : 'Possibilities';
     const nearest = plan.constraints.distanceOperation === 'nearest';
+    // Proximity copy names the food either way; the eyebrow is what tells the
+    // guest whether this is one winner or a ranked list.
+    const proximityRequest = plan.constraints.distanceOperation != null;
     const cheapest = plan.constraints.priceOperation === 'cheapest';
-    const proximityRanked = Object.keys(result.distanceMilesByRestaurant ?? {}).length > 0;
+    // Distance-ranked results can honestly be called nearby -- unless the
+    // guest named the scope themselves. "Beer in Epcot" answered with "here's
+    // what's nearby" was describing the wrong thing; "I want ice cream" with
+    // Near Me on genuinely is proximity-ranked.
+    const guestNamedScope = (plan.constraints.locations?.length ?? 0) > 0
+      || plan.constraints.location != null
+      || plan.constraints.locationSet != null;
+    const proximityRanked = Object.keys(result.distanceMilesByRestaurant ?? {}).length > 0
+      && (plan.constraints.distanceOperation != null || !guestNamedScope);
     const noun = context.linkedKind === 'item'
       ? count === 1 ? 'menu item' : 'menu items'
       : count === 1 ? 'place' : 'places';
@@ -364,9 +375,9 @@ export function buildAskRumblyPresentation(
               : 'Here are the current hours.'
             : "Here's what I found for that restaurant."
       : context.linkedKind
-      ? nearest && plan.constraints.distanceAnchor
+      ? proximityRequest && plan.constraints.distanceAnchor
         ? `Here's the closest ${usefulFoodTerms(plan).join(plan.subject.foodMode === 'any' ? ' or ' : ' and ') || noun} I found to ${plan.constraints.distanceAnchor.label}.`
-        : nearest
+        : proximityRequest
         ? nearestResultTitle(plan.sourceText, usefulFoodTerms(plan))
         : cheapest
           ? cheapestResultTitle(plan.sourceText, noun, count)
@@ -394,6 +405,21 @@ export function buildAskRumblyPresentation(
           : context.hasCurrentLocation ? 'Distance from you' : 'Distance'
         : nearest
         ? 'Closest match'
+        : proximityRanked
+        // A "nearby" request is a ranked list, so the label says how it is
+        // ordered rather than just how many there are. Each row carries its
+        // own distance, which is what lets a guest actually choose.
+        // Counted in places, not menu rows: "2394 nearby" was the size of the
+        // matching universe, which tells a guest nothing about their choice.
+        ? (() => {
+          const places = new Set(result.restaurantIds ?? []).size;
+          if (places <= 1) return 'Closest match';
+          return `${places} places nearby, closest first`;
+        })()
+        : context.linkedKind === 'item' && new Set(result.restaurantIds ?? []).size > 1
+        // Both numbers matter to a decision: how much there is to choose from,
+        // and how many places that means visiting.
+        ? `${count} ${possibilityLabel.toLowerCase()} at ${new Set(result.restaurantIds ?? []).size} places`
         : context.linkedKind ? `Found ${count} ${possibilityLabel}` : 'Ready',
       title,
       message: allergyAnswer
@@ -487,7 +513,7 @@ export function buildAskRumblyPresentation(
     const allergySafety = plan.claimType === 'allergy_safety';
     const unknownAllergyLabel = plan.claimType === 'disney_label' && plan.constraints.allergenKeys.length === 0;
     const needsLocation = /current location is required/i.test(result.text)
-      || ((plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest')
+      || ((plan.action === 'distance' || plan.constraints.distanceOperation != null)
         && !plan.constraints.distanceAnchor
         && !context.hasCurrentLocation);
     return {

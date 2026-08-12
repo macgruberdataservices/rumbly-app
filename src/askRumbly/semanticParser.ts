@@ -889,7 +889,11 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
         ? 'cheapest'
         : /\b(?:under|below|less than|up to)\s*\$/i.test(grammarText) ? 'maximum' : undefined,
       maxPrice: Number(grammarText.match(/\b(?:under|below|less than|up to)\s*\$\s*(\d+(?:\.\d{1,2})?)/i)?.[1]) || undefined,
-      distanceOperation: /\b(?:closest|nearest|near me|nearby)\b/i.test(grammarText) || proximityClose ? 'nearest' : undefined,
+      distanceOperation: /\b(?:closest|nearest)\b/i.test(grammarText)
+        ? 'nearest'
+        : /\b(?:near me|nearby|around here|close by)\b/i.test(grammarText) || proximityClose
+          ? 'nearby'
+          : undefined,
       distanceAnchor,
       distanceRadiusMiles: distanceAnchorRadius(analysisText, distanceAnchor, linkedEntities),
       time: /\btomorrow\b/i.test(grammarText) ? 'tomorrow' : /\b(?:right now|currently|open now|rn)\b/i.test(grammarText) ? 'now' : /\b(?:today|this morning)\b/i.test(grammarText) ? 'today' : undefined,

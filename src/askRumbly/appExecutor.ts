@@ -60,7 +60,7 @@ export function runAskRumbly(
     && !origin
     && !hasDistanceAnchor
     && !namedDistanceAnchor
-    && (plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest');
+    && (plan.action === 'distance' || plan.constraints.distanceOperation != null);
   if (needsCurrentLocation) {
     const reason = 'Current location is required for an unscoped distance question.';
     plan = {
