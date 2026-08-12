@@ -151,7 +151,7 @@
     },
     {
       "id": "open-now-in-area",
-      "expect": "no-data",
+      "expect": "either",
       "phrasings": [
         "What restaurants are open right now in Epcot?",
         "what's open in Epcot right now",
@@ -159,7 +159,7 @@
         "Epcot restaurants open now",
         "Which places are still open in Epcot?"
       ],
-      "note": "Time-dependent by nature: outside opening hours the honest answer is that nothing is open. Scored as no-data so the suite does not change score with the clock — a regression corpus that does is not a regression corpus."
+      "note": "Time-dependent: an answer during opening hours and an honest no-match outside them are both correct, so this intent must accept either. It was briefly marked no-data, which rejected the daytime answer."
     },
     {
       "id": "quick-service-in-park",
