@@ -170,21 +170,27 @@ function MenuResultCard({
   item,
   restaurant,
   distanceMiles,
+  alsoHereCount = 0,
   onPress,
 }: {
   item: MenuItem;
   restaurant: Restaurant;
   distanceMiles?: number | null;
+  /** Other matching items at this same venue, not shown as their own card. */
+  alsoHereCount?: number;
   onPress: () => void;
 }) {
   const restaurantMeta = [
     restaurant.restaurant,
     distanceMiles == null ? null : `${formatProximityDistance(distanceMiles)} away`,
   ].filter(Boolean).join(' · ');
+  const alsoHere = alsoHereCount > 0
+    ? `plus ${alsoHereCount} more match${alsoHereCount === 1 ? '' : 'es'} here`
+    : null;
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${item.item} at ${restaurantMeta}`}
+      accessibilityLabel={`${item.item} at ${restaurantMeta}${alsoHere ? `, ${alsoHere}` : ''}`}
       onPress={onPress}
       style={({ pressed }) => [styles.menuResultCard, pressed && styles.pressed]}
     >
@@ -194,6 +200,7 @@ function MenuResultCard({
       </View>
       <Text style={[text.bodyMuted, styles.menuRestaurant]}>{restaurantMeta}</Text>
       {!!item.category && <Text style={[text.bodyMuted, styles.menuCategory]}>{item.category}</Text>}
+      {alsoHere ? <Text style={[text.bodyMuted, styles.menuAlsoHere]}>{alsoHere}</Text> : null}
       <Text style={styles.openLabel}>Open restaurant menu ›</Text>
     </Pressable>
   );
@@ -485,9 +492,28 @@ export function AskRumblyScreen({ navigation }: Props) {
   const result = response?.result;
   const resultDistances = result?.kind === 'answer' ? result.distanceMilesByRestaurant ?? {} : {};
   const isReady = !isLoading && menuError === null && dataError === null;
+  // A guest choosing where to walk wants venues, not a venue's whole matching
+  // menu. Ten beers from one bar answers nothing that one beer plus "plus 6
+  // more matches here" does not, and it crowds out the other nine bars.
+  const itemResultGroups = useMemo(() => {
+    const order: string[] = [];
+    const byRestaurant = new Map<string, MenuItem[]>();
+    for (const item of itemResults) {
+      const existing = byRestaurant.get(item.restaurant_id);
+      if (existing) existing.push(item);
+      else {
+        byRestaurant.set(item.restaurant_id, [item]);
+        order.push(item.restaurant_id);
+      }
+    }
+    return order.map((restaurantId) => byRestaurant.get(restaurantId) ?? []);
+  }, [itemResults]);
   const hasLinkedResults = itemResults.length > 0 || restaurantResults.length > 0;
   const totalPossibilities = itemResults.length > 0 ? itemResults.length : restaurantResults.length;
-  const visibleItemResults = showAllResults ? itemResults : itemResults.slice(0, INITIAL_RESULT_COUNT);
+  // Cards are one per venue now, so the See-all control counts cards rather
+  // than matching rows -- otherwise it offers to reveal more than exist.
+  const totalCards = itemResults.length > 0 ? itemResultGroups.length : restaurantResults.length;
+  const visibleItemGroups = showAllResults ? itemResultGroups : itemResultGroups.slice(0, INITIAL_RESULT_COUNT);
   const visibleRestaurantResults = showAllResults
     ? restaurantResults
     : restaurantResults.slice(0, INITIAL_RESULT_COUNT);
@@ -763,7 +789,8 @@ export function AskRumblyScreen({ navigation }: Props) {
                     </View>
                   ) : null}
 
-                  {visibleItemResults.map((item) => {
+                  {visibleItemGroups.map((group) => {
+                    const item = group[0];
                     const restaurant = restaurantsById.get(item.restaurant_id);
                     if (!restaurant) return null;
                     return (
@@ -773,6 +800,7 @@ export function AskRumblyScreen({ navigation }: Props) {
                         restaurant={restaurant}
                         distanceMiles={resultDistances[restaurant.restaurant_id]
                           ?? (origin ? distanceToRestaurant(origin, restaurant) : undefined)}
+                        alsoHereCount={group.length - 1}
                         onPress={() => openRestaurant(restaurant.restaurant_id, item)}
                       />
                     );
@@ -787,10 +815,10 @@ export function AskRumblyScreen({ navigation }: Props) {
                     />
                   ))}
 
-                  {!showAllResults && totalPossibilities > INITIAL_RESULT_COUNT ? (
+                  {!showAllResults && totalCards > INITIAL_RESULT_COUNT ? (
                     <Pressable
                       accessibilityRole="button"
-                      accessibilityLabel={`See all ${totalPossibilities} possibilities`}
+                      accessibilityLabel={`See all ${totalCards} ${itemResults.length > 0 ? 'places' : 'possibilities'}`}
                       onPress={() => setShowAllResults(true)}
                       style={({ pressed }) => [styles.seeAllButton, pressed && styles.pressed]}
                     >
@@ -1264,6 +1292,7 @@ const styles = StyleSheet.create({
   },
   menuRestaurant: { marginTop: SPACING.xs },
   menuCategory: { marginTop: SPACING.xs },
+  menuAlsoHere: { marginTop: SPACING.xs, fontStyle: 'italic' },
   openLabel: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 12,
