@@ -37,12 +37,13 @@ const ALLERGEN_PATTERNS: ReadonlyArray<{ keys: string[]; pattern: RegExp }> = [
 
 const FEATURE_PATTERNS: ReadonlyArray<{ feature: RestaurantFeature; pattern: RegExp }> = [
   { feature: 'mobile_order', pattern: /\bmobile[\s-]*order(?:ing)?\b/gi },
-  { feature: 'walk_up_list', pattern: /\bwalk[\s-]*up\s+(?:list|waitlist)\b/gi },
+  { feature: 'walk_up_list', pattern: /\bwalk[\s-]*ups?\b(?:\s+(?:list|waitlist))?/gi },
   { feature: 'reservations', pattern: /\breservations?\b|\bbook(?:ing)?\b/gi },
-  { feature: 'quick_service', pattern: /\bquick[\s-]*service\b/gi },
+  { feature: 'quick_service', pattern: /\b(?:quick|counter)[\s-]*service\b/gi },
+  { feature: 'table_service', pattern: /\btable[\s-]*service\b|\bsit[\s-]*down\b/gi },
   { feature: 'character_dining', pattern: /\bcharacter (?:dining|breakfasts?|meals?)\b/gi },
   { feature: 'festival_booth', pattern: /\bfestival booths?\b|\bfood and wine(?: festival)?\b/gi },
-  { feature: 'resort_bar', pattern: /\bresort (?:bars?|lounges?)\b/gi },
+  { feature: 'resort_bar', pattern: /\bresort\s+(?:bars?|lounges?)\b|\blounges?\b/gi },
   // Wait and queue vocabulary rather than the two phrasings ("without a huge
   // line", "waiting forever") that happened to appear in the corpus.
   { feature: 'wait_time', pattern: /\bwait\s?times?\b|\b(?:shortest|short|long|longest|huge|no|big)\s+(?:current\s+)?(?:wait|line|queue)\b|\bwaiting\b|\bhow long is the (?:wait|line|queue)\b/gi },
@@ -95,8 +96,13 @@ function escapeRegExp(value: string): string {
 }
 
 function aliasPattern(alias: string): RegExp {
+  // Hyphens and spaces are interchangeable in guest typing: "Sci-Fi Dine-In"
+  // gets typed "sci fi dine in", and neither form should fail to link.
+  // One pass over both separators. Doing spaces first and hyphens second
+  // corrupts the character class the first pass just inserted.
   const escaped = escapeRegExp(normalizeForMatching(alias))
-    .replace(/ /g, '\\s+')
+    .replace(/[ -]+/g, '\u0000')
+    .replace(/\u0000/g, '[\\s-]+')
     .replace(/&/g, '(?:&|and)');
   return new RegExp(`(^|[^a-z0-9])(${escaped})(?=$|[^a-z0-9])`, 'i');
 }
@@ -262,7 +268,7 @@ function foodCapture(query: string): string {
     /\b(?:we need|i need|looking for)\s+(.+?)(?:\s+(?:at|in|near)\b|[?.!]*$)/i,
     /\b(?:i(?:'d| would) like|craving)\s+(.+?)\??$/i,
     /\bshow me\s+(.+?)\??$/i,
-    /\bis (?:the )?(.+?)\s+(?:still )?on (?:the )?menu\b/i,
+    /\bis (?:the )?(.+?)\s+(?:still\s+)?(?:on (?:the )?menu|(?:still\s+)?(?:around|available|served|sold))\b/i,
     /\bare there\s+(.+?)\s+(?:options?|items?|dishes?|meals?|snacks?)\b/i,
     /\b(?:what|which)\s+(.+?)\s+(?:options?|items?|dishes?|meals?|snacks?)\s+(?:are|can|do|have)\b/i,
     /\b(?:what|which)\s+(.+?\b(?:options?|items?|dishes?|meals?|snacks?))\s+(?:are|can|do|have)\b/i,
@@ -687,6 +693,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     allergenKeys: allergens.keys,
     hasAllergyContext: allergens.hasAllergyContext,
     hasRestaurantEntity: linkedEntities.some((entity) => entity.type === 'restaurant'),
+    hasLocationEntity: linkedEntities.some((entity) => isLocationEntity(entity)),
     locationIsHoursSubject: linkedEntities.some((entity) => isLocationEntity(entity)
       && /\b(?:does|do|is|are|will|did)\s+(?:the\s+)?$/i.test(analysisText.slice(Math.max(0, entity.start - 24), entity.start))),
   });

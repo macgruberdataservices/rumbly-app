@@ -1,0 +1,558 @@
+{
+  "purpose": "Blind guest-scenario set. Written from how Walt Disney World guests actually talk, not from Ask Rumbly's capabilities, and annotated only against the product contract in Docs/ASK_RUMBLY_SYSTEM.md. Two personas: someone on their first trip, and someone who visits often and asks about specific items and venues.",
+  "discipline": "Scored once before any fix. Phrasing is deliberately uneven — lowercase, missing punctuation, run-on sentences, typos, and the trailing context guests actually type. Do not clean it up.",
+  "expectations": {
+    "answer": "The contract says Rumbly answers this from restaurant, menu, hours, location, cuisine, service-style, or Disney allergy-label data.",
+    "decline": "Outside the contract: park operations, weather, live availability or waits, editorial ranking, allergy-safety judgment, kitchen process, or official policy.",
+    "either": "In contract, but the current snapshot may honestly have nothing. An answer or an honest no-match both count; a clarification does not."
+  },
+  "scenarios": [
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "where should we eat lunch in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "where can I get a dole whip"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "where do I get a turkey leg"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "is there anywhere to get pizza in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "cheapest place to eat in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "we need something quick and cheap in epcot"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "my son has a peanut allergy where can he eat in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "gluten free options in animal kingdom please"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "vegetarian food at animal kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "we have a picky toddler, anything simple in epcot"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "where can we get chicken nuggets for the kids"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "is there a kids menu at cosmic rays"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "what time does cosmic rays close"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "is be our guest open for lunch"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "does be our guest take reservations"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "which restaurants have mobile order in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "what character dining is at magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "where can i get coffee in epcot"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "i need an iced coffee somewhere in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "where do they sell popcorn"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "can we get ice cream in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "wheres the closest place to get a snack"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "show me the menu at be our guest"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "what does satuli canteen serve"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "is there table service in animal kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "quick service restaurants at hollywood studios"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "any place under $15 in epcot"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "where can we get breakfast in the parks"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "somewhere to get a beer in epcot"
+    },
+    {
+      "persona": "first-time",
+      "expect": "answer",
+      "q": "do they have salads anywhere in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "either",
+      "q": "dairy free desserts in magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "either",
+      "q": "is there sushi at epcot"
+    },
+    {
+      "persona": "first-time",
+      "expect": "either",
+      "q": "where can i find a lobster roll"
+    },
+    {
+      "persona": "first-time",
+      "expect": "either",
+      "q": "anywhere with mac and cheese for my daughter"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "do we need reservations for dinner"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "how does mobile order work"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "can I bring my own snacks into the park"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "what time does magic kingdom open"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "is it going to rain this afternoon"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "how long is the wait at be our guest right now"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "whats the best restaurant at disney world"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "which park has the best food"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "is be our guest worth the money"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "what should we eat tonight"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "is the food safe for my kids nut allergy"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "do they cook allergy food separately"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "how do i tell them about an allergy"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "is the dining plan worth it"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "where are the bathrooms near cosmic rays"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "how do we get to epcot from magic kingdom"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "can i get a refill on my popcorn bucket"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "where can we watch the fireworks while we eat"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "is there somewhere quiet to sit down"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "how much is a park ticket"
+    },
+    {
+      "persona": "first-time",
+      "expect": "decline",
+      "q": "what rides are near cosmic rays"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "is the ronto wrap still on the menu at docking bay 7"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "docking bay 7 menu"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "does oga's cantina take walk ups"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "nomad lounge menu please"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "what's on the menu at jiko"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "does flame tree barbecue have mobile order"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "flame tree bbq hours"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "where can i get a school bread",
+      "note": "Verified absent: zero rows match /school bread/ in the current snapshot, so an honest no-match is correct. The original annotation was written from Disney knowledge, not the data."
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "kakigori epcot"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "where do they sell the cheeseburger spring rolls"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "which resorts have a bar or lounge"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "restaurants at the polynesian"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "whats at the contemporary for dinner"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "disney springs restaurants with reservations"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "where can i get a margarita in epcot"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "craft beer in disney springs"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "where is the cheapest beer in magic kingdom"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "which epcot pavilions have table service"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "mexican food in epcot"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "african cuisine animal kingdom"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "any bbq at animal kingdom"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "gluten free at satuli canteen"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "plant based options at docking bay 7"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "which quick service places at epcot are open now",
+      "note": "Time-dependent: correct answer outside opening hours is that nothing is open."
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "whats open late in disney springs"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "how far is sanaa from animal kingdom lodge"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "closest place to get a beer near the castle"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "nearest quick service to space mountain"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "does sci fi dine in have vegetarian"
+    },
+    {
+      "persona": "frequent",
+      "expect": "answer",
+      "q": "pecos bill toppings bar still there?"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "whats new at food and wine this year"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "epcot festival booths"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "can i still get the grey stuff"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "where is the mickey shaped pretzel these days"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "is the citrus swirl still around"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "any new snacks in magic kingdom"
+    },
+    {
+      "persona": "frequent",
+      "expect": "either",
+      "q": "where can i get a churro bar"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "best lounge at disney world"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "is ogas worth the hype"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "which restaurant has gotten worse lately"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "can i get a passholder discount at flame tree"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "whats the current wait for walk up at ogas"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "is there availability at space 220 tonight"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "when do dining reservations open"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "what is the cancellation fee for a no show"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "does jiko have a dress code"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "which restaurant is most reliable for a gluten allergy"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "does satuli use a dedicated fryer"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "how spicy is the ronto wrap"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "whats in the sauce at flame tree"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "best table for fireworks at california grill"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "is the tip included at signature restaurants"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "how early should i mobile order to skip the line"
+    },
+    {
+      "persona": "frequent",
+      "expect": "decline",
+      "q": "what time is the epcot fireworks show"
+    }
+  ]
+}

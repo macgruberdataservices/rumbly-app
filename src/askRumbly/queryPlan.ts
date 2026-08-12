@@ -63,6 +63,7 @@ export type RestaurantFeature =
   | 'reservations'
   | 'quick_service'
   | 'character_dining'
+  | 'table_service'
   | 'festival_booth'
   | 'resort_bar'
   | 'wait_time';

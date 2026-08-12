@@ -14,23 +14,46 @@ function slug(value: string): string {
     .replace(/^-|-$/g, '');
 }
 
-function restaurantAliases(name: string): string[] {
+// Words that describe what a venue *is* rather than name it. Guests drop them:
+// "Flame Tree Barbecue" gets asked about as "Flame Tree" or "flame tree bbq",
+// and every one of those failed to link while this list held only four
+// descriptors.
+const VENUE_DESCRIPTOR = /\s+(?:restaurants?|cafe|caf\u00e9|theatre|theater|soda shop|dining room|barbecue|bbq|grille?|kitchen|bar|lounge|tavern|taverna|pub|eatery|bakery|canteen|cantina|hall|marketplace|market|creamery|parlou?r|company|co\.?|ltd\.?|inn|outpost|stand|shop|terrace|gardens?|club)$/i;
+
+function restaurantAliases(name: string, reservedNames: ReadonlySet<string>): string[] {
   const plain = name
-    .replace(/[®™]/g, '')
+    .replace(/[\u00ae\u2122]/g, '')
     .replace(/[\u2018\u2019]/g, "'")
     .replace(/\s+/g, ' ')
     .trim();
   const aliases = new Set([name, plain, plain.replace(/'/g, '')]);
+  const add = (alias: string) => {
+    const trimmed = alias.trim();
+    // A shortened form must stay distinctive, and must never collide with a
+    // park, area, or resort name -- "Grand Floridian Cafe" shortening to
+    // "Grand Floridian" would otherwise capture every question about the
+    // resort itself.
+    if (trimmed.length < 5) return;
+    if (trimmed.split(/\s+/).length < 2 && trimmed.length < 7) return;
+    if (reservedNames.has(trimmed.toLowerCase())) return;
+    aliases.add(trimmed);
+    aliases.add(trimmed.replace(/'/g, ''));
+  };
+
   let shortened = plain;
   let previous = '';
   while (shortened !== previous) {
     previous = shortened;
-    shortened = shortened.replace(/\s+(?:restaurant|cafe|café|theater|soda shop|dining room)$/i, '').trim();
-    if (shortened.length >= 5 && shortened !== plain) {
-      aliases.add(shortened);
-      aliases.add(shortened.replace(/'/g, ''));
-    }
+    shortened = shortened.replace(VENUE_DESCRIPTOR, '').trim();
+    if (shortened !== plain) add(shortened);
   }
+  // Disney writes "Barbecue"; guests write "BBQ", and the reverse.
+  if (/\bbarbecue\b/i.test(plain)) add(plain.replace(/\bbarbecue\b/i, 'BBQ'));
+  if (/\bbbq\b/i.test(plain)) add(plain.replace(/\bbbq\b/i, 'Barbecue'));
+  // Everything before a colon or dash is the venue's actual name, as in
+  // "Regal Eagle Smokehouse: Craft Drafts & Barbecue".
+  const beforeSeparator = plain.split(/\s*[:\u2013\u2014]\s*|\s+-\s+/)[0];
+  if (beforeSeparator !== plain) add(beforeSeparator);
   return Array.from(aliases);
 }
 
@@ -204,20 +227,24 @@ export function buildParserVocabulary(data: LoadedData): ParserVocabulary {
 }
 
 function createParserVocabulary(data: LoadedData): ParserVocabulary {
-  const restaurants: ParserEntity[] = data.restaurants.map((restaurant) => ({
-    id: restaurant.restaurant_id,
-    label: restaurant.restaurant,
-    type: 'restaurant',
-    aliases: [
-      ...restaurantAliases(restaurant.restaurant),
-      ...(RESTAURANT_ALIAS_OVERRIDES[restaurant.restaurant] ?? []),
-    ],
-  }));
   const locations = [
     ...locationEntities(data, 'park'),
     ...locationEntities(data, 'area'),
     ...locationEntities(data, 'resort'),
   ];
+  // Shortened restaurant aliases must not shadow a place name.
+  const reservedNames = new Set(
+    locations.flatMap((entity) => [entity.label, ...entity.aliases]).map((value) => value.toLowerCase()),
+  );
+  const restaurants: ParserEntity[] = data.restaurants.map((restaurant) => ({
+    id: restaurant.restaurant_id,
+    label: restaurant.restaurant,
+    type: 'restaurant',
+    aliases: [
+      ...restaurantAliases(restaurant.restaurant, reservedNames),
+      ...(RESTAURANT_ALIAS_OVERRIDES[restaurant.restaurant] ?? []),
+    ],
+  }));
   for (const entity of locations) {
     entity.aliases.push(...(LOCATION_ALIAS_OVERRIDES[entity.label] ?? []));
   }

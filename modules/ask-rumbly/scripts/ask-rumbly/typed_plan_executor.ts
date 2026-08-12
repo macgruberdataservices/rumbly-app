@@ -90,6 +90,12 @@ function hasFeature(restaurant: Restaurant, feature: RestaurantFeature): boolean
   if (feature === 'walk_up_list') return restaurant.has_walkup_list;
   if (feature === 'reservations') return restaurant.accepts_reservations;
   if (feature === 'quick_service') return normalizeForSearch(restaurant.service_style ?? '') === 'quick service';
+  if (feature === 'table_service') {
+    // Disney labels only two venues "Table Service". What guests mean is
+    // anything seated: A la Carte, Buffet, Prix Fixe, Family Style.
+    const style = normalizeForSearch(restaurant.service_style ?? '');
+    return style.length > 0 && style !== 'quick service';
+  }
   if (feature === 'character_dining') return restaurant.is_character_dining;
   if (feature === 'festival_booth') return restaurant.is_festival_booth;
   if (feature === 'resort_bar') {

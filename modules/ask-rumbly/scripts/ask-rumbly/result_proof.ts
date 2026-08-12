@@ -201,6 +201,10 @@ function featureEvidence(restaurant: Restaurant, feature: QueryPlan['constraints
   if (feature === 'walk_up_list') return restaurant.has_walkup_list ? 'has_walkup_list' : null;
   if (feature === 'reservations') return restaurant.accepts_reservations ? 'accepts_reservations' : null;
   if (feature === 'quick_service') return normalizeForSearch(restaurant.service_style ?? '') === 'quick service' ? restaurant.service_style ?? 'Quick Service' : null;
+  if (feature === 'table_service') {
+    const style = normalizeForSearch(restaurant.service_style ?? '');
+    return style.length > 0 && style !== 'quick service' ? restaurant.service_style ?? '' : null;
+  }
   if (feature === 'character_dining') return restaurant.is_character_dining ? 'is_character_dining' : null;
   if (feature === 'festival_booth') return restaurant.is_festival_booth ? 'is_festival_booth' : null;
   if (feature === 'resort_bar') {

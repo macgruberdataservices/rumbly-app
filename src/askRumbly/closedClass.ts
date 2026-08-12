@@ -112,7 +112,10 @@ const DINING_SCAFFOLDING = new Set([
   // describe the request rather than narrowing it.
   'accommodate', 'accommodates', 'accommodation', 'accommodations', 'booth',
   'booths', 'unique', 'year', 'years', 'standing', 'still', 'anymore',
-  'service', 'services', 'counter', 'quick', 'table',
+  'service', 'services', 'counter', 'quick', 'table', 'cuisine', 'cuisines',
+  'pavilion', 'pavilions', 'picky', 'simple', 'easy', 'basic', 'plain',
+  'normal', 'regular', 'quiet', 'busy', 'accept', 'accepts', 'require',
+  'requires', 'required', 'join', 'joining', 'reserve', 'book', 'booking',
 ]);
 
 export type WordClass = 'function' | 'scaffolding' | 'content';

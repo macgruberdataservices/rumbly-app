@@ -61,7 +61,9 @@ export type ClaimFeature =
   | 'nearest_names_object'
   | 'nearest_place_names_food'
   | 'restaurant_entity'
-  | 'location_is_hours_subject';
+  | 'location_is_hours_subject'
+  | 'location_entity'
+  | 'needs_reservation';
 
 // These three are exported because the parser also consumes their spans outside
 // claim detection: editorial wording is marked consumed, and the two proximity
@@ -72,7 +74,7 @@ export type ClaimFeature =
 // development-corpus question ("tourist traps", "fancy date", "real bbq",
 // "fake theme park", "food crawl", "secret menu", "top dessert") were removed,
 // because matching them raised corpus scores without adding capability.
-export const EDITORIAL_PATTERN = /\b(?:best|better|worst|good|great|decent|favorite|signature|worth|hype|overrated|overpriced|weird|gimmicky|highest[ -]rated|hidden gem|must[ -]eat|ultimate|top \d+|most famous|fastest|shortest|recommend(?:ed|ation)?|reviews?|mistakes?)\b|\b(?:most|least)\s+(?:accommodating|thorough|risky|reliable|trustworthy)\b/i;
+export const EDITORIAL_PATTERN = /\b(?:best|better|worse|worst|good|great|decent|favorite|signature|worth|hype|overrated|overpriced|weird|gimmicky|highest[ -]rated|hidden gem|must[ -]eat|ultimate|top \d+|most famous|fastest|shortest|recommend(?:ed|ation)?|reviews?|mistakes?)\b|\b(?:most|least)\s+(?!of\b|people\b|places?\b|restaurants?\b|items?\b)[a-z][a-z-]{3,}\b/i;
 export const FOOD_PROXIMITY_CLOSE_PATTERN = /\b(?:where|who)\b[\s\S]*\b(?:get|find|buy|order|grab|eat|has|serves?|sells?|offers?)\b[\s\S]*\bclose\s*[?.!]*$/i;
 export const RESTAURANT_PROXIMITY_CLOSE_PATTERN = /\b(?:how\s+)?close(?:\s+by)?\s+(?:is|are)\b/i;
 
@@ -80,14 +82,14 @@ const PROCESS_PATTERN = /\b(?:process|procedure|how (?:do|can|should) i|talk (?:
 const KITCHEN_CONVERSATION_PATTERN = /\b(?:talk|speak|chat)\s+(?:to|with|through)\s+(?:a\s+)?(?:chef|manager|cast member|someone|anyone)\b/i;
 const KITCHEN_PATTERN = /\b(?:dedicated,?\s+(?:(?:allergy[\s-]?(?:friendly )?)|(?:gluten[\s-]?free|gf) )?(?:kitchen|fryers?|equipment|prep area|facility|waffle iron)|shared (?:fryers?|equipment|oil)|same oil|separate (?:allergy[\s-]?(?:friendly )?)?(?:kitchen|fryers?|equipment|prep area|facility)|separate prep|swapped ingredients|without (?:needing )?(?:advance )?notice)\b/i;
 const CROSS_CONTACT_PATTERN = /\bcross[\s-]?(?:contact|contamination)\b|\bcontaminat(?:e|ed|ion)\b/i;
-const INGREDIENT_PATTERN = /\b(?:ingredients?|contain|made (?:with|from)|avoid|free of|healthy|nutritious|nutrition(?:al)?|isn't fried|is not fried|not fried|keto(?:[ -]friendly)?|low[ -]carb|zero[ -]carb(?:ohydrate)?|sugar[ -]free|low[ -]glycemic)\b|\bwhat(?:'s| is) in\s+[a-z0-9]|\bis there\s+(?:soy|milk|dairy|egg|sesame|peanut|tree nut|fish|shellfish|gluten|wheat)\s+in\b/i;
+const INGREDIENT_PATTERN = /\b(?:ingredients?|contain|made (?:with|from)|avoid|free of|healthy|nutritious|nutrition(?:al)?|isn't fried|is not fried|not fried|keto(?:[ -]friendly)?|low[ -]carb|zero[ -]carb(?:ohydrate)?|sugar[ -]free|low[ -]glycemic)\b|\bwhat(?:'s|s| is)? in\s+(?:the\s+)?[a-z0-9]|\bis there\s+(?:soy|milk|dairy|egg|sesame|peanut|tree nut|fish|shellfish|gluten|wheat)\s+in\b/i;
 const SAFETY_PATTERN = /\b(?:safe|safely|safest|safety|certified|risk[- ]free|guarantee|trust)\b/i;
 const REPORTED_OUTCOME_PATTERN = /\b(?:reviews?|mistakes?|complaints?|reported|ratings?)\b/i;
 // Amenity concepts the structured dataset cannot establish. "Giant aquarium",
 // "surrounded by sea life", "latte art", and "printed on the foam" were single
 // corpus sentences; the general concepts (aquarium, decoration) replace them.
 const VENUE_AMENITY_PATTERN = /\b(?:quiet(?:est)?|shade|shaded|outdoor seating|air[ -]con(?:ditioned)?|air[ -]conditioned|indoors?|out of (?:the )?(?:heat|rain)|views?|fireworks?\s+(?:views?|show)|view(?:ing)?[\s\S]{0,20}fireworks?|live music(?:al entertainment)?|away from crowds|crowd levels?|aquarium|ambiance|ambience|atmosphere|decor(?:ated|ations?)?|themed? (?:seating|dining room))\b/i;
-const LIVE_AVAILABILITY_PATTERN = /\b(?:available|availability|join|wait ?list|wait times?|line time|huge wait|same[\s-]?day|right now|currently|still (?:get|book)|to[ -]?go[\s\S]*app)\b/i;
+const LIVE_AVAILABILITY_PATTERN = /\b(?:availability|wait times?|line time|huge wait|same[\s-]?day|right now|currently|at the moment|still (?:get|book|available)|to[ -]?go[\s\S]*app)\b/i;
 // Named parks are linked entities whose spans are blanked before claim
 // detection, so listing them here never fired; the typed `park-hours-subject`
 // rule handles that case. What remains is the literal word "park" and
@@ -96,12 +98,12 @@ const PARK_OPERATIONS_PATTERN = /\bparks?\b[\s\S]*\b(?:open|close|hours?|rope dr
 // "Records of past allergy orders" was one corpus sentence. An identity
 // question ("who is ...") generalizes the Mickey Mouse example from the product
 // contract without hard-coding a character name.
-const GENERAL_PATTERN = /\b(?:weather|forecast|temperature|rides?|attractions?|parade|fireworks show|parking|refill stations?|first aid|medical|emergency|restrooms?|bathrooms?|lockers?|strollers?|wheelchairs?|ecv|guest services?|guest relations|concierge|monorail|buses|bus stop|skyliner|tram|ferry|transportation|atm|baby care|nursing|wifi|wi-fi|charging|gift shops?|merchandise|souvenirs?|photopass|memory maker|lost and found)\b|\bwho\s+(?:is|are|was|were)\s+(?!open\b|serving\b|still\b)/i;
+const GENERAL_PATTERN = /\b(?:weather|forecast|temperature|rides?|attractions?|parade|fireworks show|parking|refill stations?|first aid|medical|emergency|restrooms?|bathrooms?|lockers?|strollers?|wheelchairs?|ecv|guest services?|guest relations|concierge|monorail|buses|bus stop|skyliner|tram|ferry|transportation|atm|baby care|nursing|wifi|wi-fi|charging|gift shops?|merchandise|souvenirs?|photopass|memory maker|lost and found)\b|\bhow\s+(?:do|can|should)\s+(?:i|we)\s+get\s+to\b|\bwho\s+(?:is|are|was|were)\s+(?!open\b|serving\b|still\b)/i;
 // Policy topics, stated as topics. Removed: "popcorn bucket refill",
 // "physical register", "free cups of water", "hotel restaurants ... park
 // tickets", "quick-service vs table-service", and the adults-ordering-kids-meals
 // clause, each of which existed for exactly one corpus question.
-const OFFICIAL_POLICY_PATTERN = /\b(?:outside food|bring (?:my|our|your|their|any )?(?:own )?food|mobile order (?:work|rules?)|dining plan|park hopper[\s\S]*dining|cancel[\s\S]*reservation|reservation[\s\S]*(?:fee|deadline|policy|rules?)|refund|dress code|gratuit(?:y|ies)|tipping|refill policy)\b/i;
+const OFFICIAL_POLICY_PATTERN = /\b(?:outside food|bring (?:my|our|your|their|any )?(?:own )?food|mobile order (?:work|rules?)|dining plan|park hopper[\s\S]*dining|cancel[\s\S]*reservation|reservation[\s\S]*(?:fee|deadline|policy|rules?)|refund|dress code|gratuit(?:y|ies)|tipping|refill policy)\b|\breservations?\s+(?:open|window|drop|release)\b|\b(?:passholder|annual pass(?:holder)?|dvc|military)\s+discounts?\b|\bdiscounts?\b/i;
 
 const HARD_SUBJECTIVE_PATTERN = /\b(?:best|better|worst|fastest|shortest|recommend|reviews?|mistakes?|splurge)\b/i;
 const SOFT_SUBJECTIVE_PATTERN = /\b(?:good|great|decent)\b/i;
@@ -114,6 +116,8 @@ export interface ClaimInput {
   hasAllergyContext: boolean;
   /** A restaurant was linked in the question. */
   hasRestaurantEntity?: boolean;
+  /** A park, area, or resort was linked in the question. */
+  hasLocationEntity?: boolean;
   /**
    * A linked park, area, or resort is the grammatical subject of open/close
    * ("does Magic Kingdom open"), rather than a scope the search runs inside
@@ -161,7 +165,7 @@ const FEATURE_TESTS: ReadonlyArray<{ feature: ClaimFeature; test: (input: ClaimI
         // supported by per-row labels.
         || /\b(?:everywhere|anywhere|always|every (?:location|place|time)|all locations)\b/i.test(text)),
   },
-  { feature: 'wait_time', test: ({ text }) => /\b(?:current|shortest)\b[\s\S]*\bwait\b|\bwait times?\b/i.test(text) },
+  { feature: 'wait_time', test: ({ text }) => /\bwait\s?times?\b|\b(?:current|shortest|short|long|longest|huge|no|big)\b[\s\S]{0,12}\b(?:wait|line|queue)\b/i.test(text) },
   { feature: 'editorial_language', test: ({ text }) => EDITORIAL_PATTERN.test(text) },
   { feature: 'should_i_choose', test: ({ text }) => /^should i (?:eat|try|choose)\b/i.test(text.trim()) },
   {
@@ -175,7 +179,7 @@ const FEATURE_TESTS: ReadonlyArray<{ feature: ClaimFeature; test: (input: ClaimI
   },
   { feature: 'sensory', test: ({ text }) => /\b(?:spicy|spiciness|mild|hot and spicy|sweetness|saltiness|texture)\b|\b(?:shaped|printed|drawn|decorated|topped)\s+(?:like|on|into|with)\b/i.test(text) },
   { feature: 'live_availability_language', test: ({ text }) => LIVE_AVAILABILITY_PATTERN.test(text) },
-  { feature: 'bookable_subject', test: ({ text }) => /\b(?:reservation|book|mobile[\s-]?order|walk[\s-]?up|wait ?list|wait times?|line time|huge wait|to[ -]?go)\b/i.test(text) },
+  { feature: 'bookable_subject', test: ({ text }) => /\b(?:reservation|book|mobile[\s-]?order|walk[\s-]?up|wait ?list|wait times?|line time|huge wait|to[ -]?go|availability|available)\b/i.test(text) },
   { feature: 'venue_amenity', test: ({ text }) => VENUE_AMENITY_PATTERN.test(text) },
   { feature: 'price_comparison', test: ({ text }) => /\bpriced (?:the )?same|\bsame price\b|\bcompare prices?\b/i.test(text) },
   { feature: 'ingredient', test: ({ text }) => INGREDIENT_PATTERN.test(text) },
@@ -198,6 +202,8 @@ const FEATURE_TESTS: ReadonlyArray<{ feature: ClaimFeature; test: (input: ClaimI
   { feature: 'nearest_place_names_food', test: ({ text }) => /\b(?:closest|nearest)\s+(?:restaurant|place|location|spot)\s+(?:for|with)\s+[a-z]/i.test(text) },
   { feature: 'restaurant_entity', test: ({ hasRestaurantEntity }) => Boolean(hasRestaurantEntity) },
   { feature: 'location_is_hours_subject', test: ({ locationIsHoursSubject }) => Boolean(locationIsHoursSubject) },
+  { feature: 'location_entity', test: ({ hasLocationEntity }) => Boolean(hasLocationEntity) },
+  { feature: 'needs_reservation', test: ({ text }) => /\bneed\s+(?:a\s+|an\s+)?reservations?\b|\breservations?\s+required\b/i.test(text) },
 ];
 
 /** Every feature the table can reference. Used to validate the rule set. */
@@ -223,6 +229,7 @@ export const CLAIM_RULES: ReadonlyArray<ClaimRule> = [
   { name: 'park-operations', claim: 'live_park_operations', all: ['park_operations'], why: 'Park hours and operations are outside dining data.' },
   { name: 'general-topic', claim: 'general_information', all: ['general_topic'], why: 'Weather, rides, and facilities are outside dining data.' },
   { name: 'official-policy-topic', claim: 'official_policy', all: ['official_policy_topic'], why: 'Policy questions belong to a maintained official source.' },
+  { name: 'reservation-policy', claim: 'official_policy', all: ['needs_reservation'], none: ['restaurant_entity', 'location_entity'], why: 'Whether reservations are needed in general is policy; asked of a named place or park it is answerable from the reservations flag.' },
   { name: 'cross-contact', claim: 'cross_contact', all: ['cross_contact'], why: 'Cross-contact conditions are not in the dataset.' },
   { name: 'accommodation-ranking', claim: 'editorial_judgment', all: ['accommodation_ranking'], why: 'Ranking venues by accommodation quality has no ground truth.' },
   { name: 'allergy-kitchen-conversation', claim: 'kitchen_process', all: ['allergy_context', 'kitchen_conversation'], why: 'Talking to a chef is a kitchen process, not a menu fact.' },
