@@ -51,11 +51,26 @@ import { FONT_FAMILY, text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<AskRumblyStackParamList, 'AskRumblyHome'>;
 
-const QUERY_STARTERS = [
-  { label: 'Where can I get a…', value: 'Where can I get a ' },
-  { label: 'What’s the closest…', value: "What's the closest " },
-  { label: 'Where is the cheapest…', value: 'Where is the cheapest ' },
-] as const;
+// Complete questions, not sentence openers.
+//
+// The previous three starters were all the same shape ("Where can I get a…",
+// "What's the closest…", "Where is the cheapest…") and all left the guest
+// holding half a sentence with no idea which endings Rumbly can actually
+// answer. These each demonstrate a different capability and run on tap, so the
+// boundary is learned from a real answer rather than from a decline.
+//
+// Every one of these is verified to return a grounded answer against the
+// current dataset; a starter that fails is worse than no starter at all.
+const QUERY_STARTERS: ReadonlyArray<{ value: string; needsLocation?: boolean }> = [
+  { value: 'Where can I get a Dole Whip?' },
+  { value: 'Snacks near me', needsLocation: true },
+  { value: 'Gluten-free options in Magic Kingdom' },
+  { value: "What's new at EPCOT?" },
+  { value: 'What time does Cosmic Rays close?' },
+  { value: 'Which restaurants have Mobile Order?' },
+  { value: 'Cheapest snack in Magic Kingdom' },
+  { value: 'Vegan food at Animal Kingdom' },
+];
 
 const INITIAL_RESULT_COUNT = 10;
 const FEEDBACK_REASONS: ReadonlyArray<{ value: AskRumblyFeedbackReason; label: string }> = [
@@ -353,6 +368,9 @@ export function AskRumblyScreen({ navigation }: Props) {
     inputRef.current?.focus();
   }, []);
 
+  // Starters are complete questions, so tapping one asks it. Filling the box
+  // and leaving the guest to press send taught nothing; seeing the answer is
+  // the point.
   const chooseStarter = useCallback((value: string) => {
     setQuery(value);
     setSubmittedQuery(null);
@@ -363,8 +381,8 @@ export function AskRumblyScreen({ navigation }: Props) {
     setResponseRating(null);
     setFeedbackDelivery(null);
     setFeedbackReasonPickerVisible(false);
-    inputRef.current?.focus();
-  }, []);
+    void runQuestion(value);
+  }, [runQuestion]);
 
   const runLocationEnable = useCallback(async () => {
     const outcome = await enableLocation();
@@ -572,7 +590,7 @@ export function AskRumblyScreen({ navigation }: Props) {
             />
           </View>
 
-          <Text style={styles.starterEyebrow}>A FEW WAYS IN</Text>
+          <Text style={styles.starterEyebrow}>TAP TO TRY ONE</Text>
           <ScrollView
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -580,15 +598,21 @@ export function AskRumblyScreen({ navigation }: Props) {
             style={styles.starterScroll}
             contentContainerStyle={styles.starterContent}
           >
-            {QUERY_STARTERS.map((starter) => (
+            {QUERY_STARTERS
+              // A proximity example with location off would open on a
+              // permission request instead of an answer, which teaches the
+              // guest that Rumbly asks for things rather than that it knows
+              // things.
+              .filter((starter) => !starter.needsLocation || locationActive)
+              .map((starter) => (
               <Pressable
                 key={starter.value}
                 accessibilityRole="button"
-                accessibilityLabel={`Start question: ${starter.label}`}
+                accessibilityLabel={`Ask: ${starter.value}`}
                 onPress={() => chooseStarter(starter.value)}
                 style={({ pressed }) => [styles.starterPill, pressed && styles.starterPillPressed]}
               >
-                <Text style={styles.starterLabel}>{starter.label}</Text>
+                <Text style={styles.starterLabel}>{starter.value}</Text>
               </Pressable>
             ))}
           </ScrollView>
@@ -604,7 +628,7 @@ export function AskRumblyScreen({ navigation }: Props) {
                   onSubmitEditing={submitQuery}
                   returnKeyType="search"
                   editable={isReady && !isAsking}
-                  placeholder="Ask a dining question"
+                  placeholder="Ask about food, places, hours, or allergy labels"
                   placeholderTextColor={COLORS.dim}
                   accessibilityLabel="Ask Rumbly question"
                   style={styles.input}
