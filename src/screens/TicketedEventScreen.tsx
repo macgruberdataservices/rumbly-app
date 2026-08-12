@@ -51,7 +51,7 @@ export function TicketedEventScreen({ navigation, route }: Props) {
             key={restaurantId}
             style={styles.row}
             accessibilityRole="button"
-            accessibilityLabel={`${restaurantName}, ${restaurantItems.length} exclusive ${restaurantItems.length === 1 ? 'item' : 'items'}`}
+            accessibilityLabel={`${restaurantName}, ${restaurantItems.length} ${restaurantItems.length === 1 ? 'item' : 'items'}`}
             onPress={() =>
               navigation.navigate('RestaurantDetail', {
                 restaurantId,
@@ -66,7 +66,7 @@ export function TicketedEventScreen({ navigation, route }: Props) {
                 {restaurantName}
               </Text>
               <Text style={text.bodyMuted}>
-                {restaurantItems.length} exclusive {restaurantItems.length === 1 ? 'item' : 'items'}
+                {restaurantItems.length} {restaurantItems.length === 1 ? 'item' : 'items'}
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>

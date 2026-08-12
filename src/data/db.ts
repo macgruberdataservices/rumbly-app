@@ -19,6 +19,7 @@ import { normalizeForSearch } from './diacritics';
 import { getDb as getSharedDb } from './sqlite';
 import { asSqlDatabase } from './sqlDatabase';
 import { ensureMenuItemsSchema } from './menuItemsSchema';
+import { buildGeneralSeasonalCollectionQuery } from './seasonalCollectionQuery';
 
 let readyPromise: Promise<SQLiteDatabase> | null = null;
 let allMenuItemsPromise: Promise<MenuItem[]> | null = null;
@@ -231,5 +232,19 @@ export async function getMenuItemsByCategoryGroups(categoryGroups: string[]): Pr
     `SELECT * FROM menu_items WHERE category_group IN (${placeholders}) AND dining_period = 'Special Ticketed Event';`,
     params
   );
+  return rows.map(rowToMenuItem);
+}
+
+export async function getGeneralSeasonalCollectionItems(
+  categoryGroups: string[],
+  excludedTicketedCategoryGroups: string[]
+): Promise<MenuItem[]> {
+  const query = buildGeneralSeasonalCollectionQuery(
+    categoryGroups,
+    excludedTicketedCategoryGroups
+  );
+  if (!query) return [];
+  const db = await getDb();
+  const rows = await db.getAllAsync<MenuItemRow>(query.sql, query.params);
   return rows.map(rowToMenuItem);
 }

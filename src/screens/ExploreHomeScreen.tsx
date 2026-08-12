@@ -1,6 +1,15 @@
 import { useMemo } from 'react';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Image,
+  type ImageSourcePropType,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ExploreStackParamList } from '../navigation/ExploreNavigator';
 import { SettingsButton } from '../components/settings/SettingsButton';
@@ -15,11 +24,28 @@ import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
 import { useActivity } from '../hooks/useActivity';
 import { useOpenAccountSettings } from '../hooks/useOpenAccountSettings';
 import { useTicketedEvents } from '../hooks/useTicketedEvents';
+import { useSeasonalCollections } from '../hooks/useSeasonalCollections';
 import type { IllustrationTagId } from '../illustrations/catalog';
 
 type Props = NativeStackScreenProps<ExploreStackParamList, 'ExploreHome'>;
 
 const CARD_COLORS = ['#DCEFF3', '#FFE3D8', '#FFF0BD', '#DCEFE6'] as const;
+
+const LOCATION_CARD_ARTWORK: Record<string, ImageSourcePropType> = {
+  'Magic Kingdom Park': require('../../assets/explore-cards/magic-kingdom.png'),
+  EPCOT: require('../../assets/explore-cards/epcot.png'),
+  "Disney's Hollywood Studios": require('../../assets/explore-cards/hollywood-studios.png'),
+  "Disney's Animal Kingdom Theme Park": require('../../assets/explore-cards/animal-kingdom.png'),
+  'Disney Springs': require('../../assets/explore-cards/disney-springs.png'),
+  "Disney's BoardWalk": require('../../assets/explore-cards/boardwalk.png'),
+  'Disney Resorts': require('../../assets/explore-cards/resorts.png'),
+  [WATER_PARKS_GROUP_KEY]: require('../../assets/explore-cards/water-parks.png'),
+};
+
+function locationCardTitle(label: string): string {
+  const words = label.split(' ');
+  return words.length === 2 ? words.join('\n') : label;
+}
 
 function ExplorePromoCard({
   eyebrow,
@@ -80,6 +106,7 @@ export function ExploreHomeScreen({ navigation }: Props) {
   const { restaurants, isLoading, error } = useDataProvider();
   const { personalActivity } = useActivity();
   const openAccountSettings = useOpenAccountSettings();
+  const activeSeasonalCollections = useSeasonalCollections();
   const activeTicketedEvents = useTicketedEvents();
   const groups = groupRestaurants(restaurants);
   const quickFiveProgress = useMemo(
@@ -139,14 +166,20 @@ export function ExploreHomeScreen({ navigation }: Props) {
                 ]}
                 onPress={() => openGroup(group)}
               >
+                {LOCATION_CARD_ARTWORK[group.key] && (
+                  <Image
+                    source={LOCATION_CARD_ARTWORK[group.key]}
+                    style={styles.locationCardArtwork}
+                    resizeMode="cover"
+                    accessible={false}
+                  />
+                )}
                 <Text
                   style={styles.cardTitle}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                  minimumFontScale={0.72}
+                  numberOfLines={2}
                   allowFontScaling={false}
                 >
-                  {group.label}
+                  {locationCardTitle(group.label)}
                 </Text>
                 <View style={styles.cardFooter}>
                   <Text style={styles.cardCount} allowFontScaling={false}>
@@ -189,9 +222,29 @@ export function ExploreHomeScreen({ navigation }: Props) {
           </View>
         )}
 
-        {activeTicketedEvents.length > 0 && (
+        {(activeSeasonalCollections.length > 0 || activeTicketedEvents.length > 0) && (
           <View style={styles.challengeSection}>
             <Text style={[text.sectionToggle, styles.sectionLabel]}>LIMITED-TIME FINDS</Text>
+            {activeSeasonalCollections.map((collection) => (
+              <ExplorePromoCard
+                key={collection.id}
+                eyebrow={collection.eyebrow}
+                title={collection.title}
+                description={collection.subtitle}
+                actionLabel={`Browse ${collection.items.length} ${collection.items.length === 1 ? 'item' : 'items'}`}
+                artworkTag="explore.editorial.exclusive-items.v1"
+                tone="exclusive"
+                icon={collection.icon}
+                accessibilityLabel={`${collection.title}: ${collection.subtitle}`}
+                onPress={() =>
+                  navigation.navigate('TicketedEvent', {
+                    title: collection.title,
+                    subtitle: collection.subtitle,
+                    items: collection.items,
+                  })
+                }
+              />
+            ))}
             {activeTicketedEvents.map((event) => (
               <ExplorePromoCard
                 key={event.id}
@@ -247,7 +300,10 @@ const styles = StyleSheet.create({
   content: {
     paddingHorizontal: SPACING.lg,
     paddingTop: SPACING.md,
-    paddingBottom: SPACING.xxl,
+    // The tab bar floats over content instead of reserving layout space.
+    // Leave enough trailing room for the final card to scroll completely
+    // above the pill, matching the other long-form tab screens.
+    paddingBottom: 120,
   },
   heading: {
     fontFamily: FONT_FAMILY.piazzollaBold,
@@ -280,9 +336,9 @@ const styles = StyleSheet.create({
   },
   card: {
     width: '48%',
-    minHeight: 88,
+    aspectRatio: 269 / 134,
     borderRadius: RADII.lg,
-    padding: SPACING.md,
+    padding: 10,
     overflow: 'hidden',
     borderWidth: 1,
     borderColor: 'rgba(23, 40, 45, 0.08)',
@@ -291,12 +347,19 @@ const styles = StyleSheet.create({
   cardPressed: {
     opacity: 0.72,
   },
+  locationCardArtwork: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
+    transform: [{ scale: 1.2 }],
+  },
   cardTitle: {
     fontFamily: text.sectionTitle.fontFamily,
-    fontSize: 14,
-    lineHeight: 18,
+    fontSize: 18,
+    lineHeight: 20,
     color: DAYLIGHT.ink,
-    marginBottom: SPACING.sm,
   },
   cardFooter: {
     flexDirection: 'row',
@@ -337,6 +400,7 @@ const styles = StyleSheet.create({
   promoCard: {
     position: 'relative',
     minHeight: 164,
+    marginBottom: SPACING.md,
     overflow: 'hidden',
     borderRadius: RADII.xl,
     padding: SPACING.lg,

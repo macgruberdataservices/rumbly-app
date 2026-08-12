@@ -55,6 +55,7 @@
     "test:locations": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/locationNames.test.mjs",
     "test:groups": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs --test tests/groups.test.mjs",
     "test:menu-items-schema": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/menuItemsSchema.test.mjs",
+    "test:seasonal-collections": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/seasonalCollections.test.mjs",
     "test:perf-log": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/perfLog.test.mjs",
     "test:activity-identity": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/activityIdentity.test.mjs",
     "test:journal-composer": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/journalComposer.test.mjs",

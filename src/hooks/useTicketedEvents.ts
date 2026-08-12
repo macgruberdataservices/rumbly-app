@@ -3,6 +3,7 @@ import { useFocusEffect } from '@react-navigation/native';
 import { getMenuItemsByCategoryGroups } from '../data/db';
 import { TICKETED_EVENTS, type TicketedEventConfig } from '../data/ticketedEvents';
 import type { MenuItem } from '../data/types';
+import { useDataProvider } from './useDataProvider';
 
 export interface ActiveTicketedEvent extends TicketedEventConfig {
   items: MenuItem[];
@@ -16,6 +17,7 @@ const ALL_CATEGORY_GROUPS = TICKETED_EVENTS.flatMap((event) => event.categoryGro
 // anywhere, just whatever's actually in the synced menu right now.
 export function useTicketedEvents(): ActiveTicketedEvent[] {
   const [activeEvents, setActiveEvents] = useState<ActiveTicketedEvent[]>([]);
+  const { lastSyncedAt } = useDataProvider();
 
   useFocusEffect(
     useCallback(() => {
@@ -35,7 +37,7 @@ export function useTicketedEvents(): ActiveTicketedEvent[] {
       return () => {
         cancelled = true;
       };
-    }, [])
+    }, [lastSyncedAt])
   );
 
   return activeEvents;
