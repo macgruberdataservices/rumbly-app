@@ -33,11 +33,23 @@ export interface FoodMatch extends SourceSpan {
   term: string;
 }
 
+// Memoized: the lexicon build stems ~190k token occurrences drawn from a much
+// smaller vocabulary, so the cache converges almost immediately.
+const STEM_CACHE = new Map<string, string>();
+
 /**
  * Shared with result_proof.ts so a term the parser produces is tokenized the
  * same way the proof layer will later verify it.
  */
 export function singularize(token: string): string {
+  const cached = STEM_CACHE.get(token);
+  if (cached !== undefined) return cached;
+  const stem = computeStem(token);
+  STEM_CACHE.set(token, stem);
+  return stem;
+}
+
+function computeStem(token: string): string {
   if (token.length <= 3) return token;
   if (token === 'fries') return 'fry';
   if (/(?:ch|sh|s|x|z)es$/.test(token)) return token.slice(0, -2);

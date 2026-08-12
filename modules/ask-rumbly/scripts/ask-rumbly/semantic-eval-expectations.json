@@ -1,106 +1,447 @@
 {
   "guest": [
-    ["disney_label", "execute"],
-    ["editorial_judgment", "unsupported"],
-    ["disney_label", "execute"],
-    ["disney_label", "execute"],
-    ["disney_label", "execute"],
-    ["menu_presence", "unsupported"],
-    ["menu_presence", "execute"],
-    ["menu_presence", "execute"],
-    ["editorial_judgment", "unsupported"],
-    ["menu_presence", "clarify"],
-    ["editorial_judgment", "unsupported"],
-    ["menu_presence", "execute"],
-    ["menu_presence", "execute"],
-    ["restaurant_hours", "execute"],
-    ["live_availability", "handoff"],
-    ["live_availability", "unsupported"],
-    ["restaurant_location", "clarify"],
-    ["editorial_judgment", "unsupported"],
-    ["menu_presence", "execute"],
-    ["menu_presence", "execute"],
-    ["menu_presence", "execute"],
-    ["editorial_judgment", "unsupported"],
-    ["menu_presence", "execute"],
-    ["menu_presence", "execute"],
-    ["editorial_judgment", "unsupported"],
-    ["menu_presence", "execute"],
-    ["editorial_judgment", "unsupported"],
-    ["editorial_judgment", "unsupported"],
-    ["menu_presence", "execute"],
-    ["live_availability", "handoff"],
-    ["editorial_judgment", "unsupported"],
-    ["live_availability", "unsupported"],
-    ["restaurant_hours", "clarify"],
-    ["restaurant_hours", "clarify"],
-    ["restaurant_hours", "execute"],
-    ["menu_presence", "execute"],
-    ["sensory_attribute", "unsupported"],
-    ["ingredient_content", "unsupported"],
-    ["menu_presence", "clarify"],
-    ["editorial_judgment", "unsupported"],
-    ["editorial_judgment", "unsupported"],
-    ["editorial_judgment", "unsupported"],
-    ["live_availability", "handoff"],
-    ["editorial_judgment", "unsupported"],
-    ["allergy_safety", "clarify"],
-    ["live_availability", "unsupported"],
-    ["live_availability", "handoff"],
-    ["live_availability", "handoff"],
-    ["live_availability", "handoff"],
-    ["editorial_judgment", "unsupported"]
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "menu_presence",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "clarify"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "restaurant_hours",
+      "execute"
+    ],
+    [
+      "live_availability",
+      "handoff"
+    ],
+    [
+      "live_availability",
+      "unsupported"
+    ],
+    [
+      "restaurant_location",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "live_availability",
+      "handoff"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "live_availability",
+      "unsupported"
+    ],
+    [
+      "restaurant_hours",
+      "clarify"
+    ],
+    [
+      "restaurant_hours",
+      "clarify"
+    ],
+    [
+      "restaurant_hours",
+      "execute"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "sensory_attribute",
+      "unsupported"
+    ],
+    [
+      "ingredient_content",
+      "unsupported"
+    ],
+    [
+      "menu_presence",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "live_availability",
+      "handoff"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "live_availability",
+      "unsupported"
+    ],
+    [
+      "live_availability",
+      "handoff"
+    ],
+    [
+      "live_availability",
+      "handoff"
+    ],
+    [
+      "live_availability",
+      "handoff"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ]
   ],
   "allergy": [
-    ["allergy_safety", "clarify"],
-    ["kitchen_process", "unsupported"],
-    ["cross_contact", "unsupported"],
-    ["kitchen_process", "unsupported"],
-    ["kitchen_process", "unsupported"],
-    ["allergy_safety", "clarify"],
-    ["disney_label", "execute"],
-    ["disney_label", "execute"],
-    ["kitchen_process", "unsupported"],
-    ["allergy_safety", "clarify"],
-    ["disney_label", "execute"],
-    ["kitchen_process", "unsupported"],
-    ["disney_label", "execute"],
-    ["allergy_safety", "clarify"],
-    ["disney_label", "execute"],
-    ["disney_label", "execute"],
-    ["cross_contact", "unsupported"],
-    ["allergy_safety", "clarify"],
-    ["allergy_safety", "clarify"],
-    ["ingredient_content", "unsupported"],
-    ["ingredient_content", "unsupported"],
-    ["allergy_safety", "clarify"],
-    ["ingredient_content", "unsupported"],
-    ["ingredient_content", "unsupported"],
-    ["disney_label", "execute"],
-    ["editorial_judgment", "unsupported"],
-    ["kitchen_process", "unsupported"],
-    ["allergy_safety", "clarify"],
-    ["kitchen_process", "unsupported"],
-    ["disney_label", "clarify"],
-    ["disney_label", "clarify"],
-    ["editorial_judgment", "unsupported"],
-    ["disney_label", "execute"],
-    ["general_information", "unsupported"],
-    ["general_information", "unsupported"],
-    ["kitchen_process", "unsupported"],
-    ["disney_label", "execute"],
-    ["disney_label", "execute"],
-    ["disney_label", "execute"],
-    ["price_comparison", "clarify"],
-    ["official_policy", "handoff"],
-    ["official_policy", "handoff"],
-    ["official_policy", "handoff"],
-    ["editorial_judgment", "unsupported"],
-    ["disney_label", "execute"],
-    ["disney_label", "execute"],
-    ["editorial_judgment", "unsupported"],
-    ["editorial_judgment", "unsupported"],
-    ["disney_label", "execute"],
-    ["disney_label", "clarify"]
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "cross_contact",
+      "unsupported"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "cross_contact",
+      "unsupported"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "ingredient_content",
+      "unsupported"
+    ],
+    [
+      "ingredient_content",
+      "unsupported"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "ingredient_content",
+      "unsupported"
+    ],
+    [
+      "ingredient_content",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "allergy_safety",
+      "clarify"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "clarify"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "general_information",
+      "unsupported"
+    ],
+    [
+      "general_information",
+      "unsupported"
+    ],
+    [
+      "kitchen_process",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "price_comparison",
+      "clarify"
+    ],
+    [
+      "official_policy",
+      "handoff"
+    ],
+    [
+      "official_policy",
+      "handoff"
+    ],
+    [
+      "official_policy",
+      "handoff"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "editorial_judgment",
+      "unsupported"
+    ],
+    [
+      "disney_label",
+      "execute"
+    ],
+    [
+      "disney_label",
+      "clarify"
+    ]
+  ],
+  "notes": [
+    {
+      "group": "guest",
+      "index": 16,
+      "was": [
+        "restaurant_location",
+        "clarify"
+      ],
+      "now": [
+        "restaurant_location",
+        "execute"
+      ],
+      "why": "guest-17 'nearest churro cart from Space Mountain'. Annotated before measured attraction anchors existed; askRumblySemantic.test.mjs now asserts nearest-from-landmark executes from the exact point."
+    },
+    {
+      "group": "guest",
+      "index": 38,
+      "was": [
+        "menu_presence",
+        "clarify"
+      ],
+      "now": [
+        "menu_presence",
+        "execute"
+      ],
+      "why": "guest-39 'turkey legs at the cart near the castle'. Same reason: 'the castle' is a measured anchor now."
+    },
+    {
+      "group": "allergy",
+      "index": 29,
+      "was": [
+        "disney_label",
+        "clarify"
+      ],
+      "now": [
+        "disney_label",
+        "execute"
+      ],
+      "why": "allergy-30 'allergy-friendly quick option near Test Track I can mobile order'. Executes on Disney labels plus feature and anchor constraints; the allergy invariant is unchanged."
+    }
   ]
 }

@@ -117,7 +117,19 @@ const DINING_SCAFFOLDING = new Set([
 
 export type WordClass = 'function' | 'scaffolding' | 'content';
 
+// Memoized for the same reason as singularize: a large number of occurrences
+// over a small vocabulary.
+const CLASS_CACHE = new Map<string, WordClass>();
+
 export function classifyWord(word: string): WordClass {
+  const cached = CLASS_CACHE.get(word);
+  if (cached !== undefined) return cached;
+  const result = computeWordClass(word);
+  CLASS_CACHE.set(word, result);
+  return result;
+}
+
+function computeWordClass(word: string): WordClass {
   const normalized = word.toLowerCase().replace(/[^a-z0-9]/g, '');
   if (!normalized) return 'function';
   if (FUNCTION_WORDS.has(normalized)) return 'function';

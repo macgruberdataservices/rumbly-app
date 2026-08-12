@@ -94,25 +94,41 @@ interface Candidate {
   restaurants: Set<string>;
 }
 
-function phraseIsWellFormed(tokens: string[]): boolean {
-  if (tokens.length === 0 || tokens.length > MAX_PHRASE_TOKENS) return false;
-  // Classify the singularized form so a plural spelling cannot smuggle a
-  // grammar word in: "cans" would otherwise become a food term and then match
-  // the "can" in "where can I get a burger".
-  const stems = tokens.map(singularize);
+/**
+ * Well-formedness over a window of an already-stemmed token list.
+ *
+ * Takes indices rather than a sliced array because this runs once per n-gram
+ * across every menu row -- re-stemming and re-allocating per window was the
+ * bulk of the lexicon build.
+ */
+function windowIsWellFormed(stems: string[], start: number, size: number): boolean {
+  if (size === 0 || size > MAX_PHRASE_TOKENS || start + size > stems.length) return false;
+  // Classified on the stem so a plural spelling cannot smuggle a grammar word
+  // in: "cans" would otherwise become a food term and then match the "can" in
+  // "where can I get a burger".
+  //
   // Grammar words may sit inside a dish name ("chicken and waffles") but never
-  // at its edges, where they signal that the phrase is really a fragment.
-  if (classifyWord(stems[0]) !== 'content') return false;
-  if (classifyWord(stems[stems.length - 1]) !== 'content') return false;
-  if (stems.some((token) => CONSTRAINT_RESERVED.has(token))) return false;
-  if (stems.some((token) => MENU_NOISE.has(token) && tokens.length === 1)) return false;
-  if (tokens.length === 1) {
-    const [token] = stems;
-    if (token.length < 3) return false;
-    if (/^\d+$/.test(token)) return false;
+  // at its edges, where they signal the phrase is really a fragment.
+  if (classifyWord(stems[start]) !== 'content') return false;
+  if (classifyWord(stems[start + size - 1]) !== 'content') return false;
+  let allNoise = true;
+  for (let index = start; index < start + size; index += 1) {
+    const stem = stems[index];
+    if (CONSTRAINT_RESERVED.has(stem)) return false;
+    if (!MENU_NOISE.has(stem)) allNoise = false;
+  }
+  if (size === 1) {
+    const stem = stems[start];
+    if (stem.length < 3) return false;
+    if (MENU_NOISE.has(stem)) return false;
+    if (/^\d+$/.test(stem)) return false;
   }
   // A phrase made entirely of naming noise ("house special") names nothing.
-  return stems.some((token) => !MENU_NOISE.has(token));
+  return !allNoise;
+}
+
+function phraseIsWellFormed(tokens: string[]): boolean {
+  return windowIsWellFormed(tokens.map(singularize), 0, tokens.length);
 }
 
 function nameTokens(value: string): string[] {
@@ -123,23 +139,65 @@ function nameTokens(value: string): string[] {
     .filter(Boolean);
 }
 
+// Restaurant sets only ever decide whether a count clears a threshold, so they
+// stop growing once past the largest one. Without this cap the union work is
+// proportional to the whole dataset for common tokens like "chicken".
+const MAX_TRACKED_RESTAURANTS = VENUE_COLLISION_MIN_RESTAURANTS + 2;
+
+function addRestaurants(target: Set<string>, source: Iterable<string>): void {
+  if (target.size >= MAX_TRACKED_RESTAURANTS) return;
+  for (const id of source) {
+    target.add(id);
+    if (target.size >= MAX_TRACKED_RESTAURANTS) return;
+  }
+}
+
 export function buildFoodLexiconPhrases(data: LoadedData): string[] {
+  // Disney repeats item names across venues about 3x and category tuples about
+  // 27x. Collapsing to distinct values first means the n-gram pass runs once
+  // per distinct string instead of once per row.
+  const nameGroups = new Map<string, { count: number; restaurants: Set<string> }>();
+  const categoryGroups = new Map<string, { count: number; restaurants: Set<string>; fields: string[] }>();
+  for (const item of data.menuItems) {
+    const nameGroup = nameGroups.get(item.item);
+    if (nameGroup) {
+      nameGroup.count += 1;
+      addRestaurants(nameGroup.restaurants, [item.restaurant_id]);
+    } else nameGroups.set(item.item, { count: 1, restaurants: new Set([item.restaurant_id]) });
+
+    const categoryKey = `${item.category} ${item.category_group} ${(item.norm_categories ?? []).join(',')}`;
+    const categoryGroup = categoryGroups.get(categoryKey);
+    if (categoryGroup) {
+      categoryGroup.count += 1;
+      addRestaurants(categoryGroup.restaurants, [item.restaurant_id]);
+    } else {
+      // Fields are kept alongside rather than parsed back out of the key:
+      // category names contain spaces, so splitting the key would corrupt them.
+      categoryGroups.set(categoryKey, {
+        count: 1,
+        restaurants: new Set([item.restaurant_id]),
+        fields: [item.category, item.category_group, ...(item.norm_categories ?? [])],
+      });
+    }
+  }
+
   const candidates = new Map<string, Candidate>();
-  const record = (phrase: string, restaurantId: string) => {
+  const record = (phrase: string, count: number, restaurants: Set<string>) => {
     const existing = candidates.get(phrase);
     if (existing) {
-      existing.items += 1;
-      existing.restaurants.add(restaurantId);
-    } else candidates.set(phrase, { items: 1, restaurants: new Set([restaurantId]) });
+      existing.items += count;
+      addRestaurants(existing.restaurants, restaurants);
+    } else candidates.set(phrase, { items: count, restaurants: new Set(restaurants) });
   };
 
-  for (const item of data.menuItems) {
-    const tokens = nameTokens(item.item);
+  for (const [name, group] of nameGroups) {
+    const tokens = nameTokens(name);
+    if (tokens.length === 0) continue;
+    const stems = tokens.map(singularize);
     for (let size = 1; size <= MAX_PHRASE_TOKENS; size += 1) {
       for (let start = 0; start + size <= tokens.length; start += 1) {
-        const phrase = tokens.slice(start, start + size);
-        if (!phraseIsWellFormed(phrase)) continue;
-        record(phrase.join(' '), item.restaurant_id);
+        if (!windowIsWellFormed(stems, start, size)) continue;
+        record(size === 1 ? tokens[start] : tokens.slice(start, start + size).join(' '), group.count, group.restaurants);
       }
     }
   }
@@ -147,19 +205,20 @@ export function buildFoodLexiconPhrases(data: LoadedData): string[] {
   // Disney's own category vocabulary is a second, cleaner source: a category
   // names a food class directly rather than an individual row.
   const categoryRestaurants = new Map<string, Set<string>>();
-  for (const item of data.menuItems) {
-    for (const raw of [item.category, item.category_group, ...(item.norm_categories ?? [])]) {
+  for (const [key, group] of categoryGroups) {
+    const [category, categoryGroup, normCategories] = key.split(' ');
+    for (const raw of [category, categoryGroup, ...(normCategories ? normCategories.split(',') : [])]) {
       if (!raw) continue;
-      for (const segment of String(raw).split(/[&/,]|\s+and\s+|-/)) {
+      for (const segment of raw.split(/[&/,]|\s+and\s+|-/)) {
         const tokens = nameTokens(segment);
         if (!phraseIsWellFormed(tokens)) continue;
         for (const token of tokens) {
           const stem = singularize(token);
           const seen = categoryRestaurants.get(stem);
-          if (seen) seen.add(item.restaurant_id);
-          else categoryRestaurants.set(stem, new Set([item.restaurant_id]));
+          if (seen) addRestaurants(seen, group.restaurants);
+          else categoryRestaurants.set(stem, new Set(group.restaurants));
         }
-        record(tokens.join(' '), item.restaurant_id);
+        record(tokens.join(' '), group.count, group.restaurants);
       }
     }
   }
