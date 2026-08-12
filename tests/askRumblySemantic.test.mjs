@@ -1424,9 +1424,13 @@ test('whats-new answers from first-seen dates without claiming Disney added them
     hasCurrentLocation: false,
   });
   assert.match(presentation.title, /new to Rumbly/i);
-  // The wording must not imply Disney recently added the item.
-  assert.match(presentation.trustNote ?? '', /first saw/i);
+  // The note must attribute the date to Rumbly's own observation and must not
+  // imply Disney recently added the item. Kept short deliberately: each card
+  // carries its own "Added <date>", so the note only holds the boundary.
+  assert.match(presentation.trustNote ?? '', /Rumbly/);
+  assert.match(presentation.trustNote ?? '', /first se(?:en|aw)/i);
   assert.doesNotMatch(presentation.trustNote ?? '', /Disney (?:added|introduced|released)/i);
+  assert.ok((presentation.trustNote ?? '').length < 120, 'the note stays short');
 });
 
 test('new as part of a dish name is not a recency request', () => {
@@ -1435,4 +1439,98 @@ test('new as part of a dish name is not a recency request', () => {
     assert.equal(plan.constraints.recency, undefined, question);
     assert.notEqual(plan.claimType, 'menu_recency', question);
   }
+});
+
+// The pavilion field is published from 2026-08-12 and is absent from the cached
+// snapshot these tests load, so the behaviour is proven against injected
+// records. Ids and pavilion names come from Backend/world_showcase_pavilions.py
+// via Docs/WORLD_SHOWCASE_PAVILION_DATA.md.
+const PAVILION_FIXTURE = {
+  'teppan-edo': 'Japan',
+  'katsura-grill': 'Japan',
+  biergarten: 'Germany',
+  'spice-road-table': 'Morocco',
+  'le-cellier': 'Canada',
+  'san-angel-restaurante': 'Mexico',
+  'nine-dragons': 'China',
+  'regal-eagle-smokehouse': 'The American Adventure',
+  'africa-refreshment-outpost': 'Outpost',
+};
+
+const pavilionData = {
+  ...data,
+  restaurants: data.restaurants.map((restaurant) => PAVILION_FIXTURE[restaurant.restaurant_id]
+    ? { ...restaurant, world_showcase_pavilion: PAVILION_FIXTURE[restaurant.restaurant_id] }
+    : restaurant),
+};
+const pavilionVocabulary = buildParserVocabulary(pavilionData);
+
+test('World Showcase pavilions link as locations once the field is published', () => {
+  for (const [question, label] of [
+    ['restaurants in Japan at Epcot', 'Japan'],
+    ['where can I eat in Morocco', 'Morocco'],
+    ['food in the Germany pavilion', 'Germany'],
+    ['restaurants in Mexico', 'Mexico'],
+  ]) {
+    const plan = parseQueryPlan(question, pavilionVocabulary);
+    assert.equal(plan.constraints.location?.entityType, 'pavilion', question);
+    assert.equal(plan.constraints.location?.label, label, question);
+    // The whole point: no unexplained text, so capability is not downgraded.
+    assert.equal(plan.diagnostics.meaningfulUnconsumedText, '', question);
+    assert.notEqual(plan.diagnostics.confidence, 'low', question);
+  }
+});
+
+test('a bare pavilion name and its "pavilion" form link the same entity', () => {
+  // `pavilion` is dining scaffolding, so "Japan pavilion" strips to a bare
+  // "japan" unless the longer alias exists for longest-span linking to claim.
+  const bare = parseQueryPlan('sushi in Japan', pavilionVocabulary);
+  const withNoun = parseQueryPlan('sushi in the Japan pavilion', pavilionVocabulary);
+  assert.equal(bare.constraints.location?.entityId, withNoun.constraints.location?.entityId);
+  assert.equal(withNoun.diagnostics.meaningfulUnconsumedText, '');
+
+  // Disney's own headings, which no guest says out loud.
+  const outpost = parseQueryPlan('snacks in the African Outpost', pavilionVocabulary);
+  assert.equal(outpost.constraints.location?.label, 'Outpost');
+  const america = parseQueryPlan('food in the American Adventure', pavilionVocabulary);
+  assert.equal(america.constraints.location?.label, 'The American Adventure');
+});
+
+test('a pavilion scope only matches venues carrying that pavilion', () => {
+  const plan = parseQueryPlan('where can I eat in Japan', pavilionVocabulary);
+  const result = executeQueryPlan(plan, pavilionData);
+  assert.equal(result.kind, 'answer');
+  const returned = new Set(result.restaurantIds ?? []);
+  assert.ok(returned.size > 0);
+  // Never matches an unmapped venue: absent and null both mean "unknown".
+  for (const id of returned) {
+    assert.equal(PAVILION_FIXTURE[id], 'Japan', `${id} is not a Japan pavilion venue`);
+  }
+});
+
+test('pavilion copy reads as a place and widens to World Showcase', () => {
+  // A food the pavilion does not carry, so the recovery path runs.
+  const plan = parseQueryPlan('where can I get haggis in Japan', pavilionVocabulary);
+  const result = executeQueryPlan(plan, pavilionData);
+  const presentation = buildAskRumblyPresentation(plan, result, {
+    linkedKind: result.kind === 'answer' ? 'item' : null,
+    totalPossibilities: result.kind === 'answer' ? (result.itemKeys?.length ?? 0) : 0,
+    hasCurrentLocation: false,
+  });
+  const rendered = `${presentation.title} ${presentation.message}`;
+  assert.doesNotMatch(rendered, /\bin Japan\b/, 'reads as a pavilion, not a country');
+  const widen = presentation.suggestions.find((suggestion) =>
+    suggestion.kind === 'query' && /World Showcase/i.test(suggestion.label));
+  assert.ok(widen, 'offers World Showcase rather than all of EPCOT');
+});
+
+test('country phrasing scopes to World Showcase', () => {
+  for (const question of ['which country has beer', 'what countries have vegetarian food']) {
+    const plan = parseQueryPlan(question, pavilionVocabulary);
+    assert.match(plan.constraints.location?.label ?? '', /World Showcase/i, question);
+    assert.equal(plan.diagnostics.meaningfulUnconsumedText, '', question);
+  }
+  // A scope the guest named themselves is never overridden.
+  const scoped = parseQueryPlan('which country in Epcot has beer', pavilionVocabulary);
+  assert.match(scoped.constraints.location?.label ?? '', /EPCOT/i);
 });

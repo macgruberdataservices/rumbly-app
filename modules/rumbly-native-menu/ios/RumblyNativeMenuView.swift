@@ -688,16 +688,28 @@ private struct NativeSwipeMenuRow: View {
   }
 
   var body: some View {
-    ZStack(alignment: .trailing) {
-      actionLayer
-        .frame(width: actionWidth)
-
-      slidingContent
-    }
-    // Without an explicit full-width proposal, the ZStack can size itself
+    slidingContent
+    // Without an explicit full-width proposal, the row can size itself
     // to the 180pt action tray and leave that gray layer exposed behind
     // short menu copy even when rowOffset is zero.
     .frame(maxWidth: .infinity, minHeight: 76, alignment: .trailing)
+    // The tray is a background, not a ZStack sibling, so that
+    // actionButton's `maxHeight: .infinity` (what makes the tray fill the
+    // row's height) can't leak into the row's own height range. As a
+    // ZStack child it made every row infinitely flexible vertically, so
+    // menuScrollView's `minHeight: model.minContentHeight` floor -- meant
+    // to pad *below* a menu too short to scroll -- was distributed into
+    // the rows themselves instead. Found 2026-08-12 on the hand-coded
+    // stands, the only venues with menus short enough to hit the floor:
+    // Dinosaur Gertie's four items rendered as four ~260pt rows, each
+    // with the gray tray showing through the empty space it opened up. A
+    // background is proposed the primary view's exact size and never
+    // feeds back into it, so the tray still fills the row height while
+    // the padding lands where it was meant to.
+    .background(alignment: .trailing) {
+      actionLayer
+        .frame(width: actionWidth)
+    }
     .clipped()
     .onChange(of: model.openItemId) { openId in
       if openId != item.itemId {

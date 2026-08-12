@@ -2,6 +2,7 @@ import type {
   ClaimType,
   EntityType,
   LinkedEntity,
+  LocationEntityType,
   ParserEntity,
   ParserVocabulary,
   QueryAction,
@@ -593,8 +594,8 @@ function extractExcludedFoods(query: string): { terms: string[]; spans: SourceSp
   return { terms, spans };
 }
 
-function isLocationEntity(entity: LinkedEntity): entity is LinkedEntity & { type: 'park' | 'area' | 'resort' } {
-  return entity.type === 'park' || entity.type === 'area' || entity.type === 'resort';
+function isLocationEntity(entity: LinkedEntity): entity is LinkedEntity & { type: LocationEntityType } {
+  return entity.type === 'park' || entity.type === 'area' || entity.type === 'resort' || entity.type === 'pavilion';
 }
 
 function distanceAnchorConstraint(query: string, entities: LinkedEntity[]): QueryPlan['constraints']['distanceAnchor'] {
@@ -774,12 +775,35 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     ...(claimType === 'editorial_judgment' ? collectPatternSpans(analysisText, EDITORIAL_PATTERN) : []),
     ...(fallbackFoodSpan ? [fallbackFoodSpan] : []),
   ];
+  const asksAboutCountries = /\bcountr(?:y|ies)\b/i.test(analysisText);
   const parsedLocations = locationConstraints(analysisText, linkedEntities);
   const distanceAnchor = distanceAnchorConstraint(analysisText, linkedEntities);
   // A named area used as a distance origin is not also a search boundary.
   // "In Fantasyland" remains a strict scope, while "near Fantasyland" and
   // "nearest to Fantasyland" use the trusted central-area coordinate only.
-  const scopedLocations = parsedLocations.filter((location) => location.entityId !== distanceAnchor?.entityId);
+  let scopedLocations = parsedLocations.filter((location) => location.entityId !== distanceAnchor?.entityId);
+  // A pavilion already sits inside EPCOT, so "restaurants in Japan at Epcot"
+  // names one scope, not two. Keeping both would union them and return the
+  // whole park, which is the opposite of what the guest asked for.
+  if (scopedLocations.some((location) => location.entityType === 'pavilion')) {
+    scopedLocations = scopedLocations.filter((location) => location.entityType !== 'park');
+  }
+  // Guests call the World Showcase pavilions "countries". Asking which country
+  // has something is asking about World Showcase, so scope there rather than
+  // searching all of Walt Disney World -- but never override a scope the guest
+  // named themselves.
+  if (asksAboutCountries && scopedLocations.length === 0) {
+    const worldShowcase = vocabulary.entities.find((entity) =>
+      entity.type === 'area' && normalizeForMatching(entity.label) === 'world showcase');
+    if (worldShowcase) {
+      scopedLocations = [{
+        relation: 'in',
+        entityId: worldShowcase.id,
+        entityType: 'area',
+        label: worldShowcase.label,
+      }];
+    }
+  }
   const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...recencySpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
   const unconsumed = meaningfulUnconsumed(analysisText, consumedSpans);
   const reasons: string[] = [];

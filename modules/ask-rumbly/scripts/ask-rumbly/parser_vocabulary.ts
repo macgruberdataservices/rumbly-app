@@ -67,6 +67,48 @@ const RESTAURANT_ALIAS_OVERRIDES: Readonly<Record<string, string[]>> = {
   'BaseLine Tap House': ['Baseline Taphouse', 'Baseline Tap House'],
 };
 
+// Guest phrasings for the pavilions whose Disney heading is not what anyone
+// says out loud. "Outpost" is Disney's word for the African Outpost, and "The
+// American Adventure" is nobody's shorthand.
+const PAVILION_ALIAS_OVERRIDES: Readonly<Record<string, string[]>> = {
+  Outpost: ['african outpost', 'africa outpost', 'refreshment outpost'],
+  'United Kingdom': ['uk', 'the uk', 'england', 'britain', 'british pavilion', 'great britain'],
+  'The American Adventure': ['america', 'american adventure', 'the american pavilion', 'usa', 'the usa'],
+  'World Showcase Plaza': ['showcase plaza'],
+};
+
+/**
+ * EPCOT World Showcase pavilions, built from the curated
+ * `world_showcase_pavilion` field.
+ *
+ * Dynamic, like the park/area/resort entities, so a pavilion appearing in the
+ * data needs no code change here. Absent and null both mean "unknown", so
+ * neither produces an entity -- which is also why this yields nothing at all
+ * until the pipeline publishes the field.
+ */
+function pavilionEntities(data: LoadedData): ParserEntity[] {
+  const names = new Set(
+    data.restaurants
+      .map((restaurant) => restaurant.world_showcase_pavilion)
+      .filter((name): name is string => Boolean(name?.trim())),
+  );
+  return Array.from(names).map((name) => ({
+    id: `location:pavilion:${slug(name)}`,
+    label: name,
+    type: 'pavilion' as const,
+    // Both the bare name and the "<name> pavilion" form. `pavilion` is dining
+    // scaffolding (closedClass.ts), so "Japan pavilion" would otherwise strip
+    // to a bare "japan" -- the longer alias has to exist for longest-span
+    // linking to claim the whole phrase first.
+    aliases: [
+      name,
+      `${name} pavilion`,
+      ...(PAVILION_ALIAS_OVERRIDES[name] ?? []),
+      ...(PAVILION_ALIAS_OVERRIDES[name] ?? []).map((alias) => `${alias} pavilion`),
+    ],
+  } satisfies ParserEntity));
+}
+
 function locationEntities(data: LoadedData, field: 'park' | 'area' | 'resort'): ParserEntity[] {
   const names = new Set(
     data.restaurants
@@ -226,11 +268,17 @@ export function buildParserVocabulary(data: LoadedData): ParserVocabulary {
 }
 
 function createParserVocabulary(data: LoadedData): ParserVocabulary {
-  const locations = [
+  // Pavilions are kept separate so they can be ordered ahead of both areas and
+  // attractions. Disney's `area` field carries a stray one-venue "Japan
+  // Pavilion"; the curated pavilion field is the authoritative grouping and
+  // covers all six Japan venues.
+  const pavilions = pavilionEntities(data);
+  const locationsWithoutPavilions = [
     ...locationEntities(data, 'park'),
     ...locationEntities(data, 'area'),
     ...locationEntities(data, 'resort'),
   ];
+  const locations = [...pavilions, ...locationsWithoutPavilions];
   // Shortened restaurant aliases must not shadow a place name.
   const reservedNames = new Set(
     locations.flatMap((entity) => [entity.label, ...entity.aliases]).map((value) => value.toLowerCase()),
@@ -255,7 +303,12 @@ function createParserVocabulary(data: LoadedData): ParserVocabulary {
   return {
     // Exact attraction names precede area aliases so "Space Mountain" binds
     // to its measured point instead of the broader Tomorrowland alias.
-    entities: [...restaurants, ...attractionEntities(), ...locations],
+    // Pavilions precede attractions so "food in the American Adventure" scopes
+    // to the pavilion rather than linking the attraction of the same name,
+    // which carries no location constraint. "Near the American Adventure"
+    // still works: a pavilion's `near` radius uses the centroid of its own
+    // venues, which is the better origin for a dining question anyway.
+    entities: [...restaurants, ...pavilions, ...attractionEntities(), ...locationsWithoutPavilions],
     protectedFoodPhrases,
     cuisines,
     // Protected phrases lead: they are the multi-word dish names that contain

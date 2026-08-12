@@ -28,7 +28,9 @@ function withObjectiveCandidates(result: UnprovenPlanExecution, candidates: Obje
   return result;
 }
 
-const NEAR_RADIUS_MILES = { area: 0.75, park: 2, resort: 1.5 } as const;
+// Pavilions sit about 100m apart along the World Showcase promenade, so an
+// area-sized radius around Japan would sweep in most of the lagoon.
+const NEAR_RADIUS_MILES = { area: 0.75, park: 2, resort: 1.5, pavilion: 0.15 } as const;
 const GENERIC_FOOD_TERMS = new Set(['food', 'meal', 'meals', 'option', 'options', 'dish', 'dishes', 'something', 'anything', 'for']);
 const DISNEY_ALLERGY_URL = 'https://disneyworld.disney.go.com/guest-services/special-dietary-requests/';
 const MY_DISNEY_EXPERIENCE_URL = 'https://disneyworld.disney.go.com/guest-services/my-disney-experience/mobile-apps/';
@@ -73,6 +75,13 @@ function matchesLocation(restaurant: Restaurant, location: LocationConstraint): 
     return q === 'disney springs' && Boolean(restaurant.area && DISNEY_SPRINGS_AREAS.has(restaurant.area));
   }
   if (location.entityType === 'area') return normalizeForSearch(restaurant.area ?? '') === q;
+  if (location.entityType === 'pavilion') {
+    // Absent and null both mean "pavilion unknown", never "not in World
+    // Showcase", so an unmapped venue must not match anything -- including an
+    // empty query label.
+    const pavilion = normalizeForSearch(restaurant.world_showcase_pavilion ?? '');
+    return pavilion.length > 0 && q.length > 0 && pavilion === q;
+  }
   return normalizeForSearch(restaurant.resort ?? '') === q || Boolean(restaurant.resort && resortsShareGuestFacingFamily(restaurant.resort, location.label));
 }
 

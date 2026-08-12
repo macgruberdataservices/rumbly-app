@@ -171,6 +171,7 @@ function MenuResultCard({
   restaurant,
   distanceMiles,
   alsoHereCount = 0,
+  showFirstSeen = false,
   onPress,
 }: {
   item: MenuItem;
@@ -178,14 +179,23 @@ function MenuResultCard({
   distanceMiles?: number | null;
   /** Other matching items at this same venue, not shown as their own card. */
   alsoHereCount?: number;
+  /** Only for "what's new" answers, where the date is the point of the answer. */
+  showFirstSeen?: boolean;
   onPress: () => void;
 }) {
   const restaurantMeta = [
     restaurant.restaurant,
+    // Guests call the World Showcase pavilions "countries", and "which country
+    // has beer" is answered by showing it here rather than in prose. Absent
+    // until the pipeline publishes the field.
+    restaurant.world_showcase_pavilion,
     distanceMiles == null ? null : `${formatProximityDistance(distanceMiles)} away`,
   ].filter(Boolean).join(' · ');
+  const firstSeenLabel = showFirstSeen && item.first_seen
+    ? `Added ${new Date(`${item.first_seen.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
+    : null;
   const alsoHere = alsoHereCount > 0
-    ? `plus ${alsoHereCount} more match${alsoHereCount === 1 ? '' : 'es'} here`
+    ? `+ ${alsoHereCount} more match${alsoHereCount === 1 ? '' : 'es'} here`
     : null;
   return (
     <Pressable
@@ -200,7 +210,8 @@ function MenuResultCard({
       </View>
       <Text style={[text.bodyMuted, styles.menuRestaurant]}>{restaurantMeta}</Text>
       {!!item.category && <Text style={[text.bodyMuted, styles.menuCategory]}>{item.category}</Text>}
-      {alsoHere ? <Text style={[text.bodyMuted, styles.menuAlsoHere]}>{alsoHere}</Text> : null}
+      {firstSeenLabel ? <Text style={styles.menuFirstSeen}>{firstSeenLabel}</Text> : null}
+      {alsoHere ? <Text style={styles.menuAlsoHere}>{alsoHere}</Text> : null}
       <Text style={styles.openLabel}>Open restaurant menu ›</Text>
     </Pressable>
   );
@@ -801,6 +812,7 @@ export function AskRumblyScreen({ navigation }: Props) {
                         distanceMiles={resultDistances[restaurant.restaurant_id]
                           ?? (origin ? distanceToRestaurant(origin, restaurant) : undefined)}
                         alsoHereCount={group.length - 1}
+                        showFirstSeen={response?.plan.constraints.recency != null}
                         onPress={() => openRestaurant(restaurant.restaurant_id, item)}
                       />
                     );
@@ -1292,7 +1304,24 @@ const styles = StyleSheet.create({
   },
   menuRestaurant: { marginTop: SPACING.xs },
   menuCategory: { marginTop: SPACING.xs },
-  menuAlsoHere: { marginTop: SPACING.xs, fontStyle: 'italic' },
+  menuAlsoHere: {
+    marginTop: SPACING.sm,
+    alignSelf: 'flex-start',
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: DAYLIGHT.amberInk,
+    backgroundColor: DAYLIGHT.sun,
+    borderRadius: 999,
+    paddingHorizontal: SPACING.sm,
+    paddingVertical: 3,
+    overflow: 'hidden',
+  },
+  menuFirstSeen: {
+    marginTop: SPACING.xs,
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 12,
+    color: DAYLIGHT.open,
+  },
   openLabel: {
     fontFamily: FONT_FAMILY.workSansExtraBold,
     fontSize: 12,

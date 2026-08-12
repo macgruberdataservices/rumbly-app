@@ -55,11 +55,27 @@ function joinTerms(terms: string[], mode: 'all' | 'any'): string {
   return terms.join(mode === 'any' ? ' or ' : ' and ');
 }
 
+/**
+ * How a location reads in a sentence.
+ *
+ * Pavilions need the word: "in Japan" is odd in a Disney dining app, "in the
+ * Japan pavilion" is not. Two of Disney's headings do not take it gracefully
+ * -- "World Showcase Plaza" is already a place name, and "Outpost" takes the
+ * article alone.
+ */
+function locationPhrase(location: { label: string; entityType: string }): string {
+  if (location.entityType !== 'pavilion') return location.label;
+  if (/plaza$/i.test(location.label)) return location.label;
+  if (/^outpost$/i.test(location.label)) return 'the Outpost';
+  if (/^the /i.test(location.label)) return `${location.label} pavilion`;
+  return `the ${location.label} pavilion`;
+}
+
 function locationLabels(plan: QueryPlan): string[] {
   if (plan.constraints.locations?.length) {
-    return plan.constraints.locations.map((location) => `${location.relation} ${location.label}`);
+    return plan.constraints.locations.map((location) => `${location.relation} ${locationPhrase(location)}`);
   }
-  if (plan.constraints.location) return [`${plan.constraints.location.relation} ${plan.constraints.location.label}`];
+  if (plan.constraints.location) return [`${plan.constraints.location.relation} ${locationPhrase(plan.constraints.location)}`];
   if (plan.constraints.distanceAnchor) {
     return [`${plan.constraints.distanceRadiusMiles != null ? 'near' : 'from'} ${plan.constraints.distanceAnchor.label}`];
   }
@@ -76,7 +92,7 @@ function locationSuffix(plan: QueryPlan, includeLocation: boolean): string {
     if (plan.constraints.distanceAnchor) return ` near ${plan.constraints.distanceAnchor.label}`;
     return '';
   }
-  return ` ${locations.map((location) => `${location.relation} ${location.label}`).join(' or ')}`;
+  return ` ${locations.map((location) => `${location.relation} ${locationPhrase(location)}`).join(' or ')}`;
 }
 
 function allergenPrefix(plan: QueryPlan): string {
@@ -171,7 +187,7 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
     : plan.constraints.location ? [plan.constraints.location] : [];
   const singleInsideArea = locations.length === 1
     && locations[0].relation === 'in'
-    && locations[0].entityType === 'area'
+    && (locations[0].entityType === 'area' || locations[0].entityType === 'pavilion')
     ? locations[0]
     : null;
   const hasLocation = locationLabels(plan).length > 0
@@ -205,10 +221,17 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
   }
   if (singleInsideArea && terms.length > 0) {
     const unscoped = searchQuery(plan, { includeLocation: false }).replace(/\?$/, '');
+    // Nothing in Morocco is a good reason to offer World Showcase, not all of
+    // EPCOT -- the pavilions next door are a two-minute walk.
+    const widerScope = singleInsideArea.entityType === 'pavilion' ? 'World Showcase' : singleInsideArea.label;
     suggestions.push({
       kind: 'query',
-      label: `Search near ${singleInsideArea.label}`,
-      query: `${unscoped} near ${singleInsideArea.label}?`,
+      label: singleInsideArea.entityType === 'pavilion'
+        ? 'Search all of World Showcase'
+        : `Search near ${singleInsideArea.label}`,
+      query: singleInsideArea.entityType === 'pavilion'
+        ? `${unscoped} in ${widerScope}?`
+        : `${unscoped} near ${widerScope}?`,
     });
   }
   if (hasLocation && terms.length > 0) {
@@ -320,8 +343,11 @@ export function buildAskRumblyPresentation(
   // Disney added something. Rumbly cannot see before its first collection, and
   // an older item can still be recorded with a recent first sighting, so the
   // guest is told exactly what the date means.
+  // Short, because the date on each card now carries the detail. The one
+  // clause that has to survive is the boundary: first seen by Rumbly is not
+  // the same claim as new at Disney.
   const trustNote = plan.constraints.recency
-    ? `Sorted by when Rumbly first saw each item, within the last ${plan.constraints.recency.withinDays} days. Rumbly can't see further back than it has been collecting, so an older item may show up as newly seen.`
+    ? `First seen by Rumbly in the last ${plan.constraints.recency.withinDays} days. Not necessarily new to Disney.`
     : trace?.locationApproximation && !plan.constraints.distanceAnchor
     ? 'Nearby-area distances are straight-line estimates from known dining locations, not walking routes.'
     : undefined;
@@ -483,7 +509,7 @@ export function buildAskRumblyPresentation(
       title: broader
         ? `I couldn't verify "${terms[0]}" as a current menu name.`
         : plainFoodLocationSearch && singleStrictLocation
-        ? `I don't have any current menu matches for ${joinTerms(terms, plan.subject.foodMode)} in ${singleStrictLocation.label}.`
+        ? `I don't have any current menu matches for ${joinTerms(terms, plan.subject.foodMode)} in ${locationPhrase(singleStrictLocation)}.`
         : nearbyAreaSearch
         ? `I don't have any current menu matches for ${joinTerms(terms, plan.subject.foodMode)} near ${plan.constraints.distanceAnchor?.label}.`
         : allergy
@@ -494,7 +520,11 @@ export function buildAskRumblyPresentation(
       message: broader
         ? `Try searching for ${broader} instead.`
         : plainFoodLocationSearch && singleStrictLocation
-        ? `Try looking near ${singleStrictLocation.label} instead, or search all of Disney World.`
+        // A pavilion's neighbours are a two-minute walk, so widening to World
+        // Showcase is a better offer than "near Japan".
+        ? singleStrictLocation.entityType === 'pavilion'
+          ? 'Try all of World Showcase instead, or search all of Disney World.'
+          : `Try looking near ${singleStrictLocation.label} instead, or search all of Disney World.`
         : nearbyAreaSearch
         ? 'Try searching without the nearby limit, or choose another area.'
         : allergy

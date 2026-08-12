@@ -32,8 +32,12 @@ export type ClaimType =
   | 'live_park_operations'
   | 'general_information';
 
-export type EntityType = 'restaurant' | 'park' | 'area' | 'resort' | 'attraction';
-export type LocationEntityType = 'park' | 'area' | 'resort';
+export type EntityType = 'restaurant' | 'park' | 'area' | 'resort' | 'pavilion' | 'attraction';
+// `pavilion` is deliberately its own type rather than another `area`. It reads
+// differently in copy ("in the Japan pavilion", not "in Japan") and it needs a
+// far smaller `near` radius, since EPCOT's pavilions sit roughly 100m apart and
+// an area-sized radius around Japan would cover most of World Showcase.
+export type LocationEntityType = 'park' | 'area' | 'resort' | 'pavilion';
 
 export interface DistanceAnchorConstraint {
   entityId: string;
