@@ -6,6 +6,7 @@ import { runAskRumbly } from '../src/askRumbly/appExecutor.ts';
 import { buildAskRumblyPresentation } from '../src/askRumbly/presentation.ts';
 import { resultListTitle, subjectiveResultTitle } from '../src/askRumbly/responseCopy.ts';
 import { parseQueryPlan } from '../src/askRumbly/semanticParser.ts';
+import { CLAIM_FEATURES, CLAIM_RULES } from '../src/askRumbly/claimRules.ts';
 import { loadData } from '../modules/ask-rumbly/scripts/ask-rumbly/data.ts';
 import { buildParserVocabulary } from '../modules/ask-rumbly/scripts/ask-rumbly/parser_vocabulary.ts';
 import { compileQueryPlan } from '../modules/ask-rumbly/scripts/ask-rumbly/plan_compiler.ts';
@@ -13,9 +14,20 @@ import { answerQuery } from '../modules/ask-rumbly/scripts/ask-rumbly/executor.t
 import { executeQueryPlan } from '../modules/ask-rumbly/scripts/ask-rumbly/typed_plan_executor.ts';
 import { itemProvesFoodTerm } from '../modules/ask-rumbly/scripts/ask-rumbly/result_proof.ts';
 import { THEME_PARK_ORDER } from '../src/data/locationNames.ts';
+import { DISTANCE_ANCHORS, DISTANCE_ANCHOR_SOURCE_VERSION } from '../src/askRumbly/distanceAnchors.ts';
 
 const data = await loadData();
 const vocabulary = buildParserVocabulary(data);
+
+test('offline distance-anchor snapshot is versioned, unique, and guest-safe', () => {
+  assert.ok(DISTANCE_ANCHOR_SOURCE_VERSION.length > 0);
+  assert.ok(DISTANCE_ANCHORS.filter((anchor) => anchor.entityType === 'attraction').length >= 170);
+  assert.ok(DISTANCE_ANCHORS.filter((anchor) => anchor.entityType === 'area').length >= 20);
+  assert.equal(new Set(DISTANCE_ANCHORS.map((anchor) => anchor.id)).size, DISTANCE_ANCHORS.length);
+  assert.ok(DISTANCE_ANCHORS.every((anchor) => Number.isFinite(anchor.latitude) && Number.isFinite(anchor.longitude)));
+  assert.ok(DISTANCE_ANCHORS.every((anchor) => !/Theme Park Reservation|Disney Park Pass/i.test(anchor.label)));
+  assert.ok(DISTANCE_ANCHORS.every((anchor) => !anchor.label.includes('—')));
+});
 
 function parse(question) {
   const plan = parseQueryPlan(question, vocabulary);
@@ -51,8 +63,9 @@ test('narrative and does not split an allergen/location request into foods', () 
   assert.equal(plan.action, 'find');
   assert.equal(plan.claimType, 'disney_label');
   assert.deepEqual(plan.constraints.allergenKeys, ['milk']);
-  assert.equal(plan.constraints.location?.relation, 'near');
-  assert.match(plan.constraints.location?.label ?? '', /Liberty Square/i);
+  assert.equal(plan.constraints.location, undefined);
+  assert.match(plan.constraints.distanceAnchor?.label ?? '', /Liberty Square/i);
+  assert.equal(plan.constraints.distanceRadiusMiles, 0.25);
   assert.deepEqual(plan.subject.foodTerms, []);
   assert.equal(capability.disposition, 'execute');
 });
@@ -98,7 +111,8 @@ test('known food names own meal words and retain every verified menu variant', (
     totalPossibilities: response.result.itemKeys?.length ?? 0,
     hasCurrentLocation: false,
   });
-  assert.match(presentation.title, /found|options|lineup/i);
+  assert.ok(presentation.title.length > 0);
+  assert.doesNotMatch(presentation.title, /verified|data|query|result kind/i);
   assert.equal(presentation.message, 'Tap one to see it on the menu.');
 
   const explicitMeal = runAskRumbly('Where can I get a lunch box tart for lunch?', data);
@@ -117,7 +131,7 @@ test('single linked results use singular conversational copy', () => {
     totalPossibilities: response.result.itemKeys?.length ?? 0,
     hasCurrentLocation: false,
   });
-  assert.equal(presentation.title, 'One menu item matches.');
+  assert.match(presentation.title, /one.*match|found one/i);
 });
 
 test('ordinary food discovery mentions proximity when results are distance-ranked', () => {
@@ -134,7 +148,7 @@ test('ordinary food discovery mentions proximity when results are distance-ranke
     totalPossibilities: response.result.itemKeys?.length ?? 0,
     hasCurrentLocation: true,
   });
-  assert.match(presentation.title, /nearby|closest/i);
+  assert.match(presentation.title, /nearby|closest|close by|closer/i);
   assert.equal(presentation.message, 'Tap one to see it on the menu.');
 
   const pizza = runAskRumbly('I want pizza', data, origin);
@@ -144,7 +158,31 @@ test('ordinary food discovery mentions proximity when results are distance-ranke
     totalPossibilities: pizza.result.itemKeys?.length ?? 0,
     hasCurrentLocation: true,
   });
-  assert.match(pizzaPresentation.title, /nearby|closest/i);
+  assert.match(pizzaPresentation.title, /nearby|closest|close by|closer/i);
+});
+
+test('terse Dole Whip proximity requests retain the food and return the nearest proven options', () => {
+  const origin = { latitude: 28.4177, longitude: -81.5812 };
+  for (const question of [
+    'Find a Dole Whip near me',
+    'Dole Whip nearby?',
+    "What's the closest Dole Whip?",
+  ]) {
+    const response = runAskRumbly(question, data, origin);
+    assert.deepEqual(response.plan.subject.foodTerms, ['dole whip'], question);
+    assert.equal(response.plan.constraints.distanceOperation, 'nearest', question);
+    assert.equal(response.plan.diagnostics.confidence, 'high', question);
+    assert.equal(response.result.kind, 'answer', question);
+    assert.ok((response.result.itemKeys?.length ?? 0) > 0, question);
+    const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+      linkedKind: 'item',
+      totalPossibilities: response.result.itemKeys?.length ?? 0,
+      hasCurrentLocation: true,
+    });
+    assert.equal(presentation.eyebrow, 'Closest match', question);
+    assert.match(presentation.title, /Dole Whip|pineapple/i, question);
+    assert.doesNotMatch(presentation.title, /could verify|menu items/i, question);
+  }
 });
 
 test('companion copy is deterministic, varied, proximity-aware, and em-dash-free', () => {
@@ -159,13 +197,21 @@ test('companion copy is deterministic, varied, proximity-aware, and em-dash-free
   const titles = questions.map((question) => resultListTitle(question, ['pizza'], true, 5));
   assert.equal(resultListTitle(questions[0], ['pizza'], true, 5), titles[0]);
   assert.ok(new Set(titles).size > 1);
-  assert.ok(titles.every((title) => /nearby|closest/i.test(title)));
+  assert.ok(titles.every((title) => /nearby|closest|close by|closer/i.test(title)));
   assert.ok(titles.every((title) => !title.includes('—')));
 
   const subjective = questions.map((question) => subjectiveResultTitle(question, true));
   assert.ok(new Set(subjective).size > 1);
   assert.ok(subjective.every((title) => /nearby|distance|close|around/i.test(title)));
   assert.ok(subjective.every((title) => !title.includes('—')));
+});
+
+test('v2 companion pools cover common family-food phrasing', () => {
+  const titlesFor = (food) => Array.from({ length: 40 }, (_, index) =>
+    resultListTitle(`Find ${food} nearby variation ${index}`, [food], true, 4));
+  assert.ok(titlesFor('chicken tenders').some((title) => /kid-approved|crispy|safe bet|tenders/i.test(title)));
+  assert.ok(titlesFor('pretzel').some((title) => /pretzel|warm, salty|classic snack/i.test(title)));
+  assert.ok(titlesFor('mac and cheese').some((title) => /comfort food|creamy, cheesy|good stuff/i.test(title)));
 });
 
 test('companion wrappers preserve the same bounded food request', () => {
@@ -180,6 +226,21 @@ test('companion wrappers preserve the same bounded food request', () => {
     assert.equal(plan.constraints.location?.label, 'Magic Kingdom', question);
     assert.equal(plan.diagnostics.confidence, 'high', question);
     assert.equal(result.kind, 'answer', question);
+  }
+});
+
+test('park aliases use the same scope across downloaded and hand-coded restaurant records', () => {
+  for (const question of [
+    'Where can I get churros in Magic Kingdom',
+    'Churros in Magic Kingdom',
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.deepEqual(response.plan.subject.foodTerms, ['churros'], question);
+    assert.equal(response.plan.constraints.location?.entityType, 'park', question);
+    assert.match(response.plan.constraints.location?.label ?? '', /^Magic Kingdom(?: Park)?$/i, question);
+    assert.equal(response.result.kind, 'answer', question);
+    assert.ok((response.result.itemKeys?.length ?? 0) > 0, question);
+    assert.ok(response.result.trace.appliedConstraints.includes('location:in'), question);
   }
 });
 
@@ -202,7 +263,100 @@ test('in-app distance questions require the shared current location or an explic
 
   const areaAnchor = runAskRumbly('coffee near tree of life', data);
   assert.equal(areaAnchor.result.kind, 'answer');
+  assert.equal(areaAnchor.plan.constraints.distanceRadiusMiles, 0.25);
+  assert.ok(areaAnchor.result.trace.appliedConstraints.includes('distance-radius:0.25mi'));
   assert.ok(areaAnchor.result.trace.locationApproximation);
+
+  const genericLandmark = runAskRumbly('food near Space Mountain', data);
+  assert.equal(genericLandmark.result.kind, 'answer');
+  assert.equal(genericLandmark.plan.constraints.distanceRadiusMiles, 0.25);
+  assert.ok((genericLandmark.result.restaurantIds?.length ?? 0) > 0);
+});
+
+test('named-origin distances answer restaurant, area, and nearest-food questions offline', () => {
+  const caseys = runAskRumbly("How far is Casey's Corner from Space Mountain?", data);
+  assert.equal(caseys.plan.action, 'distance');
+  assert.equal(caseys.plan.constraints.distanceAnchor?.label, 'Space Mountain');
+  assert.equal(caseys.result.kind, 'answer');
+  assert.match(caseys.result.text, /Casey's Corner is about \d+ ft from Space Mountain/i);
+  assert.ok(caseys.result.proof.witnesses.some((entry) => entry.constraint === 'distance-anchor:attraction:80010190'));
+
+  const cosmicRays = runAskRumbly('How far is Cosmic Rays from Fantasyland?', data);
+  assert.equal(cosmicRays.plan.constraints.distanceAnchor?.approximation, 'central-area');
+  assert.equal(cosmicRays.result.kind, 'answer');
+  assert.match(cosmicRays.result.text, /about \d+ ft from central Fantasyland/i);
+
+  const cornDog = runAskRumbly("What's the nearest corn dog to Living with the Land?", data);
+  assert.deepEqual(cornDog.plan.subject.foodTerms, ['corn dog']);
+  assert.equal(cornDog.plan.constraints.distanceAnchor?.label, 'Living with the Land');
+  assert.equal(cornDog.result.kind, 'answer');
+  assert.match(cornDog.result.text, /Blue Ribbon Corn Dogs/i);
+  assert.ok(cornDog.result.proof.witnesses.some((entry) => entry.constraint === 'global-nearest'));
+  const presentation = buildAskRumblyPresentation(cornDog.plan, cornDog.result, {
+    linkedKind: 'item',
+    totalPossibilities: cornDog.result.itemKeys?.length ?? 0,
+    hasCurrentLocation: false,
+  });
+  assert.match(presentation.title, /closest corn dog.*Living with the Land/i);
+  assert.match(presentation.message, /straight-line estimate/i);
+  assert.doesNotMatch(`${presentation.title} ${presentation.message}`, /—/);
+});
+
+test('area wording keeps strict scopes separate from central-area distance anchors', () => {
+  for (const question of ['churros in Fantasyland', 'where can I get a churro in Fantasyland']) {
+    const inside = runAskRumbly(question, data);
+    assert.equal(inside.plan.constraints.location?.relation, 'in', question);
+    assert.equal(inside.plan.constraints.location?.label, 'Fantasyland', question);
+    assert.equal(inside.plan.constraints.distanceAnchor, undefined, question);
+    assert.equal(inside.result.kind, 'no-match', question);
+    assert.ok(inside.result.trace.appliedConstraints.includes('location:in'), question);
+    const presentation = buildAskRumblyPresentation(inside.plan, inside.result, {
+      linkedKind: null,
+      totalPossibilities: 0,
+      hasCurrentLocation: false,
+    });
+    assert.match(presentation.title, /current menu matches.*churros?.*Fantasyland/i, question);
+    assert.match(presentation.message, /near Fantasyland.*all of Disney World/i, question);
+    assert.ok(presentation.suggestions.some((suggestion) => suggestion.kind === 'query'
+      && suggestion.label === 'Search near Fantasyland'
+      && /churros? near Fantasyland/i.test(suggestion.query)), question);
+    assert.ok(presentation.suggestions.some((suggestion) => suggestion.kind === 'query'
+      && suggestion.label === 'Search all Disney World'
+      && !/Fantasyland/i.test(suggestion.query)), question);
+  }
+
+  const nearby = runAskRumbly('coffee near Tomorrowland', data);
+  assert.equal(nearby.plan.constraints.location, undefined);
+  assert.equal(nearby.plan.constraints.locations, undefined);
+  assert.equal(nearby.plan.constraints.distanceAnchor?.label, 'Tomorrowland');
+  assert.equal(nearby.plan.constraints.distanceAnchor?.approximation, 'central-area');
+  assert.equal(nearby.plan.constraints.distanceRadiusMiles, 0.25);
+  assert.equal(nearby.result.kind, 'answer');
+  assert.ok(nearby.result.trace.appliedConstraints.includes('distance-radius:0.25mi'));
+  assert.ok(!nearby.result.trace.appliedConstraints.some((constraint) => constraint.startsWith('location:near:')));
+  assert.doesNotMatch(nearby.result.trace.locationApproximation ?? '', /dining-location centroid/i);
+
+  const nearest = runAskRumbly('What is the nearest coffee to World Celebration?', data);
+  assert.equal(nearest.plan.constraints.location, undefined);
+  assert.equal(nearest.plan.constraints.distanceAnchor?.label, 'World Celebration');
+  assert.equal(nearest.plan.constraints.distanceRadiusMiles, undefined);
+  assert.equal(nearest.result.kind, 'answer');
+  assert.ok(nearest.result.proof.witnesses.some((entry) => entry.constraint === 'global-nearest'));
+  assert.ok(!nearest.result.trace.appliedConstraints.some((constraint) => constraint.startsWith('location:near:')));
+
+  const distance = runAskRumbly('How far is Connections Eatery from World Celebration?', data);
+  assert.equal(distance.plan.constraints.location, undefined);
+  assert.equal(distance.plan.constraints.distanceAnchor?.label, 'World Celebration');
+  assert.equal(distance.result.kind, 'answer');
+
+  const compound = runAskRumbly('coffee in Epcot near World Celebration', data);
+  assert.equal(compound.plan.constraints.location?.entityType, 'park');
+  assert.match(compound.plan.constraints.location?.label ?? '', /Epcot/i);
+  assert.equal(compound.plan.constraints.distanceAnchor?.label, 'World Celebration');
+  assert.equal(compound.plan.constraints.distanceRadiusMiles, 0.25);
+  assert.equal(compound.result.kind, 'answer');
+  assert.ok(compound.result.trace.appliedConstraints.includes('location:in'));
+  assert.ok(compound.result.trace.appliedConstraints.includes('distance-radius:0.25mi'));
 });
 
 test('the in-app path never inherits the terminal harness origin', () => {
@@ -626,9 +780,12 @@ test('grouped character-breakfast hours return restaurants rather than loose men
 });
 
 test('open-now location plans execute as scoped restaurant lists', () => {
-  const { result } = execute('What restaurants are open right now near Tomorrowland?');
+  const { plan, result } = execute('What restaurants are open right now near Tomorrowland?');
+  assert.equal(plan.constraints.location, undefined);
+  assert.equal(plan.constraints.distanceAnchor?.label, 'Tomorrowland');
   assert.notEqual(result.kind, 'error');
-  assert.ok(result.trace?.appliedConstraints.includes('location:near:0.75mi'));
+  assert.ok(result.trace?.appliedConstraints.includes('distance-radius:0.25mi'));
+  assert.ok(!result.trace?.appliedConstraints.some((constraint) => constraint.startsWith('location:near:')));
   if (result.kind === 'answer') assert.match(result.text, /Open till/i);
 });
 
@@ -696,10 +853,12 @@ test('unverifiable venue and food attributes cannot execute as menu terms', () =
   }
 });
 
-test('landmark aliases and alternative locations remain typed constraints', () => {
+test('exact landmarks use measured anchors while alternative locations remain typed constraints', () => {
   const landmark = execute('Where can I eat a meal under $15 near Space Mountain?');
-  assert.equal(landmark.plan.constraints.location?.label, 'Tomorrowland');
-  assert.equal(landmark.plan.constraints.location?.relation, 'near');
+  assert.equal(landmark.plan.constraints.distanceAnchor?.label, 'Space Mountain');
+  assert.equal(landmark.plan.constraints.distanceAnchor?.entityType, 'attraction');
+  assert.equal(landmark.result.kind, 'answer');
+  assert.equal(landmark.result.proof.status, 'proven');
 
   const alternatives = parse('Where can I get a burger in Epcot or Magic Kingdom?').plan;
   assert.equal(alternatives.constraints.locationMode, 'any');
@@ -820,11 +979,15 @@ test('nearest named food is a food search with a global distance witness', () =>
   assert.equal(result.restaurantIds.length, 1);
 });
 
-test('nearest-from-landmark language clarifies until exact landmark origins are modeled', () => {
+test('nearest-from-landmark language uses the exact attraction point', () => {
   const { plan, result } = execute("Where's the nearest churro cart from Space Mountain?");
-  assert.equal(plan.claimType, 'restaurant_location');
-  assert.equal(plan.action, 'clarify');
-  assert.equal(result.kind, 'clarification');
+  assert.equal(plan.action, 'find');
+  assert.equal(plan.constraints.distanceOperation, 'nearest');
+  assert.equal(plan.constraints.distanceAnchor?.label, 'Space Mountain');
+  assert.deepEqual(plan.subject.foodTerms, ['churro']);
+  assert.equal(result.kind, 'answer');
+  assert.equal(result.proof.status, 'proven');
+  assert.ok(result.proof.witnesses.some((entry) => entry.constraint === 'distance-anchor:attraction:80010190'));
 });
 
 test('compound beer proof excludes beer-battered food and non-alcoholic ginger beer', () => {
@@ -982,8 +1145,8 @@ test('terminal close in a food request means nearest rather than closing hours',
 test('short mobile keyword queries preserve food, location, and GF semantics', () => {
   const coffee = execute('coffee near space mountain');
   assert.deepEqual(coffee.plan.subject.foodTerms, ['coffee']);
-  assert.equal(coffee.plan.constraints.location?.label, 'Tomorrowland');
-  assert.equal(coffee.plan.constraints.location?.relation, 'near');
+  assert.equal(coffee.plan.constraints.distanceAnchor?.label, 'Space Mountain');
+  assert.equal(coffee.plan.constraints.distanceAnchor?.entityType, 'attraction');
   assert.equal(coffee.result.kind, 'answer');
   assert.equal(coffee.result.proof.status, 'proven');
 
@@ -1031,13 +1194,14 @@ test('short logistics questions route to maintained Disney guidance', () => {
   }
 });
 
-test('exact landmark nearest requests clarify while near-area searches can execute', () => {
+test('exact landmark nearest requests and near-landmark searches execute from measured points', () => {
   const exact = parse('closest coffee to rise of the resistance');
-  assert.equal(exact.plan.action, 'clarify');
-  assert.equal(exact.capability.disposition, 'clarify');
+  assert.equal(exact.plan.action, 'find');
+  assert.equal(exact.plan.constraints.distanceAnchor?.label, 'Star Wars: Rise of the Resistance');
+  assert.equal(exact.capability.disposition, 'execute');
 
   const area = execute('coffee near tree of life');
-  assert.equal(area.plan.constraints.location?.label, 'Discovery Island');
+  assert.equal(area.plan.constraints.distanceAnchor?.label, 'Tree of Life');
   assert.equal(area.result.kind, 'answer');
   assert.equal(area.result.proof.status, 'proven');
 });
@@ -1162,4 +1326,58 @@ test('unverified pita-pocket wording offers a useful broader recovery', () => {
   });
   assert.ok(presentation.suggestions.some((suggestion) => suggestion.kind === 'query'
     && suggestion.query === 'Where can I get pita?'));
+});
+
+test('claim rule table is well formed and independently addressable', () => {
+  const names = CLAIM_RULES.map((rule) => rule.name);
+  assert.equal(new Set(names).size, names.length, 'rule names must be unique so a test can target one');
+  const known = new Set(CLAIM_FEATURES);
+  for (const rule of CLAIM_RULES) {
+    for (const feature of [...(rule.all ?? []), ...(rule.any ?? []), ...(rule.none ?? [])]) {
+      assert.ok(known.has(feature), `${rule.name} references unknown feature ${feature}`);
+    }
+    assert.ok((rule.all?.length ?? 0) + (rule.any?.length ?? 0) > 0, `${rule.name} needs a positive condition`);
+    assert.ok(rule.why.length > 0, `${rule.name} must state why it exists`);
+  }
+  const signatures = CLAIM_RULES.map((rule) => JSON.stringify([
+    [...(rule.all ?? [])].sort(), [...(rule.any ?? [])].sort(), [...(rule.none ?? [])].sort(),
+  ]));
+  assert.equal(new Set(signatures).size, signatures.length, 'duplicate conditions make the later rule unreachable');
+});
+
+test('safety claims outrank menu claims regardless of table edits', () => {
+  // These orderings are the reason the evidence gate exists. A reordering that
+  // let disney-allergy-label win any of them would answer a safety, process, or
+  // cross-contact question out of menu rows.
+  const mustOutrankLabel = [
+    'allergy-safety', 'cross-contact', 'kitchen-equipment', 'allergy-trained-staff',
+    'allergy-kitchen-conversation', 'allergy-ordering-process',
+  ];
+  const labelIndex = CLAIM_RULES.findIndex((rule) => rule.name === 'disney-allergy-label');
+  assert.ok(labelIndex >= 0);
+  for (const name of mustOutrankLabel) {
+    const index = CLAIM_RULES.findIndex((rule) => rule.name === name);
+    assert.ok(index >= 0, `missing rule ${name}`);
+    assert.ok(index < labelIndex, `${name} must be resolved before disney-allergy-label`);
+  }
+});
+
+test('claim resolution reports the deciding rule and its evidence', () => {
+  for (const [question, rule, claim] of [
+    ['Is the chicken at Cosmic Rays safe for a peanut allergy?', 'allergy-safety', 'allergy_safety'],
+    ['Does Be Our Guest have a dedicated allergy-friendly kitchen?', 'kitchen-equipment', 'kitchen_process'],
+    ['What time does Magic Kingdom open?', 'park-hours-subject', 'live_park_operations'],
+    ['Where can I get a burger in Magic Kingdom?', 'default-menu-presence', 'menu_presence'],
+  ]) {
+    const { plan } = parse(question);
+    assert.equal(plan.claimType, claim, question);
+    assert.equal(plan.diagnostics.claimRule, rule, question);
+    assert.ok(Array.isArray(plan.diagnostics.claimFeatures), question);
+  }
+
+  // A park named as a scope stays a restaurant question; only a park standing
+  // as the subject of open/close becomes park operations.
+  const scoped = parse("What restaurants are open right now in Epcot?").plan;
+  assert.equal(scoped.claimType, 'restaurant_hours');
+  assert.notEqual(scoped.diagnostics.claimRule, 'park-hours-subject');
 });

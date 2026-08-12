@@ -1,0 +1,172 @@
+{
+  "purpose": "Held-out paraphrase set. Written after the lexicon work but before running it, and scored once. Its phrasings were never consulted while changing the parser, which is what makes the number a generalization estimate rather than a fit measure.",
+  "discipline": "If you fix a failure found here, this file stops being held out. Append a new file instead and leave this one as a regression baseline with its original score recorded in ASK_RUMBLY_SEMANTIC_ARCHITECTURE.md.",
+  "intents": [
+    {
+      "id": "held-pizza-in-park",
+      "expect": "answer",
+      "phrasings": [
+        "where do they sell pizza at Hollywood Studios",
+        "pizza in Hollywood Studios",
+        "I could really go for pizza in Hollywood Studios",
+        "Does anywhere in Hollywood Studios do pizza?",
+        "hollywood studios pizza"
+      ]
+    },
+    {
+      "id": "held-dessert-search",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I find a cupcake in Magic Kingdom?",
+        "cupcakes magic kingdom",
+        "I'd love a cupcake somewhere in Magic Kingdom",
+        "who does cupcakes in magic kingdom",
+        "Is there a cupcake in Magic Kingdom?"
+      ]
+    },
+    {
+      "id": "held-drink-search",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get a margarita in Epcot?",
+        "margaritas at Epcot",
+        "I want a margarita in Epcot",
+        "who sells margaritas in epcot",
+        "Any margaritas around Epcot?"
+      ]
+    },
+    {
+      "id": "held-allergen-specific",
+      "expect": "no-data",
+      "note": "Originally annotated `answer`, corrected after checking the data: all 23 milk-allergy-friendly rows in EPCOT are savory (salads, chicken strips, fries), and Disney files allergy-friendly items under an allergy category whose norm_categories collapses to `other`. An honest no-match is the correct outcome here, so the original 0/5 was the corpus being wrong rather than the parser.",
+      "phrasings": [
+        "Where can I get dairy free desserts in Epcot?",
+        "dairy free dessert epcot",
+        "My son can't have dairy, what desserts are in Epcot?",
+        "Any dairy-free desserts at Epcot?",
+        "milk allergy desserts in Epcot"
+      ]
+    },
+    {
+      "id": "held-restaurant-reservations",
+      "expect": "answer",
+      "phrasings": [
+        "Does Sci-Fi Dine-In take reservations?",
+        "Can I book Sci-Fi Dine-In?",
+        "Sci-Fi Dine-In reservations?",
+        "Do you need a reservation at Sci-Fi Dine-In?",
+        "is sci-fi dine-in reservations only"
+      ]
+    },
+    {
+      "id": "held-restaurant-menu-2",
+      "expect": "answer",
+      "phrasings": [
+        "What can I eat at Satu'li Canteen?",
+        "Satu'li Canteen menu",
+        "show me what Satu'li Canteen has",
+        "What food does Satu'li Canteen serve?",
+        "menu for satuli canteen"
+      ]
+    },
+    {
+      "id": "held-cheapest-food",
+      "expect": "answer",
+      "phrasings": [
+        "What's the cheapest snack in Animal Kingdom?",
+        "cheapest snack animal kingdom",
+        "I'm on a budget, what's cheap to eat in Animal Kingdom?",
+        "least expensive snack at Animal Kingdom",
+        "Cheap snacks in Animal Kingdom?"
+      ]
+    },
+    {
+      "id": "held-vegetarian",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get vegetarian food in Magic Kingdom?",
+        "vegetarian magic kingdom",
+        "My wife is vegetarian, where can she eat in Magic Kingdom?",
+        "Any vegetarian options in Magic Kingdom?",
+        "veggie food magic kingdom"
+      ]
+    },
+    {
+      "id": "held-item-at-restaurant-2",
+      "expect": "answer",
+      "phrasings": [
+        "Does Docking Bay 7 have dessert?",
+        "Can I get dessert at Docking Bay 7?",
+        "Docking Bay 7 desserts?",
+        "is there dessert at docking bay 7",
+        "Do they serve dessert at Docking Bay 7?"
+      ]
+    },
+    {
+      "id": "held-nearest-generic",
+      "expect": "answer",
+      "phrasings": [
+        "Where is the nearest coffee in Epcot?",
+        "closest coffee in Epcot",
+        "I need the nearest coffee in Epcot",
+        "nearest place for coffee in epcot",
+        "Where's the closest place to get coffee in Epcot?"
+      ]
+    },
+    {
+      "id": "held-character-dining",
+      "expect": "answer",
+      "phrasings": [
+        "Where is character dining in Magic Kingdom?",
+        "character dining magic kingdom",
+        "Any character meals in Magic Kingdom?",
+        "which restaurants have character dining in magic kingdom",
+        "Character breakfast in Magic Kingdom?"
+      ]
+    },
+    {
+      "id": "held-mobile-order-list",
+      "expect": "answer",
+      "phrasings": [
+        "What restaurants have mobile order in Epcot?",
+        "mobile order epcot",
+        "Which places in Epcot let me mobile order?",
+        "Can I mobile order anywhere in Epcot?",
+        "epcot mobile ordering restaurants"
+      ]
+    },
+    {
+      "id": "held-out-of-domain-2",
+      "expect": "decline",
+      "phrasings": [
+        "How much are park tickets?",
+        "Where do I park my car?",
+        "What time is the fireworks show?",
+        "Is it going to rain today?",
+        "How do I get to the Magic Kingdom from my hotel?"
+      ]
+    },
+    {
+      "id": "held-unsupported-judgment",
+      "expect": "decline",
+      "phrasings": [
+        "What is the best restaurant at Disney World?",
+        "Which park has the best food?",
+        "Is Be Our Guest worth it?",
+        "what should I eat tonight",
+        "Give me your top 5 Disney snacks"
+      ]
+    },
+    {
+      "id": "held-allergy-process",
+      "expect": "decline",
+      "phrasings": [
+        "How do I tell them about my peanut allergy?",
+        "Do I need to notify the chef about allergies?",
+        "What's the allergy ordering process at quick service?",
+        "Can they make my meal in a separate fryer?",
+        "How does Disney handle nut allergies?"
+      ]
+    }
+  ]
+}

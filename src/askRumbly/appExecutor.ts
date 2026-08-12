@@ -22,7 +22,12 @@ export interface AskRumblyResponse {
 }
 
 const GENERIC_SUBJECTS = new Set(['food', 'meal', 'meals', 'option', 'options', 'dish', 'dishes', 'something', 'anything', 'for']);
-const SUBJECTIVE_OPTIONS_PATTERN = /\b(?:best|top(?:\s+\d+)?|highest[ -]rated|favorite|must[ -]eat|most famous|signature|recommend(?:ed|ation)?)\b/i;
+// "Good", "great", and "decent" are conversational filler rather than a request
+// for a ranking, but they still route to editorial_judgment. Adapting them here
+// reuses the tested options path — which keeps the "Rumbly cannot pick a best"
+// wording and re-enters the capability, execution, and proof gates — instead of
+// quietly reclassifying the question as an ordinary menu search.
+const SUBJECTIVE_OPTIONS_PATTERN = /\b(?:best|top(?:\s+\d+)?|highest[ -]rated|favorite|must[ -]eat|most famous|signature|recommend(?:ed|ation)?|good|great|decent|nice|solid)\b/i;
 
 function hasSpecificSubject(plan: QueryPlan): boolean {
   return plan.subject.foodTerms.some((term) => !GENERIC_SUBJECTS.has(term.toLowerCase()));
@@ -39,8 +44,10 @@ export function runAskRumbly(
     ? plan.constraints.locations
     : plan.constraints.location ? [plan.constraints.location] : [];
   const hasDistanceAnchor = locations.some((location) => location.relation === 'near');
+  const namedDistanceAnchor = plan.constraints.distanceAnchor;
   const needsCurrentLocation = !origin
     && !hasDistanceAnchor
+    && !namedDistanceAnchor
     && (plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest');
   if (needsCurrentLocation) {
     const reason = 'Current location is required for an unscoped distance question.';
@@ -101,7 +108,9 @@ export function runAskRumbly(
         reasons: ['Subjective ranking is unsupported; searching the same constraints for verified options instead.'],
       },
     };
-    const optionsResult = executeQueryPlan(optionsPlan, data, origin ?? null);
+    const optionsResult = executeQueryPlan(optionsPlan, data, namedDistanceAnchor
+      ? { latitude: namedDistanceAnchor.latitude, longitude: namedDistanceAnchor.longitude }
+      : origin ?? null);
     if (optionsResult.kind === 'answer' || optionsResult.kind === 'no-match') {
       return {
         plan: optionsPlan,
@@ -117,6 +126,8 @@ export function runAskRumbly(
   // `null` is intentional here. The terminal harness retains a documented
   // Magic Kingdom stand-in origin, but the in-app path must never let that
   // development fallback influence guest-facing ranking or distance prose.
-  const result = executeQueryPlan(plan, data, origin ?? null);
+  const result = executeQueryPlan(plan, data, namedDistanceAnchor
+    ? { latitude: namedDistanceAnchor.latitude, longitude: namedDistanceAnchor.longitude }
+    : origin ?? null);
   return { plan, result };
 }

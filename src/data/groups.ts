@@ -7,15 +7,27 @@
 import type { Restaurant } from './types';
 import { distanceToRestaurant, type Coordinates } from '../location/proximity';
 import {
+  BOARDWALK_GROUP_KEY,
+  DISNEY_RESORTS_GROUP_KEY,
   DISNEY_SPRINGS_AREAS,
   THEME_PARK_ORDER,
   WATER_PARK_ORDER,
   parkDisplayName,
+  venueGroupKey,
 } from './locationNames';
 
 export const WATER_PARKS_GROUP_KEY = 'Water Parks';
 
-const BROWSE_FALLBACK_ORDER = ['Disney Springs', 'Disney Resorts', WATER_PARKS_GROUP_KEY, 'Other'];
+// Disney's BoardWalk sits next to Disney Springs: both are walkable dining
+// districts that are not a park and not a single resort, so they read as a
+// pair ahead of the resort list.
+const BROWSE_FALLBACK_ORDER = [
+  'Disney Springs',
+  BOARDWALK_GROUP_KEY,
+  DISNEY_RESORTS_GROUP_KEY,
+  WATER_PARKS_GROUP_KEY,
+  'Other',
+];
 
 export interface RestaurantGroup {
   key: string;
@@ -33,9 +45,11 @@ function compareDistance(a: Restaurant, b: Restaurant, origin: Coordinates): num
 function groupKeyFor(r: Restaurant): string {
   if (r.park && WATER_PARK_ORDER.includes(r.park)) return WATER_PARKS_GROUP_KEY;
   if (r.park) return r.park;
-  if (r.resort) return 'Disney Resorts';
+  if (r.resort) return DISNEY_RESORTS_GROUP_KEY;
   if (r.area && DISNEY_SPRINGS_AREAS.has(r.area)) return 'Disney Springs';
-  return 'Other';
+  // Last check before Other -- see VENUE_GROUP_KEYS in locationNames.ts for
+  // why it has to run after every rule above rather than before them.
+  return venueGroupKey(r) ?? 'Other';
 }
 
 function topLevelOrderFor(key: string): number {
@@ -65,7 +79,7 @@ function groupRestaurantsByKey(
 
   return Array.from(byKey.entries()).map(([key, list]) => ({
     key,
-    label: key === 'Disney Resorts' ? 'Resorts' : parkDisplayName(key),
+    label: key === DISNEY_RESORTS_GROUP_KEY ? 'Resorts' : parkDisplayName(key),
     restaurants: list.sort((a, b) => {
       if (origin) {
         const distanceComparison = compareDistance(a, b, origin);

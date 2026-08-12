@@ -13,7 +13,7 @@ type Props = NativeStackScreenProps<ChangesStackParamList, 'ChangesRestaurant'>;
 // breakdown (Menu Changes / Price Changes), each tappable into Level 2
 // scoped to that restaurant + category.
 export function ChangesRestaurantScreen({ navigation, route }: Props) {
-  const { restaurantName, events, groupMode } = route.params;
+  const { restaurantName, events, groupMode, rangeLabel, query } = route.params;
   const categories = useMemo(() => categoryBreakdown(events), [events]);
 
   return (
@@ -23,7 +23,8 @@ export function ChangesRestaurantScreen({ navigation, route }: Props) {
           <Text style={text.buttonLabel}>‹ Back</Text>
         </Pressable>
         <Text style={styles.title}>{restaurantName}</Text>
-        <Text style={text.bodyMuted}>Changes in this range</Text>
+        <Text style={text.bodyMuted}>{rangeLabel ? `Changes · ${rangeLabel}` : 'Changes in this range'}</Text>
+        {!!query && <Text style={text.bodyMuted}>Matching “{query}”</Text>}
       </View>
 
       <View style={styles.list}>
@@ -39,6 +40,8 @@ export function ChangesRestaurantScreen({ navigation, route }: Props) {
                 backLabel: restaurantName,
                 scopeRestaurant: true,
                 groupMode,
+                rangeLabel,
+                query,
               })
             }
           >

@@ -9,6 +9,14 @@ import type {
   RestaurantFeature,
   SourceSpan,
 } from './queryPlan.ts';
+import { classifyWord, stripFunctionWordEdges } from './closedClass.ts';
+import { matchFoodSpans } from './foodLexicon.ts';
+import {
+  EDITORIAL_PATTERN,
+  FOOD_PROXIMITY_CLOSE_PATTERN,
+  RESTAURANT_PROXIMITY_CLOSE_PATTERN,
+  resolveClaim,
+} from './claimRules.ts';
 
 const ALLERGEN_PATTERNS: ReadonlyArray<{ keys: string[]; pattern: RegExp }> = [
   // Disney publishes one combined Gluten/Wheat label. Keep that exact
@@ -34,12 +42,14 @@ const FEATURE_PATTERNS: ReadonlyArray<{ feature: RestaurantFeature; pattern: Reg
   { feature: 'character_dining', pattern: /\bcharacter (?:dining|breakfasts?|meals?)\b/gi },
   { feature: 'festival_booth', pattern: /\bfestival booths?\b|\bfood and wine(?: festival)?\b/gi },
   { feature: 'resort_bar', pattern: /\bresort (?:bars?|lounges?)\b/gi },
-  { feature: 'wait_time', pattern: /\b(?:(?:shortest|huge) (?:current )?(?:wait|line)|wait times?|without (?:a )?(?:huge|long) line|waiting forever)\b/gi },
+  // Wait and queue vocabulary rather than the two phrasings ("without a huge
+  // line", "waiting forever") that happened to appear in the corpus.
+  { feature: 'wait_time', pattern: /\bwait\s?times?\b|\b(?:shortest|short|long|longest|huge|no|big)\s+(?:current\s+)?(?:wait|line|queue)\b|\bwaiting\b|\bhow long is the (?:wait|line|queue)\b/gi },
 ];
 
 const DIETARY_PATTERNS = [
   { key: 'plant-based' as const, pattern: /\b(?:vegan|plant[\s-]?based)\b/gi },
-  { key: 'vegetarian' as const, pattern: /\bvegetarian\b/gi },
+  { key: 'vegetarian' as const, pattern: /\b(?:vegetarian|veggie)\b/gi },
   { key: 'kosher' as const, pattern: /\bkosher\b/gi },
   { key: 'kids' as const, pattern: /\b(?:kids?|children'?s|toddler)\b/gi },
 ];
@@ -51,21 +61,7 @@ const MEAL_PATTERNS = [
   { key: 'snack' as const, pattern: /\bsnacks?\b/gi },
 ];
 
-const PROCESS_PATTERN = /\b(?:process|procedure|how (?:do|can|should) i|talk (?:to|with)|speak (?:to|with)|notify|tell (?:a|the)|ordering? allergy|special dietary request)\b/i;
-const KITCHEN_CONVERSATION_PATTERN = /\b(?:talk|speak|chat)\s+(?:to|with|through)\s+(?:a\s+)?(?:chef|manager|cast member|someone|anyone)\b/i;
-const KITCHEN_PATTERN = /\b(?:dedicated,?\s+(?:(?:allergy[\s-]?(?:friendly )?)|(?:gluten[\s-]?free|gf) )?(?:kitchen|fryers?|equipment|prep area|facility|waffle iron)|shared (?:fryers?|equipment|oil)|same oil|separate (?:allergy[\s-]?(?:friendly )?)?(?:kitchen|fryers?|equipment|prep area|facility)|separate prep|swapped ingredients|without (?:needing )?(?:advance )?notice)\b/i;
-const CROSS_CONTACT_PATTERN = /\bcross[\s-]?(?:contact|contamination)\b|\bcontaminat(?:e|ed|ion)\b/i;
-const INGREDIENT_PATTERN = /\b(?:ingredients?|contain|made (?:with|from)|what(?:'s| is) in|avoid|free of|healthy|nutritious|nutrition(?:al)?|isn't fried|is not fried|not fried|keto(?:[ -]friendly)?|low[ -]carb|zero[ -]carb(?:ohydrate)?|sugar[ -]free|low[ -]glycemic)\b|\bis there\s+(?:soy|milk|dairy|egg|sesame|peanut|tree nut|fish|shellfish|gluten|wheat)\s+in\b/i;
-const SAFETY_PATTERN = /\b(?:safe|safely|safest|safety|certified|risk[- ]free|guarantee|trust)\b/i;
-const EDITORIAL_PATTERN = /\b(?:best|better|worst|good|great|decent|favorite|signature|downgrade|worth(?: the splurge| it| eating)?|hype|overrated|overpriced|quietest|tourist traps?|secret menu|food crawl|weird|gimmicky|funny|fancy date|highest[ -]rated|hidden gem|must[ -]eat|ultimate|top \d+|top dessert|most famous|real bbq|fake theme park|good value|fastest|shortest|most accommodating|most thorough|least risky|recommend(?:ed|ation)?|reviews?|mistakes?|gotten worse)\b/i;
-const REPORTED_OUTCOME_PATTERN = /\b(?:reviews?|mistakes?|reported recently|gotten worse)\b/i;
-const VENUE_AMENITY_PATTERN = /\b(?:quiet(?:est)?|shade|shaded|outdoor seating|air[ -]con(?:ditioned)?|air[ -]conditioned|indoors?|out of (?:the )?(?:heat|rain)|views?|castle views?|fireworks? (?:views?|show)|view (?:the )?(?:nighttime )?fireworks|live music(?:al entertainment)?|away from crowds|giant aquarium|surrounded by sea life|latte art|printed on the foam)\b/i;
-const LIVE_AVAILABILITY_PATTERN = /\b(?:available|availability|join|wait ?list|wait times?|line time|huge wait|same[\s-]?day|right now|currently|still (?:get|book)|to[ -]?go[\s\S]*app)\b/i;
-const PARK_OPERATIONS_PATTERN = /\b(?:park|epcot|magic kingdom|animal kingdom|hollywood studios)\b[\s\S]*\b(?:open|close|hours?|rope drop)\b|\b(?:open|close|hours?|rope drop)\b[\s\S]*\b(?:park|epcot|magic kingdom|animal kingdom|hollywood studios)\b/i;
-const GENERAL_PATTERN = /\b(?:weather|forecast|temperature|ride|attraction|parade|mickey mouse|parking|refill stations?|first aid|medical|emergency|records? of past allergy orders?)\b/i;
-const OFFICIAL_POLICY_PATTERN = /\b(?:outside food|bring (?:my|our|your|their|any )?(?:own )?food|mobile order (?:work|rules?)|dining plan|park hopper[\s\S]*dining|popcorn bucket[\s\S]*refill|cancel[\s\S]*reservation|reservation[\s\S]*(?:fee|deadline|rules?)|(?:need )?reservations?[\s\S]*(?:for )?quick[ -]service|quick[ -]service vs\.? table[ -]service|hotel restaurants?[\s\S]*park tickets?|tips? included|cash payment|physical register|dress code|adults? order (?:off )?(?:the )?(?:kids?|children'?s) (?:menu|meals?)|free cups? of water)\b/i;
-const FOOD_PROXIMITY_CLOSE_PATTERN = /\b(?:where|who)\b[\s\S]*\b(?:get|find|buy|order|grab|eat|has|serves?|sells?|offers?)\b[\s\S]*\bclose\s*[?.!]*$/i;
-const RESTAURANT_PROXIMITY_CLOSE_PATTERN = /\b(?:how\s+)?close(?:\s+by)?\s+(?:is|are)\b/i;
+const NAMED_ANCHOR_NEAR_RADIUS_MILES = 0.25;
 
 function normalizeForMatching(value: string): string {
   return value
@@ -131,6 +127,7 @@ export function linkQueryEntities(query: string, vocabulary: ParserVocabulary): 
         start,
         end,
         text: query.slice(start, end),
+        distanceAnchor: entity.distanceAnchor,
       });
       break;
     }
@@ -163,7 +160,8 @@ function withoutSpans(query: string, spans: SourceSpan[]): string {
   return chars.join('');
 }
 
-function extractAllergens(query: string): { keys: string[]; spans: SourceSpan[]; hasAllergyContext: boolean } {
+// Exported so tooling can reproduce the exact inputs claim detection receives.
+export function extractAllergens(query: string): { keys: string[]; spans: SourceSpan[]; hasAllergyContext: boolean } {
   const keys = new Set<string>();
   const spans: SourceSpan[] = [];
   for (const entry of ALLERGEN_PATTERNS) {
@@ -212,50 +210,6 @@ function extractFeatures(query: string): { features: RestaurantFeature[]; spans:
   return { features, spans };
 }
 
-function requestedClaim(query: string, allergenKeys: string[], hasAllergyContext: boolean): ClaimType {
-  if (PARK_OPERATIONS_PATTERN.test(query)) return 'live_park_operations';
-  if (GENERAL_PATTERN.test(query)) return 'general_information';
-  if (OFFICIAL_POLICY_PATTERN.test(query)) return 'official_policy';
-  if (CROSS_CONTACT_PATTERN.test(query)) return 'cross_contact';
-  if (/\b(?:most thorough|most accommodating|best\b[\s\S]*\baccommodat)\b/i.test(query)) return 'editorial_judgment';
-  if (hasAllergyContext && KITCHEN_CONVERSATION_PATTERN.test(query)) return 'kitchen_process';
-  if (hasAllergyContext && (PROCESS_PATTERN.test(query) || /\b(?:request to speak|handle|accommodat|doctor'?s note|in advance|need to tell|check the allergy)\b/i.test(query))) return 'official_policy';
-  if (/\bhow can i see\b[\s\S]*\b(?:ingredients?|nutrition(?:al)?)\b/i.test(query)) return 'official_policy';
-  if (hasAllergyContext && /\bwithout needing to talk\b/i.test(query)) return 'kitchen_process';
-  if (KITCHEN_PATTERN.test(query)) return 'kitchen_process';
-  if (/\b(?:chef will|manager on[ -]site|allergy[ -]trained (?:chef|manager|staff))\b/i.test(query)) return 'kitchen_process';
-  if (REPORTED_OUTCOME_PATTERN.test(query)) return 'editorial_judgment';
-  if ((hasAllergyContext || allergenKeys.length > 0) && (SAFETY_PATTERN.test(query) || /\b(?:better for allergies|avoid entirely|everywhere (?:it'?s )?served)\b/i.test(query))) return 'allergy_safety';
-  if (/\b(?:current|shortest)\b[\s\S]*\bwait\b|\bwait times?\b/i.test(query)) return 'live_availability';
-  const hasObjectivePrice = /\b(?:under|below|less than|up to)\s*\$/i.test(query);
-  const onlySoftSubjective = /\b(?:good|great|decent)\b/i.test(query) && !/\b(?:best|better|worst|fastest|shortest|recommend|reviews?|mistakes?|gotten worse|splurge)\b/i.test(query);
-  const canIgnoreSoftSubjective = onlySoftSubjective
-    && (hasObjectivePrice || allergenKeys.length > 0);
-  if ((EDITORIAL_PATTERN.test(query) && !canIgnoreSoftSubjective) || /^should i (?:eat|try|choose)\b/i.test(query.trim())) return 'editorial_judgment';
-  if (/\b(?:spicy|spiciness|mild|hot and spicy)\b/i.test(query)) return 'sensory_attribute';
-  if (LIVE_AVAILABILITY_PATTERN.test(query) && /\b(?:reservation|book|mobile[\s-]?order|walk[\s-]?up|wait ?list|wait times?|line time|huge wait|to[ -]?go)\b/i.test(query)) return 'live_availability';
-  if (VENUE_AMENITY_PATTERN.test(query)) return 'venue_amenity';
-  if (/\bpriced (?:the )?same|\bsame price\b|\bcompare prices?\b/i.test(query)) return 'price_comparison';
-  if (INGREDIENT_PATTERN.test(query)) return 'ingredient_content';
-  if (allergenKeys.length > 0 || hasAllergyContext) return 'disney_label';
-  if (/\b(?:mobile[\s-]?order|walk[\s-]?up|reservations?|book(?:ing)?)\b/i.test(query)) return 'restaurant_feature';
-  if (/\bquick[\s-]?service\b/i.test(query) && !/\b(?:vegan|vegetarian|allerg|meal|food|options?|items?|dishes?|serves?|get|find|eat|buy|order)\b/i.test(query)) return 'restaurant_feature';
-  // In acquisition phrasing, a terminal “close” means nearby (“where can I
-  // get fried rice close”), not a restaurant's closing time.
-  if (/\b(?:hours?|open|close|closing)\b/i.test(query)
-    && !FOOD_PROXIMITY_CLOSE_PATTERN.test(query)
-    && !RESTAURANT_PROXIMITY_CLOSE_PATTERN.test(query)) return 'restaurant_hours';
-  if (/\bserving\b[\s\S]*\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(query)) return 'restaurant_hours';
-  const nearestNamesAnObject = /\b(?:closest|nearest)\s+(?!restaurant\b|place\b|location\b|spot\b)[a-z][\w'-]*/i.test(query)
-    && !/\b(?:closest|nearest)\b[\s\S]*\bfrom\b/i.test(query);
-  const nearestPlaceNamesFood = /\b(?:closest|nearest)\s+(?:restaurant|place|location|spot)\s+(?:for|with)\s+[a-z]/i.test(query);
-  if ((/\b(?:distance|far|walk|closest|nearest)\b/i.test(query) || RESTAURANT_PROXIMITY_CLOSE_PATTERN.test(query))
-    && !/\b(?:food|dish|item|serve|get|eat|buy|order)\b/i.test(query)
-    && !nearestNamesAnObject
-    && !nearestPlaceNamesFood) return 'restaurant_location';
-  return 'menu_presence';
-}
-
 function requestedAction(query: string, claimType: ClaimType, entities: LinkedEntity[]): QueryAction {
   const hasRestaurant = entities.some((entity) => entity.type === 'restaurant');
   if (claimType === 'live_park_operations' || claimType === 'general_information') return 'handoff';
@@ -296,6 +250,7 @@ function foodCapture(query: string): string {
     /\b(?:what|which)\s+(?:place|restaurant|location|spot|stand)\s+(?:has|have|serves?|sells?|offers?)\s+(.+?)\??$/i,
     /\b(?:where|what place|which place|what restaurant|which restaurant|which locations?|which spots?|which stands?|what [\w-]+ (?:dining )?(?:option|location))[\s\S]*?\b(?:get|find|serves?|sells?|offers?|buy|order|grab|eat)\s+(.+?)\??$/i,
     /\bcan i\s+(?:get|find|buy|order|grab)\s+(.+?)\??$/i,
+    /\bfind\s+(.+?)\??$/i,
     /\bwhere\s+are\s+(.+?)\??$/i,
     /\bwho\s+(?:has|serves|sells|offers)\s+(.+?)\??$/i,
     /\b(?:closest|nearest)\s+(?:restaurant|place|location|spot)\s+(?:for|with)\s+(.+?)\??$/i,
@@ -330,8 +285,8 @@ function stripTrailingLocation(text: string, locations: LinkedEntity[]): string 
     .replace(/\s+across all four parks\s*$/i, '')
     .trim();
   for (const location of locations) {
-    result = result.replace(new RegExp(`\\s+(?:at|in|inside|near|around|by|to)\\s+(?:the\\s+)?${escapeRegExp(location.text)}[\\s\\S]*$`, 'i'), '');
-    result = result.replace(new RegExp(`\\s+(?:at|in|near|around|by|to)\\s+(?:the\\s+)?${escapeRegExp(location.text)}[?.!]*$`, 'i'), '');
+    result = result.replace(new RegExp(`\\s+(?:at|in|inside|near|around|by|to|from)\\s+(?:the\\s+)?${escapeRegExp(location.text)}[\\s\\S]*$`, 'i'), '');
+    result = result.replace(new RegExp(`\\s+(?:at|in|near|around|by|to|from)\\s+(?:the\\s+)?${escapeRegExp(location.text)}[?.!]*$`, 'i'), '');
   }
   return result
     .replace(/\s+(?:right now|currently|today|tonight|tomorrow|rn)\s*$/i, '')
@@ -361,8 +316,19 @@ function extractCuisine(query: string, vocabulary: ParserVocabulary): { value?: 
   return { spans: [] };
 }
 
+/**
+ * Everyday guest wording that Disney publishes under a different name.
+ * Applied on both the lexicon and the fallback path so the executor can still
+ * demand exact menu evidence rather than fuzzy-matching the guest's word.
+ */
+function canonicalFoodAlias(term: string): string {
+  // Disney publishes Pop-Tart-style pastries as “Lunch Box Tart”.
+  if (/^pop[ -]?tarts?$/.test(term)) return 'lunch box tart';
+  return term;
+}
+
 function normalizeFoodTerm(term: string): string {
-  const normalized = term
+  const normalized = stripFunctionWordEdges(term
     .replace(/,/g, ' ')
     .replace(/^[\s,]+/, '')
     .replace(/^[\s,]*(?:(?:a|an|the|some|any|those|that)\s+)+/i, '')
@@ -374,17 +340,118 @@ function normalizeFoodTerm(term: string): string {
     .replace(/\s+(?:walt )?disney world$/i, '')
     .replace(/\s+(?:cart|stand|location|pavilion)$/i, '')
     .replace(/^(?:cart|stand|location|restaurant|place|spot)$/i, '')
-    .replace(/\s+(?:that non-vegans will also love|across all four parks)\s*$/i, '')
+    .replace(/\s+across all four parks\s*$/i, '')
     .replace(/\s+(?:with|for)\s*$/i, '')
     .replace(/[?.!]+$/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .toLowerCase();
-  // Disney publishes Pop-Tart-style pastries under its own “Lunch Box Tart”
-  // name. Normalize the everyday guest term at the semantic boundary so the
-  // executor can still demand exact menu evidence rather than fuzzy guessing.
-  if (/^pop[ -]?tarts?$/.test(normalized)) return 'lunch box tart';
-  return normalized;
+    .toLowerCase());
+  return canonicalFoodAlias(normalized);
+}
+
+// Adjectives that decorate a request without narrowing what would satisfy it.
+// They are absorbed into the consumed span so they stop counting as unexplained
+// meaning, but they never enter the term itself. Preparation modifiers such as
+// "wood-fired" are deliberately absent: those change what counts as evidence
+// and must survive into the item search.
+const GENERIC_FOOD_MODIFIER = /^(?:big|classic|fresh|freshly|made|warm|savory|authentic|famous|iconic|refreshing|specialty|custom|customized|giant|quick|full|alcoholic|non-alcoholic|nice|tasty|delicious|yummy)$/i;
+
+/**
+ * Widen a recognised food span leftward over the words that modify it.
+ *
+ * The lexicon match alone is the head noun. A guest asking for a
+ * "wood-fired style pizza" must not have that reduced to "pizza" — dropping
+ * the modifier would turn a request Rumbly cannot verify into a confident
+ * answer about a different dish. Anything unclaimed, contiguous, and carrying
+ * content is therefore pulled into the term.
+ */
+function extendFoodSpanLeft(
+  query: string,
+  match: { start: number; end: number },
+  blocked: ReadonlyArray<{ start: number; end: number }>,
+): number {
+  let start = match.start;
+  const wordPattern = /[a-z0-9]+(?:'[a-z]+)?/gi;
+  const words: SourceSpan[] = [];
+  for (const found of query.matchAll(wordPattern)) {
+    if (found.index == null || found.index >= match.start) continue;
+    words.push({ start: found.index, end: found.index + found[0].length, text: found[0] });
+  }
+  for (let index = words.length - 1; index >= 0; index -= 1) {
+    const word = words[index];
+    // Only a space or a hyphen may separate a modifier from what it modifies.
+    if (!/^[\s-]*$/.test(query.slice(word.end, start))) break;
+    if (blocked.some((span) => word.start < span.end && span.start < word.end)) break;
+    if (classifyWord(word.text) !== 'content') break;
+    start = word.start;
+  }
+  return start;
+}
+
+/**
+ * Recognise food against the data-derived lexicon.
+ *
+ * This is the primary path. Because every term must be anchored by a word that
+ * already exists in Rumbly's own menu vocabulary, surrounding grammar cannot
+ * end up inside a food term — the failure mode that produced searches for
+ * "burger while we are" and "dole whip to me". Spans that another typed
+ * constraint already claimed (restaurant and park names, allergen wording,
+ * dietary, meal, cuisine, and feature phrases) are excluded, so a food inside a
+ * restaurant's own name is not mistaken for the request.
+ */
+// Words that separate one request into two. Everything else that can sit
+// between two recognised foods ("float *with* rum", "chicken *over* rice")
+// belongs to a single dish and must stay in one term, or the proof layer will
+// be asked to verify a weaker claim than the guest actually made.
+const FOOD_COORDINATION = /(?:^|\s)(?:and|or|vs\.?|versus|plus)(?:\s|$)|[,+/]/i;
+const MAX_FOOD_JOIN_GAP = 25;
+// Deliberately unspecific subjects. The executor and result proof already
+// treat these as generic rather than as an item name to match.
+const GENERIC_SUBJECT_TERM = /^(?:foods?|meals?|options?|dish(?:es)?|items?)$/i;
+
+function recognizeFoods(
+  query: string,
+  claimedSpans: SourceSpan[],
+  vocabulary: ParserVocabulary
+): { terms: string[]; mode: 'all' | 'any'; spans: SourceSpan[] } | null {
+  if (!vocabulary.foodLexicon) return null;
+  const rawMatches = matchFoodSpans(query, vocabulary.foodLexicon, claimedSpans);
+  if (rawMatches.length === 0) return null;
+
+  // Disney's own naming means one dish often produces several lexicon hits
+  // ("wood fired" + "pizza"). Rejoin anything the guest wrote as a single
+  // request, and split only on real coordination.
+  const groups: Array<{ start: number; end: number; union: boolean }> = [];
+  for (const match of rawMatches) {
+    const previous = groups[groups.length - 1];
+    const between = previous ? query.slice(previous.end, match.start) : '';
+    const separated = !previous
+      || between.length > MAX_FOOD_JOIN_GAP
+      || FOOD_COORDINATION.test(between)
+      || claimedSpans.some((span) => previous.end < span.end && span.start < match.start);
+    if (separated) {
+      groups.push({ start: match.start, end: match.end, union: /\b(?:or|vs\.?|versus)\b/i.test(between) });
+    } else previous.end = match.end;
+  }
+
+  const spans = groups.map((group, index) => {
+    const blocked = [...claimedSpans, ...groups.filter((_, other) => other !== index)];
+    const start = extendFoodSpanLeft(query, group, blocked);
+    return { start, end: group.end, text: query.slice(start, group.end) };
+  });
+  const terms = spans.map((span) => span.text
+    .split(/\s+/)
+    // Decorative adjectives are consumed but dropped from the searched term.
+    .filter((word, position, all) => position >= all.findIndex((candidate) => !GENERIC_FOOD_MODIFIER.test(candidate)))
+    .join(' ')
+    .replace(/[?.!,]+$/g, '')
+    .toLowerCase()
+    .trim());
+
+  const mode: 'all' | 'any' = groups.some((group) => group.union) ? 'any' : 'all';
+  const resolved = terms.map(canonicalFoodAlias).filter(Boolean);
+  if (resolved.length === 0) return null;
+  return { terms: resolved, mode, spans };
 }
 
 function extractFoods(
@@ -394,13 +461,47 @@ function extractFoods(
   constraintSpans: SourceSpan[],
   vocabulary: ParserVocabulary
 ): { terms: string[]; mode: 'all' | 'any'; spans: SourceSpan[] } {
+  const recognized = recognizeFoods(query, [...entities, ...allergens, ...constraintSpans], vocabulary);
+  if (recognized) return recognized;
+  const fallback = captureFoods(query, entities, allergens, constraintSpans, vocabulary);
+  // The capture path exists for food Rumbly has never listed, not for text that
+  // names no food at all. A phrase whose head word is grammar or search
+  // scaffolding ("hours", "the menu", "quick service places", "open right now")
+  // is the question's shape, and searching menus for it produces a confident
+  // no-match for something the guest never asked about.
+  const named = fallback.terms.filter((term) => {
+    const words = term.split(/\s+/).filter(Boolean);
+    if (words.length === 0) return false;
+    // "a meal", "food", "options" name a deliberately unspecific subject that
+    // the executor and proof layer already understand as generic. They are the
+    // one scaffolding shape that is genuinely the thing being asked for.
+    if (words.length === 1 && GENERIC_SUBJECT_TERM.test(words[0])) return true;
+    if (classifyWord(words[words.length - 1]) !== 'content') return false;
+    return words.some((word) => classifyWord(word) === 'content');
+  });
+  if (named.length !== fallback.terms.length) return { terms: named, mode: fallback.mode, spans: fallback.spans };
+  return fallback;
+}
+
+function captureFoods(
+  query: string,
+  entities: LinkedEntity[],
+  allergens: SourceSpan[],
+  constraintSpans: SourceSpan[],
+  vocabulary: ParserVocabulary
+): { terms: string[]; mode: 'all' | 'any'; spans: SourceSpan[] } {
+  // Fallback for food Rumbly's menus have never listed. The request still
+  // deserves an honest answer, so the original capture path runs — but its
+  // output is trimmed of grammatical edges before it reaches the item matcher.
   const locationEntities = entities.filter((entity) => entity.type !== 'restaurant');
   let captured = stripTrailingLocation(foodCapture(query), locationEntities);
   const terseEntityQuery = entities.length > 0
     && !/\b(?:what|where|when|who|how|does|do|did|is|are|am|can|could|would|should|i|i'm|we|we're|my|our|have|has|serve|serves|sell|sells|offer|offers|find|get|want|need|open|close|menu|near|at|in)\b/i.test(query);
   const shortKeywordLookup = query.split(/\s+/).length <= 10
     && !/\b(?:i|i'm|we|we're|my|our|have|has|am|is|are|can|could|would|should|do|does|did)\b/i.test(query)
-    && (locationEntities.length > 0 || /\b(?:location|where to (?:get|buy))\s*[?.!]*$/i.test(query));
+    && (locationEntities.length > 0
+      || /\b(?:location|where to (?:get|buy))\s*[?.!]*$/i.test(query)
+      || /\b(?:near me|nearby|close)\s*[?.!]*$/i.test(query));
   if (!captured && (terseEntityQuery || shortKeywordLookup)) {
     // Terse guest input commonly omits a verb: "Animal Kingdom ice cream
     // sandwich" or "Cosmic Ray's fries". Linked entities and typed
@@ -408,7 +509,7 @@ function extractFoods(
     // contiguous text as the requested food rather than guessing globally.
     captured = withoutSpans(query, [...entities, ...allergens, ...constraintSpans])
       .replace(/\bwhere to (?:get|buy)\b/gi, ' ')
-      .replace(/\b(?:closest|nearest|near|around|by|at|in|location)\b/gi, ' ')
+      .replace(/\b(?:closest|nearest|nearby|near|around|by|at|in|location)\b/gi, ' ')
       .replace(/\b(?:cart|stand|pavilion)\b\s*$/i, ' ')
       .replace(/[?.!]+$/g, '')
       .replace(/\s+/g, ' ')
@@ -425,7 +526,10 @@ function extractFoods(
     captured = captured.replace(regex, token);
     preservedPhrases.set(token, phrase);
   });
-  for (const entity of entities.filter((entry) => entry.type === 'restaurant')) {
+  // Every linked entity, not just restaurants: a park name left inside the
+  // capture becomes a food term ("I'm vegan, where should I eat in Animal
+  // Kingdom?" searched menus for "animal kingdom").
+  for (const entity of entities) {
     captured = captured.replace(new RegExp(escapeRegExp(entity.text), 'ig'), '');
   }
   for (const allergen of allergens) captured = captured.replace(new RegExp(escapeRegExp(allergen.text), 'ig'), '');
@@ -437,10 +541,8 @@ function extractFoods(
   captured = captured
     .replace(/\s+\b(?:that\s+)?(?:isn't|is not|aren't|are not|other than|besides)\b[\s\S]*$/i, '')
     .replace(/\s+\b(?:under|below|less than|up to)\s*\$\s*\d+(?:\.\d{1,2})?\b/i, '')
-    .replace(/\bfor\s+per person\b/gi, '')
     .replace(/\b(?:good|great|decent)\b/gi, '')
-    .replace(/\bthat non-vegans will also love\b/gi, '')
-    .replace(/\s+(?:or am i dreaming|asap|rn)\s*$/i, '');
+;
   captured = captured.replace(/\b(?:food|foods|options?|items?|dishes?|something|anything)\b/gi, '').trim();
   if (!captured) return { terms: [], mode: 'all', spans: [] };
 
@@ -489,19 +591,30 @@ function extractExcludedFoods(query: string): { terms: string[]; spans: SourceSp
   return { terms, spans };
 }
 
-function locationConstraint(query: string, entities: LinkedEntity[]): QueryPlan['constraints']['location'] {
-  const locations = entities.filter((entity): entity is LinkedEntity & { type: Exclude<EntityType, 'restaurant'> } => entity.type !== 'restaurant');
-  const location = locations.at(-1);
-  if (!location) return undefined;
-  const prefix = query.slice(Math.max(0, location.start - 32), location.start);
-  const relation = /\b(?:near|around|by)\s+(?:the\s+)?$/i.test(prefix)
-    || /\b(?:closest|nearest)\b[\s\S]*\bto\s+(?:the\s+)?$/i.test(prefix) ? 'near' : 'in';
-  return { relation, entityId: location.id, entityType: location.type, label: location.label };
+function isLocationEntity(entity: LinkedEntity): entity is LinkedEntity & { type: 'park' | 'area' | 'resort' } {
+  return entity.type === 'park' || entity.type === 'area' || entity.type === 'resort';
+}
+
+function distanceAnchorConstraint(query: string, entities: LinkedEntity[]): QueryPlan['constraints']['distanceAnchor'] {
+  const candidates = entities.filter((entity) => entity.distanceAnchor != null);
+  for (const entity of [...candidates].reverse()) {
+    const prefix = query.slice(Math.max(0, entity.start - 40), entity.start);
+    if (/\b(?:from|to|near|around|by)\s+(?:the\s+)?$/i.test(prefix)) return entity.distanceAnchor;
+  }
+  return undefined;
+}
+
+function distanceAnchorRadius(query: string, anchor: QueryPlan['constraints']['distanceAnchor'], entities: LinkedEntity[]): number | undefined {
+  if (!anchor) return undefined;
+  const entity = entities.find((candidate) => candidate.distanceAnchor?.entityId === anchor.entityId);
+  if (!entity) return undefined;
+  const prefix = query.slice(Math.max(0, entity.start - 40), entity.start);
+  return /\b(?:near|around|by)\s+(?:the\s+)?$/i.test(prefix) ? NAMED_ANCHOR_NEAR_RADIUS_MILES : undefined;
 }
 
 function locationConstraints(query: string, entities: LinkedEntity[]): NonNullable<QueryPlan['constraints']['locations']> {
   return entities
-    .filter((entity): entity is LinkedEntity & { type: Exclude<EntityType, 'restaurant'> } => entity.type !== 'restaurant')
+    .filter(isLocationEntity)
     .map((location) => {
       const prefix = query.slice(Math.max(0, location.start - 32), location.start);
       const relation = /\b(?:near|around|by)\s+(?:the\s+)?$/i.test(prefix)
@@ -510,23 +623,27 @@ function locationConstraints(query: string, entities: LinkedEntity[]): NonNullab
     });
 }
 
+/**
+ * Text the parser could not explain.
+ *
+ * Previously this was one ~170-alternative stopword regex, which meant the fix
+ * for any false "unconsumed meaning" report was to append another word — a
+ * change that quietly weakened the confidence gate for every other question.
+ * Word class now decides: grammar and dining-search scaffolding are explained
+ * by definition, and anything left is a content word the parser genuinely
+ * failed to account for. See closedClass.ts.
+ */
 function meaningfulUnconsumed(query: string, spans: SourceSpan[]): string {
   const chars = Array.from(query);
   for (const span of spans) {
     for (let index = Math.max(0, span.start); index < Math.min(chars.length, span.end); index += 1) chars[index] = ' ';
   }
   return chars.join('')
-    .replace(/\bi['’]?m\b/gi, ' ')
-    .replace(/\b(?:what|where|who|how|there|it)['’]s\b/gi, ' ')
-    .replace(/[^a-z0-9'&-]+/gi, ' ')
-    .replace(/(?:^|\s)'s(?:\s|$)/gi, ' ')
-    .replace(/(?:^|\s)'(?:re|ve|ll|d|t)(?:\s|$)/gi, ' ')
-    .replace(/(?:^|\s)-(?:\s|$)/g, ' ')
-    .replace(/(?:^|\s)'?m(?:\s|$)/gi, ' ')
-    .replace(/\b(?:what|whats|where|which|who|how|does|do|is|are|am|can|could|would|should|i|im|you|your|my|me|we|us|our|son|wife|daughter|kid|yo|rn|asap|a|an|the|this|that|at|in|inside|near|around|by|to|for|of|on|with|and|or|as|about|through|before|please|tell|help|get|find|show|see|view|suggest|suggests|suggested|want|wanna|need|go|heading|later|place|places|location|locations|spot|spots|stand|stands|restaurant|restaurants|resort|dining|have|has|sell|sells|offer|offers|allow|allows|buy|order|grab|serve|serves|serving|eat|eating|food|foods|option|options|item|items|dish|dishes|meal|meals|anything|something|any|anywhere|there|right|now|today|tomorrow|tonight|morning|still|actually|also|too|again|standing|together|family|unique|year|available|advance|app|clearly|accommodate|accommodates|accommodation|accommodations|disney|list|lists|listed|label|labels|labeled|labelled|menu|allergy|allergies|allergic|allergen|allergens|safe|safely|safest|safety|best|better|worst|good|compare|cheapest|closest|nearest|open|broke|send|dreaming|per|person)\b/gi, ' ')
-    .replace(/(?:^|\s)'(?:re|ve|ll|d|t)(?:\s|$)/gi, ' ')
-    .replace(/(?:^|\s)&(?:\s|$)/g, ' ')
-    .replace(/\s+/g, ' ')
+    .replace(/[’]/g, "'")
+    .split(/[^a-z0-9']+/i)
+    .map((word) => word.replace(/^'+|'+$/g, ''))
+    .filter((word) => word.length > 0 && classifyWord(word) === 'content')
+    .join(' ')
     .trim();
 }
 
@@ -568,24 +685,34 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   const hungerSpans = hungerOnly ? collectPatternSpans(analysisText, /[\s\S]+/g) : [];
   const discourseSpans = collectPatternSpans(
     analysisText,
-    /\b(?:hey|hi|hello|okay|ok)[,\s]+(?:rumbly\b[,\s]*)?|\brumbly\b[,\s]*|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:help\s+(?:me|us)\s+)?(?:find|get|show|suggest|recommend)\s+(?:me|us\s+)?|\b(?:(?:i['’]?m|i am|we['’]?re|we are)\s+)?hungry\s+for\s+|\b(?:yo|asap|send help|or am i dreaming|my wife'?s|i'?m broke|we'?re)\b/gi
+    /\b(?:hey|hi|hello|okay|ok)[,\s]+(?:rumbly\b[,\s]*)?|\brumbly\b[,\s]*|\b(?:can|could|would|will)\s+you\s+(?:please\s+)?(?:help\s+(?:me|us)\s+)?(?:find|get|show|suggest|recommend)\s+(?:me|us\s+)?|\b(?:(?:i['’]?m|i am|we['’]?re|we are)\s+)?hungry\s+for\s+/gi
   );
   const menuRoutingSpans = collectPatternSpans(analysisText, /\b(?:draft|beer|cocktail) list\b/gi);
   const excludedFoods = extractExcludedFoods(analysisText);
-  const groupOrderSpans = collectPatternSpans(analysisText, /\beat together as a family without three separate orders\b/i);
+  // The resort's own name is a scope, not a food or a leftover word.
+  const resortScopeSpans = collectPatternSpans(analysisText, /\b(?:walt\s+)?disney\s+world\b/gi);
   const semanticText = withoutSpans(analysisText, linkedEntities).replace(/\s+/g, ' ');
-  const claimType = requestedClaim(semanticText, allergens.keys, allergens.hasAllergyContext);
+  const claimResolution = resolveClaim({
+    text: semanticText,
+    allergenKeys: allergens.keys,
+    hasAllergyContext: allergens.hasAllergyContext,
+    hasRestaurantEntity: linkedEntities.some((entity) => entity.type === 'restaurant'),
+    locationIsHoursSubject: linkedEntities.some((entity) => isLocationEntity(entity)
+      && /\b(?:does|do|is|are|will|did)\s+(?:the\s+)?$/i.test(analysisText.slice(Math.max(0, entity.start - 24), entity.start))),
+  });
+  let claimType = claimResolution.claim;
   let action = requestedAction(grammarText, claimType, linkedEntities);
   const foods = extractFoods(
     analysisText,
     linkedEntities,
     allergens.spans,
-    [...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans],
+    // Excluded foods are claimed here so a "not a hot dog" exclusion cannot
+    // also be recognised as the food being requested.
+    [...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans,
+      ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...excludedFoods.spans, ...resortScopeSpans],
     vocabulary
   );
   let foodTerms = foods.terms.filter((term) => normalizeForMatching(term) !== normalizeForMatching(cuisine.value ?? ''));
-  const goodValuePriceQuery = /\bgood\s+value\b/i.test(analysisText) && /\b(?:under|below|less than|up to)\s*\$/i.test(analysisText);
-  if (goodValuePriceQuery) foodTerms = foodTerms.filter((term) => normalizeForMatching(term) !== 'value');
   let fallbackFoodSpan: SourceSpan | undefined;
   if (foodTerms.length === 0 && allergens.keys.length > 0) {
     const match = analysisText.match(/\b(?:gluten|wheat|dairy|milk|egg|soy|nut|peanut|shellfish)[\s-]?free\s+([a-z]+(?:\s+(?!anywhere\b|at\b|in\b|near\b|or\b)[a-z]+)?)(?=\s+(?:anywhere|at|in|near|or am)\b|[?.!]*$)/i);
@@ -599,20 +726,27 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       fallbackFoodSpan = { start: match.index + relative, end: match.index + relative + match[1].length, text: match[1] };
     }
   }
-  const allergenBurgerBun = analysisText.match(/\bbuns?\s+options?\s+for\s+(?:the\s+)?burgers?\b/i);
-  if (allergenBurgerBun && allergens.keys.length > 0) foodTerms = ['burger'];
   if (meals.includes('snack') && foodTerms.every((term) => /^snacks?$/.test(term))) foodTerms = [];
   // Menu-page requests are routing intents, not claims about a literal item
   // called "on the menu". Drop any food-capture residue before execution so
   // the proof layer validates the restaurant route rather than inventing a
   // menu-item requirement.
   if (action === 'open_menu') foodTerms = [];
+  // A named restaurant with nothing else being asked about is a request for
+  // that restaurant's menu. Without this the executor is handed an item search
+  // with no item and returns a raw adapter error to the guest.
+  if (claimType === 'menu_presence'
+    && foodTerms.length === 0
+    && (action === 'find' || action === 'check_menu')
+    && linkedEntities.some((entity) => entity.type === 'restaurant')) {
+    action = 'open_menu';
+  }
   const operationSpans = [
     ...collectPatternSpans(analysisText, /\b(?:under|below|less than|up to)\s*\$\s*\d+(?:\.\d{1,2})?/gi),
     ...collectPatternSpans(analysisText, /\b(?:right now|currently|open now|today|tomorrow|this morning|rn)\b/gi),
+    ...collectPatternSpans(analysisText, /\b(?:near me|nearby)\b/gi),
     ...collectPatternSpans(analysisText, /\b(?:across all four parks|at Walt Disney World)\b/gi),
-    ...collectPatternSpans(analysisText, /\b(?:difference in menu between|atmosphere and food style)\b/gi),
-    ...collectPatternSpans(analysisText, /\bbuns?\s+options?\s+for\s+(?:the\s+)?burgers?\b/gi),
+    ...collectPatternSpans(analysisText, /\bdifferences?\s+(?:in\s+menu\s+)?between\b/gi),
     ...collectPatternSpans(analysisText, /\b(?:do not|don't|does not|doesn't|without)\s+(?:require|requiring|need|needing)?\s*(?:advance dining )?reservations?\s+for\s+walk[ -]in seating\b/gi),
     ...(proximityClose ? collectPatternSpans(analysisText, /\bclose(?=\s*[?.!]*$)/gi) : []),
     ...(claimType === 'restaurant_hours' ? collectPatternSpans(analysisText, /\b(?:hours?|open|close|closing|when|what\s+time)\b/gi) : []),
@@ -623,7 +757,12 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     ...(fallbackFoodSpan ? [fallbackFoodSpan] : []),
   ];
   const parsedLocations = locationConstraints(analysisText, linkedEntities);
-  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...foods.spans, ...excludedFoods.spans, ...groupOrderSpans, ...operationSpans];
+  const distanceAnchor = distanceAnchorConstraint(analysisText, linkedEntities);
+  // A named area used as a distance origin is not also a search boundary.
+  // "In Fantasyland" remains a strict scope, while "near Fantasyland" and
+  // "nearest to Fantasyland" use the trusted central-area coordinate only.
+  const scopedLocations = parsedLocations.filter((location) => location.entityId !== distanceAnchor?.entityId);
+  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
   const unconsumed = meaningfulUnconsumed(analysisText, consumedSpans);
   const reasons: string[] = [];
 
@@ -637,17 +776,14 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     action = 'clarify';
     reasons.push('What kind of food are you in the mood for, and where would you like to search?');
   }
-  if (goodValuePriceQuery) {
-    action = 'clarify';
-    reasons.push('I can apply the stated price limit, but the dataset cannot judge value. Which snack or location should I search?');
-  }
   if (characterDetailSpans.length > 0) {
     action = 'clarify';
     reasons.push('The current restaurant data identifies character dining but not which specific characters appear. Did you mean any character meal?');
   }
 
   if (/\b(?:closest|nearest)\b[\s\S]*\b(?:from|to\s+(?!get\b|find\b|buy\b|eat\b|grab\b|order\b))/i.test(grammarText)
-    && linkedEntities.some((entity) => entity.type !== 'restaurant')) {
+    && linkedEntities.some((entity) => entity.type !== 'restaurant')
+    && !distanceAnchor) {
     action = 'clarify';
     reasons.push('I cannot yet measure from that exact landmark. Did you mean near the linked park area, or nearest to your current location?');
   }
@@ -664,10 +800,32 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     action = 'clarify';
     reasons.push('A specific allergen is required before comparing Disney-published labels.');
   }
-  if (/\b(?:after|before)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(grammarText)
+  // Any clock time, not only an explicit after/before bound. "Still serving
+  // breakfast at 11am" names a moment the typed `time` constraint cannot
+  // express, and answering from today's opening hours silently drops it.
+  if (/\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/i.test(grammarText)
     && ['menu_presence', 'restaurant_hours', 'restaurant_feature'].includes(claimType)) {
     action = 'clarify';
     reasons.push('A clock-time boundary is present but is not represented by the current time constraint.');
+  }
+  // Nothing to search. Reaching the executor with no food, no restaurant, and
+  // no constraint produces an adapter error, which the guest sees as a generic
+  // "something went wrong" for a question that was simply too open-ended.
+  if (action === 'find'
+    && claimType === 'menu_presence'
+    && foodTerms.length === 0
+    && linkedEntities.length === 0
+    && scopedLocations.length === 0
+    && allergens.keys.length === 0
+    && dietary.length === 0
+    && meals.length === 0
+    && requiredFeatures.length === 0
+    && !cuisine.value
+    && !distanceAnchor
+    && !/\b(?:cheapest|lowest priced|least expensive|under|below|less than|up to)\b/i.test(grammarText)
+    && !/\b(?:closest|nearest|near me|nearby)\b/i.test(grammarText)) {
+    action = 'clarify';
+    reasons.push('What food are you looking for, and which park or area should I search?');
   }
   if (foodTerms.some((term) => /^(?:quick bite|bite|something|anything)(?:\s|$)/i.test(term))) {
     action = 'clarify';
@@ -698,9 +856,9 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       allergenMode: 'all',
       dietaryKeys: dietary,
       mealPeriods: meals,
-      location: locationConstraint(analysisText, linkedEntities),
-      locations: parsedLocations.length > 1 ? parsedLocations : undefined,
-      locationMode: parsedLocations.length > 1 ? 'any' : undefined,
+      location: scopedLocations.length === 1 ? scopedLocations[0] : undefined,
+      locations: scopedLocations.length > 1 ? scopedLocations : undefined,
+      locationMode: scopedLocations.length > 1 ? 'any' : undefined,
       locationSet: /\b(?:across|in)\s+(?:all\s+)?(?:of\s+)?(?:the\s+)?(?:four|4)\s+(?:theme\s+)?parks\b|\bacross all four parks\b/i.test(grammarText)
         ? 'theme_parks'
         : undefined,
@@ -713,9 +871,21 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
         : /\b(?:under|below|less than|up to)\s*\$/i.test(grammarText) ? 'maximum' : undefined,
       maxPrice: Number(grammarText.match(/\b(?:under|below|less than|up to)\s*\$\s*(\d+(?:\.\d{1,2})?)/i)?.[1]) || undefined,
       distanceOperation: /\b(?:closest|nearest|near me|nearby)\b/i.test(grammarText) || proximityClose ? 'nearest' : undefined,
+      distanceAnchor,
+      distanceRadiusMiles: distanceAnchorRadius(analysisText, distanceAnchor, linkedEntities),
       time: /\btomorrow\b/i.test(grammarText) ? 'tomorrow' : /\b(?:right now|currently|open now|rn)\b/i.test(grammarText) ? 'now' : /\b(?:today|this morning)\b/i.test(grammarText) ? 'today' : undefined,
     },
     linkedEntities,
-    diagnostics: { confidence, consumedSpans, meaningfulUnconsumedText: unconsumed, reasons },
+    diagnostics: {
+      confidence,
+      consumedSpans,
+      meaningfulUnconsumedText: unconsumed,
+      reasons,
+      // Which rule decided the claim, and on what evidence. A wrong claim is
+      // then read directly off the plan — including in a thumbs-down feedback
+      // record — instead of being re-derived from the pattern table by hand.
+      claimRule: claimResolution.rule,
+      claimFeatures: claimResolution.features,
+    },
   };
 }

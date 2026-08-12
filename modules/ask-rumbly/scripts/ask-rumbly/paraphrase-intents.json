@@ -1,0 +1,197 @@
+{
+  "purpose": "Paraphrase-invariance gate. Each intent is one guest need that the product contract already claims to support. Every phrasing under it is an equally natural way to ask the SAME thing. A sound parser answers all of them identically; a pattern-matched parser answers whichever phrasing someone happened to write a rule for.",
+  "discipline": "Do NOT read individual failures from this file while writing parser rules, and never add a phrasing here to make a specific rule pass. Read the aggregate score only. Phrasings should be written by someone not currently editing the parser, and new ones should be appended, never edited to fit.",
+  "expect": "answer means a grounded, proof-passing result is possible from the current dataset for every phrasing.",
+  "intents": [
+    {
+      "id": "food-in-park",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get a burger in Magic Kingdom?",
+        "burgers in Magic Kingdom",
+        "Who sells burgers in Magic Kingdom?",
+        "I want a burger while we are in Magic Kingdom",
+        "Any place in Magic Kingdom with a good burger?",
+        "Magic Kingdom burger spots",
+        "is there a burger anywhere in magic kingdom"
+      ]
+    },
+    {
+      "id": "allergen-in-park",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get gluten-free food near Magic Kingdom?",
+        "gluten free near Magic Kingdom",
+        "My daughter is celiac, what can she eat in Magic Kingdom?",
+        "Anything gluten free around Magic Kingdom?",
+        "gf options magic kingdom"
+      ]
+    },
+    {
+      "id": "restaurant-hours",
+      "expect": "answer",
+      "phrasings": [
+        "When does Cosmic Rays open?",
+        "What time does Cosmic Rays open?",
+        "Is Cosmic Rays open late?",
+        "Cosmic Rays hours",
+        "How late is Cosmic Rays open tonight?",
+        "when do they stop serving at Cosmic Rays"
+      ]
+    },
+    {
+      "id": "restaurant-feature",
+      "expect": "answer",
+      "phrasings": [
+        "Does Cosmic Rays have Mobile Order?",
+        "Can I mobile order at Cosmic Rays?",
+        "Is Cosmic Rays mobile order?",
+        "Cosmic Rays mobile order?",
+        "Do they do mobile ordering at Cosmic Rays?"
+      ]
+    },
+    {
+      "id": "price-ceiling",
+      "expect": "answer",
+      "phrasings": [
+        "What food is under $10 in Magic Kingdom?",
+        "Anything under $10 in Magic Kingdom?",
+        "cheap eats in Magic Kingdom under $10",
+        "What can I get for less than $10 at Magic Kingdom?",
+        "What's the cheapest lunch in Magic Kingdom?"
+      ]
+    },
+    {
+      "id": "nearest-food",
+      "expect": "answer",
+      "phrasings": [
+        "Dole Whip nearby?",
+        "Where is the closest Dole Whip?",
+        "nearest dole whip to me",
+        "I need a Dole Whip, where is the closest one?",
+        "closest place to grab a dole whip"
+      ]
+    },
+    {
+      "id": "dietary-in-park",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get vegan food in Animal Kingdom?",
+        "vegan options Animal Kingdom",
+        "What plant based food is at Animal Kingdom?",
+        "I'm vegan, where should I eat in Animal Kingdom?",
+        "Any vegan lunch in Animal Kingdom?"
+      ]
+    },
+    {
+      "id": "restaurant-menu",
+      "expect": "answer",
+      "phrasings": [
+        "What's on the menu at Cosmic Rays?",
+        "Show me the Cosmic Rays menu",
+        "Cosmic Rays menu",
+        "What do they serve at Cosmic Rays?",
+        "What kind of food does Cosmic Rays have?"
+      ]
+    },
+    {
+      "id": "compound-food",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get a burger and a beer?",
+        "somewhere with burgers and beer",
+        "I want a burger and a beer",
+        "Who has both burgers and beer?",
+        "burger + beer"
+      ]
+    },
+    {
+      "id": "kids-food",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get kids meals in Epcot?",
+        "kids menu Epcot",
+        "What is there for my kids to eat in Epcot?",
+        "Anywhere in Epcot with a childrens menu?",
+        "somewhere my kids will eat in Epcot"
+      ]
+    },
+    {
+      "id": "item-at-restaurant",
+      "expect": "answer",
+      "phrasings": [
+        "Does Cosmic Rays have fries?",
+        "Can I get fries at Cosmic Rays?",
+        "do they have fries at cosmic rays",
+        "Cosmic Rays fries?",
+        "Are there fries on the menu at Cosmic Rays?"
+      ]
+    },
+    {
+      "id": "coffee-nearby",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get coffee in Epcot?",
+        "coffee in Epcot",
+        "I need coffee, what's in Epcot?",
+        "Who has coffee in Epcot?",
+        "Any decent coffee at Epcot?"
+      ]
+    },
+    {
+      "id": "snack-in-park",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get a pretzel in Magic Kingdom?",
+        "pretzels magic kingdom",
+        "I want a pretzel in Magic Kingdom",
+        "Who sells pretzels in Magic Kingdom?",
+        "somewhere to grab a pretzel in Magic Kingdom"
+      ]
+    },
+    {
+      "id": "open-now-in-area",
+      "expect": "answer",
+      "phrasings": [
+        "What restaurants are open right now in Epcot?",
+        "what's open in Epcot right now",
+        "Anything open at Epcot at the moment?",
+        "Epcot restaurants open now",
+        "Which places are still open in Epcot?"
+      ]
+    },
+    {
+      "id": "quick-service-in-park",
+      "expect": "answer",
+      "phrasings": [
+        "What quick service restaurants are in Animal Kingdom?",
+        "quick service Animal Kingdom",
+        "Where is counter service in Animal Kingdom?",
+        "Any quick service spots at Animal Kingdom?",
+        "quick service places animal kingdom"
+      ]
+    },
+    {
+      "id": "out-of-domain",
+      "expect": "decline",
+      "phrasings": [
+        "What's the weather today?",
+        "how long is the wait for Space Mountain",
+        "What time does Magic Kingdom open?",
+        "Who is Mickey Mouse?",
+        "where is the closest bathroom"
+      ]
+    },
+    {
+      "id": "allergy-safety-boundary",
+      "expect": "decline",
+      "phrasings": [
+        "Is the chicken at Cosmic Rays safe for a peanut allergy?",
+        "Can I trust Cosmic Rays with my kid's nut allergy?",
+        "Is there cross contamination at Cosmic Rays?",
+        "Do they use a dedicated fryer at Cosmic Rays?",
+        "which restaurant is safest for allergies"
+      ]
+    }
+  ]
+}

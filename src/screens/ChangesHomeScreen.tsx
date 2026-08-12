@@ -1,50 +1,97 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from 'react';
+import DateTimePicker from '@expo/ui/community/datetime-picker';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import {
+  ActivityIndicator,
+  Modal,
+  Platform,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  TextInput,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import type { ChangesStackParamList } from '../navigation/changesTypes';
 import type { ChangeEvent } from '../data/types';
 import {
   categoryBreakdown,
+  changeQueryTokens,
+  changeSearchHaystack,
+  changesEarliestDate,
+  clampDayStr,
+  dayStr,
   daysAgoStr,
+  formatRangeLabel,
   groupEventsByRestaurant,
+  groupModeForRange,
+  haystackMatchesTokens,
   loadChangesForRange,
+  parseDayStr,
   restaurantSummaryLine,
   todayStr,
-  type GroupMode,
 } from '../data/changes';
 import { ChangeEventGroups } from '../components/changes/ChangeEventGroups';
 import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
-import { DAYLIGHT, RADII, SPACING } from '../theme/tokens';
+import { COLORS, DAYLIGHT, RADII, SPACING } from '../theme/tokens';
 import { text } from '../theme/typography';
 
 type Props = NativeStackScreenProps<ChangesStackParamList, 'ChangesHome'>;
 
-type RangeMode = 'week' | 'month';
+type RangeMode = 'week' | 'month' | 'custom';
+type RangeEdge = 'from' | 'to';
+
+// How far back the custom picker will go when the manifest can't be read
+// (offline, or a request that failed). Deliberately generous -- the real
+// floor is whatever changesEarliestDate() reports, and an over-wide picker
+// just yields an empty range rather than an error.
+const FALLBACK_EARLIEST = '2024-01-01';
 
 // Level 0 of the ported See Changes feature (see src/data/changes.ts for
 // the full port notes): date-range picker, aggregate show-all buttons,
 // Openings & Closures, and Restaurant Updates (one row per restaurant
 // with any change, tap to drill into Level 1).
 //
-// Scope trim vs. the original: "This Week" / "This Month" quick presets
-// only, no arbitrary custom date-range picker -- avoids pulling in a new
-// native date-picker dependency for a first pass. Revisit if a real
-// custom range turns out to matter.
+// The original port shipped "This Week"/"This Month" presets only, noting a
+// real custom range was skipped to avoid a native date-picker dependency.
+// That dependency arrived anyway for the Journal composer's visit date
+// (@expo/ui's community DateTimePicker), so the custom range is now here on
+// the same platform split that screen established: an inline picker inside
+// a modal on iOS, the native dialog on Android.
 export function ChangesHomeScreen({ navigation }: Props) {
   const [rangeMode, setRangeMode] = useState<RangeMode>('week');
+  const [customFrom, setCustomFrom] = useState(() => daysAgoStr(29));
+  const [customTo, setCustomTo] = useState(() => todayStr());
   const [loading, setLoading] = useState(true);
   const [errored, setErrored] = useState(false);
   const [events, setEvents] = useState<ChangeEvent[]>([]);
+  const [query, setQuery] = useState('');
+  const [earliest, setEarliest] = useState<string | null>(null);
 
-  const groupMode: GroupMode = rangeMode === 'week' ? 'day' : 'week';
+  // Custom-range picker: drafts so Cancel really cancels -- the applied
+  // range only moves on Done, which also avoids refetching once per nudge
+  // of the wheel while the user is still choosing.
+  const [pickerVisible, setPickerVisible] = useState(false);
+  const [draftFrom, setDraftFrom] = useState(customFrom);
+  const [draftTo, setDraftTo] = useState(customTo);
+  const [editingEdge, setEditingEdge] = useState<RangeEdge>('from');
+  const [androidEdge, setAndroidEdge] = useState<RangeEdge | null>(null);
+
+  const { from, to } = useMemo(() => {
+    if (rangeMode === 'week') return { from: daysAgoStr(6), to: todayStr() };
+    if (rangeMode === 'month') return { from: daysAgoStr(29), to: todayStr() };
+    return { from: customFrom, to: customTo };
+  }, [rangeMode, customFrom, customTo]);
+
+  const groupMode = useMemo(() => groupModeForRange(from, to), [from, to]);
+  const rangeLabel = useMemo(() => formatRangeLabel(from, to), [from, to]);
 
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setErrored(false);
-    const from = rangeMode === 'week' ? daysAgoStr(6) : daysAgoStr(29);
-    loadChangesForRange(from, todayStr())
+    loadChangesForRange(from, to)
       .then((result) => {
         if (!cancelled) setEvents(result);
       })
@@ -57,18 +104,41 @@ export function ChangesHomeScreen({ navigation }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [rangeMode]);
+  }, [from, to]);
+
+  useEffect(() => {
+    let cancelled = false;
+    changesEarliestDate().then((d) => {
+      if (!cancelled) setEarliest(d);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  // Keystroke filtering runs against a haystack built once per loaded range
+  // rather than re-deriving each event's searchable text on every render;
+  // useDeferredValue keeps the field itself responsive when a month's worth
+  // of events makes that filter pass non-trivial.
+  const deferredQuery = useDeferredValue(query);
+  const haystacks = useMemo(() => events.map(changeSearchHaystack), [events]);
+  const tokens = useMemo(() => changeQueryTokens(deferredQuery), [deferredQuery]);
+  const searching = tokens.length > 0;
+  const visibleEvents = useMemo(() => {
+    if (!searching) return events;
+    return events.filter((_, i) => haystackMatchesTokens(haystacks[i], tokens));
+  }, [events, haystacks, tokens, searching]);
 
   const facilityEvents = useMemo(
-    () => events.filter((e) => e.category === 'restaurant_added' || e.category === 'restaurant_closed'),
-    [events]
+    () => visibleEvents.filter((e) => e.category === 'restaurant_added' || e.category === 'restaurant_closed'),
+    [visibleEvents]
   );
   const changeEvents = useMemo(
     () =>
-      events.filter(
+      visibleEvents.filter(
         (e) => e.category === 'menu_item_added' || e.category === 'menu_item_removed' || e.category === 'price_change'
       ),
-    [events]
+    [visibleEvents]
   );
   const menuCount = useMemo(
     () => changeEvents.filter((e) => e.category === 'menu_item_added' || e.category === 'menu_item_removed').length,
@@ -76,6 +146,8 @@ export function ChangesHomeScreen({ navigation }: Props) {
   );
   const priceCount = useMemo(() => changeEvents.filter((e) => e.category === 'price_change').length, [changeEvents]);
   const byRestaurant = useMemo(() => groupEventsByRestaurant(changeEvents), [changeEvents]);
+
+  const activeQuery = searching ? deferredQuery.trim() : undefined;
 
   const openShowAll = (key: 'menu' | 'price') => {
     const evs = changeEvents.filter((e) =>
@@ -88,8 +160,75 @@ export function ChangesHomeScreen({ navigation }: Props) {
       backLabel: 'Changes',
       scopeRestaurant: false,
       groupMode,
+      rangeLabel,
+      query: activeQuery,
     });
   };
+
+  const floor = earliest ?? FALLBACK_EARLIEST;
+  const ceiling = todayStr();
+
+  const openCustomPicker = useCallback(() => {
+    // Seed from whatever range is on screen so "Custom" starts where the
+    // user already is. Clamped because a preset range can begin before the
+    // feed's first published month, and SwiftUI's graphical picker wants a
+    // selection inside its own range.
+    setDraftFrom(clampDayStr(from, floor, ceiling));
+    setDraftTo(clampDayStr(to, floor, ceiling));
+    setEditingEdge('from');
+    setAndroidEdge(null);
+    setPickerVisible(true);
+  }, [from, to, floor, ceiling]);
+
+  const applyCustomRange = useCallback(() => {
+    // The pickers are already bounded so from <= to, but a stale draft is
+    // cheap to guard against and an inverted range would silently render
+    // an empty list with no hint why.
+    const nextFrom = draftFrom <= draftTo ? draftFrom : draftTo;
+    const nextTo = draftFrom <= draftTo ? draftTo : draftFrom;
+    setCustomFrom(nextFrom);
+    setCustomTo(nextTo);
+    setRangeMode('custom');
+    setPickerVisible(false);
+    setAndroidEdge(null);
+  }, [draftFrom, draftTo]);
+
+  // Each endpoint is bounded by the other, so an invalid range simply can't
+  // be expressed in the UI -- no error copy, no post-hoc validation.
+  const edgeBounds = (edge: RangeEdge) =>
+    edge === 'from'
+      ? { min: floor, max: clampDayStr(draftTo, floor, ceiling) }
+      : { min: clampDayStr(draftFrom, floor, ceiling), max: ceiling };
+
+  const setEdge = (edge: RangeEdge, value: string) => {
+    const { min, max } = edgeBounds(edge);
+    const clamped = clampDayStr(value, min, max);
+    if (edge === 'from') setDraftFrom(clamped);
+    else setDraftTo(clamped);
+  };
+
+  const pressEdge = (edge: RangeEdge) => {
+    setEditingEdge(edge);
+    if (Platform.OS === 'android') setAndroidEdge(edge);
+  };
+
+  const renderRangeButton = (mode: RangeMode, label: string) => (
+    <Pressable
+      style={[styles.rangeButton, rangeMode === mode && styles.rangeButtonActive]}
+      onPress={() => (mode === 'custom' ? openCustomPicker() : setRangeMode(mode))}
+      accessibilityRole="button"
+      accessibilityState={{ selected: rangeMode === mode }}
+      accessibilityLabel={mode === 'custom' ? 'Choose a custom date range' : label}
+    >
+      <Text style={[text.chip, rangeMode === mode && styles.rangeButtonTextActive]} numberOfLines={1}>
+        {label}
+      </Text>
+    </Pressable>
+  );
+
+  const emptyMessage = searching
+    ? `No changes matching “${deferredQuery.trim()}” in this range.`
+    : 'No changes in this range.';
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
@@ -108,22 +247,51 @@ export function ChangesHomeScreen({ navigation }: Props) {
       </View>
 
       <View style={styles.rangeRow}>
+        {renderRangeButton('week', 'This Week')}
+        {renderRangeButton('month', 'This Month')}
+        {renderRangeButton('custom', 'Custom')}
+      </View>
+
+      {rangeMode === 'custom' && (
         <Pressable
-          style={[styles.rangeButton, rangeMode === 'week' && styles.rangeButtonActive]}
-          onPress={() => setRangeMode('week')}
+          style={styles.customSummary}
+          onPress={openCustomPicker}
           accessibilityRole="button"
-          accessibilityState={{ selected: rangeMode === 'week' }}
+          accessibilityLabel={`Change date range, currently ${rangeLabel}`}
         >
-          <Text style={[text.chip, rangeMode === 'week' && styles.rangeButtonTextActive]}>This Week</Text>
+          <Text style={text.bodyMuted} numberOfLines={1}>
+            Showing {rangeLabel}
+          </Text>
+          <Text style={styles.customSummaryAction}>Change</Text>
         </Pressable>
-        <Pressable
-          style={[styles.rangeButton, rangeMode === 'month' && styles.rangeButtonActive]}
-          onPress={() => setRangeMode('month')}
-          accessibilityRole="button"
-          accessibilityState={{ selected: rangeMode === 'month' }}
-        >
-          <Text style={[text.chip, rangeMode === 'month' && styles.rangeButtonTextActive]}>This Month</Text>
-        </Pressable>
+      )}
+
+      <View style={styles.searchRow}>
+        <View style={styles.searchInputShell}>
+          <TextInput
+            style={styles.searchInput}
+            placeholder="Search these changes"
+            placeholderTextColor={DAYLIGHT.muted}
+            value={query}
+            onChangeText={setQuery}
+            autoCorrect={false}
+            autoCapitalize="none"
+            accessibilityLabel="Search these changes by item or restaurant"
+            returnKeyType="search"
+            clearButtonMode="never"
+          />
+          {query.length > 0 && (
+            <Pressable
+              onPress={() => setQuery('')}
+              accessibilityLabel="Clear changes search"
+              accessibilityRole="button"
+              hitSlop={8}
+              style={styles.clearButton}
+            >
+              <Text style={styles.clearButtonText}>×</Text>
+            </Pressable>
+          )}
+        </View>
       </View>
 
       {loading ? (
@@ -136,10 +304,10 @@ export function ChangesHomeScreen({ navigation }: Props) {
         </View>
       ) : !facilityEvents.length && !byRestaurant.length ? (
         <View style={styles.statePanel}>
-          <Text style={text.bodyMuted}>No changes in this range.</Text>
+          <Text style={[text.bodyMuted, styles.emptyText]}>{emptyMessage}</Text>
         </View>
       ) : (
-        <ScrollView contentContainerStyle={styles.scrollContent}>
+        <ScrollView contentContainerStyle={styles.scrollContent} keyboardDismissMode="on-drag">
           {(menuCount > 0 || priceCount > 0) && (
             <View style={styles.showAllRow}>
               {menuCount > 0 && (
@@ -190,6 +358,8 @@ export function ChangesHomeScreen({ navigation }: Props) {
                           backLabel: r.restaurantName,
                           scopeRestaurant: true,
                           groupMode,
+                          rangeLabel,
+                          query: activeQuery,
                         });
                       } else {
                         navigation.navigate('ChangesRestaurant', {
@@ -197,6 +367,8 @@ export function ChangesHomeScreen({ navigation }: Props) {
                           restaurantName: r.restaurantName,
                           events: r.events,
                           groupMode,
+                          rangeLabel,
+                          query: activeQuery,
                         });
                       }
                     }}
@@ -217,6 +389,79 @@ export function ChangesHomeScreen({ navigation }: Props) {
           )}
         </ScrollView>
       )}
+
+      <Modal visible={pickerVisible} transparent animationType="fade" onRequestClose={() => setPickerVisible(false)}>
+        <View style={styles.pickerBackdrop}>
+          <View style={styles.pickerCard}>
+            <View style={styles.pickerHeader}>
+              <Pressable onPress={() => setPickerVisible(false)} accessibilityRole="button" accessibilityLabel="Cancel">
+                <Text style={styles.pickerAction}>Cancel</Text>
+              </Pressable>
+              <Text style={styles.pickerTitle}>Custom range</Text>
+              <Pressable onPress={applyCustomRange} accessibilityRole="button" accessibilityLabel="Apply date range">
+                <Text style={styles.pickerAction}>Done</Text>
+              </Pressable>
+            </View>
+
+            <View style={styles.edgeRow}>
+              {(
+                [
+                  ['from', 'Start', draftFrom],
+                  ['to', 'End', draftTo],
+                ] as const
+              ).map(([edge, label, value]) => (
+                <Pressable
+                  key={edge}
+                  style={[styles.edgeButton, editingEdge === edge && styles.edgeButtonActive]}
+                  onPress={() => pressEdge(edge)}
+                  accessibilityRole="button"
+                  accessibilityState={{ selected: editingEdge === edge }}
+                  accessibilityLabel={`${label} date, ${formatRangeLabel(value, value)}`}
+                >
+                  <Text style={[text.bodyMuted, editingEdge === edge && styles.edgeLabelActive]}>{label}</Text>
+                  <Text style={[styles.edgeValue, editingEdge === edge && styles.edgeValueActive]} numberOfLines={1}>
+                    {formatRangeLabel(value, value)}
+                  </Text>
+                </Pressable>
+              ))}
+            </View>
+
+            {Platform.OS === 'ios' ? (
+              <DateTimePicker
+                style={styles.iosPicker}
+                value={parseDayStr(editingEdge === 'from' ? draftFrom : draftTo)}
+                mode="date"
+                display="inline"
+                minimumDate={parseDayStr(edgeBounds(editingEdge).min)}
+                maximumDate={parseDayStr(edgeBounds(editingEdge).max)}
+                accentColor={DAYLIGHT.ocean}
+                onValueChange={(_event, date) => setEdge(editingEdge, dayStr(date))}
+              />
+            ) : (
+              <>
+                <Text style={[text.bodyMuted, styles.androidHint]}>
+                  Tap Start or End to pick a date.
+                </Text>
+                {androidEdge !== null && (
+                  <DateTimePicker
+                    value={parseDayStr(androidEdge === 'from' ? draftFrom : draftTo)}
+                    mode="date"
+                    presentation="dialog"
+                    minimumDate={parseDayStr(edgeBounds(androidEdge).min)}
+                    maximumDate={parseDayStr(edgeBounds(androidEdge).max)}
+                    accentColor={DAYLIGHT.ocean}
+                    onValueChange={(_event, date) => {
+                      setEdge(androidEdge, dayStr(date));
+                      setAndroidEdge(null);
+                    }}
+                    onDismiss={() => setAndroidEdge(null)}
+                  />
+                )}
+              </>
+            )}
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -283,13 +528,12 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     gap: SPACING.sm,
     paddingHorizontal: SPACING.lg,
-    marginBottom: SPACING.lg,
   },
   rangeButton: {
     flex: 1,
     alignItems: 'center',
     borderRadius: RADII.xl,
-    paddingHorizontal: SPACING.md,
+    paddingHorizontal: SPACING.sm,
     paddingVertical: SPACING.sm,
     backgroundColor: '#FFFFFF',
   },
@@ -299,11 +543,61 @@ const styles = StyleSheet.create({
   rangeButtonTextActive: {
     color: '#FFFFFF',
   },
+  customSummary: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: SPACING.sm,
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+  },
+  customSummaryAction: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 12,
+    color: DAYLIGHT.ocean,
+  },
+  searchRow: {
+    paddingHorizontal: SPACING.lg,
+    paddingTop: SPACING.sm,
+    paddingBottom: SPACING.lg,
+  },
+  searchInputShell: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: COLORS.surface,
+    borderRadius: RADII.xl,
+    borderWidth: 1,
+    borderColor: DAYLIGHT.border,
+    paddingLeft: SPACING.lg,
+    paddingRight: SPACING.sm,
+    minHeight: 44,
+  },
+  searchInput: {
+    flex: 1,
+    fontFamily: text.body.fontFamily,
+    fontSize: 15,
+    color: DAYLIGHT.ink,
+    paddingVertical: SPACING.sm,
+  },
+  clearButton: {
+    minWidth: 28,
+    minHeight: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  clearButtonText: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 18,
+    color: DAYLIGHT.ink,
+  },
   statePanel: {
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: SPACING.lg,
+  },
+  emptyText: {
+    textAlign: 'center',
   },
   scrollContent: {
     paddingBottom: 120,
@@ -349,5 +643,71 @@ const styles = StyleSheet.create({
   },
   rowDate: {
     fontSize: 12,
+  },
+  pickerBackdrop: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: SPACING.lg,
+    backgroundColor: 'rgba(23, 40, 45, 0.45)',
+  },
+  pickerCard: {
+    width: '100%',
+    borderRadius: RADII.xl,
+    padding: SPACING.lg,
+    backgroundColor: DAYLIGHT.paper,
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: SPACING.lg,
+  },
+  pickerTitle: {
+    fontFamily: text.sectionTitle.fontFamily,
+    fontSize: 17,
+    color: DAYLIGHT.ink,
+  },
+  pickerAction: {
+    fontFamily: text.buttonLabel.fontFamily,
+    fontSize: 13,
+    color: DAYLIGHT.ocean,
+  },
+  edgeRow: {
+    flexDirection: 'row',
+    gap: SPACING.sm,
+  },
+  edgeButton: {
+    flex: 1,
+    borderRadius: RADII.lg,
+    borderWidth: 1,
+    borderColor: DAYLIGHT.border,
+    paddingHorizontal: SPACING.md,
+    paddingVertical: SPACING.sm,
+    backgroundColor: '#FFFFFF',
+  },
+  edgeButtonActive: {
+    borderColor: DAYLIGHT.ocean,
+    backgroundColor: DAYLIGHT.sky,
+  },
+  edgeLabelActive: {
+    color: DAYLIGHT.ocean,
+  },
+  edgeValue: {
+    fontFamily: text.restaurantName.fontFamily,
+    fontSize: 15,
+    color: DAYLIGHT.ink,
+  },
+  edgeValueActive: {
+    color: DAYLIGHT.ocean,
+  },
+  // No explicit height: the picker's SwiftUI Host is mounted with
+  // matchContents vertical, so it reports its own natural height (~340 for
+  // the graphical calendar) and a hard-coded one would fight it.
+  iosPicker: {
+    marginTop: SPACING.sm,
+  },
+  androidHint: {
+    marginTop: SPACING.md,
   },
 });

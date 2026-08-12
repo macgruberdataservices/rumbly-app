@@ -1,0 +1,149 @@
+{
+  "purpose": "Frozen generalization set, written 2026-08-11 after the memorized development-corpus strings were removed from the parser. Scored exactly once, with no failure inspected beforehand. This is the only number in the project that estimates behavior on guest language nobody tuned against.",
+  "discipline": "Do not fix anything this file reveals. If a failure here needs fixing, record the original score in ASK_RUMBLY_SEMANTIC_ARCHITECTURE.md first, then treat this file as a regression baseline and write a new frozen set. The previous two corpora were both burned exactly this way.",
+  "intents": [
+    {
+      "id": "frozen-breakfast",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get breakfast in Magic Kingdom?",
+        "breakfast magic kingdom",
+        "Somewhere for breakfast in Magic Kingdom?",
+        "we want breakfast in magic kingdom",
+        "Which places do breakfast at Magic Kingdom?"
+      ]
+    },
+    {
+      "id": "frozen-sandwich",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I find a sandwich in Epcot?",
+        "sandwiches in Epcot",
+        "I just want a sandwich somewhere in Epcot",
+        "who does sandwiches at epcot",
+        "Any sandwich places in Epcot?"
+      ]
+    },
+    {
+      "id": "frozen-resort-dining",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I eat at the Contemporary?",
+        "restaurants at the Contemporary",
+        "What food is at Disney's Contemporary Resort?",
+        "dining at the contemporary",
+        "Places to eat at the Contemporary Resort?"
+      ]
+    },
+    {
+      "id": "frozen-walkup",
+      "expect": "answer",
+      "phrasings": [
+        "Which restaurants have a walk-up list?",
+        "walk up list restaurants",
+        "Where can I join a walk-up waitlist?",
+        "any walk up list places",
+        "What places offer a Walk-Up List?"
+      ]
+    },
+    {
+      "id": "frozen-nut-free",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get peanut-free food in Animal Kingdom?",
+        "peanut free animal kingdom",
+        "My kid has a peanut allergy, what can he eat in Animal Kingdom?",
+        "Any peanut-free options at Animal Kingdom?",
+        "nut allergy food animal kingdom"
+      ]
+    },
+    {
+      "id": "frozen-drink-at-restaurant",
+      "expect": "answer",
+      "phrasings": [
+        "Does Cosmic Rays have soda?",
+        "Can I get a soda at Cosmic Rays?",
+        "Cosmic Rays drinks?",
+        "do they sell soda at cosmic rays",
+        "Is there soda at Cosmic Rays?"
+      ]
+    },
+    {
+      "id": "frozen-cheapest-park",
+      "expect": "answer",
+      "phrasings": [
+        "What's the cheapest thing to eat in Epcot?",
+        "cheapest food epcot",
+        "I'm broke, what's cheap in Epcot?",
+        "least expensive food at Epcot",
+        "Cheapest eats in Epcot?"
+      ]
+    },
+    {
+      "id": "frozen-hours-tomorrow",
+      "expect": "answer",
+      "phrasings": [
+        "What time does Cosmic Rays open tomorrow?",
+        "Cosmic Rays hours tomorrow",
+        "Is Cosmic Rays open tomorrow?",
+        "when does cosmic rays open tomorrow",
+        "Cosmic Rays tomorrow opening time?"
+      ]
+    },
+    {
+      "id": "frozen-dessert-place",
+      "expect": "answer",
+      "phrasings": [
+        "Where can I get a churro in Magic Kingdom?",
+        "churros magic kingdom",
+        "I want a churro in Magic Kingdom",
+        "who sells churros in magic kingdom",
+        "Any churro carts in Magic Kingdom?"
+      ]
+    },
+    {
+      "id": "frozen-table-service",
+      "expect": "answer",
+      "phrasings": [
+        "Which restaurants take reservations in Epcot?",
+        "epcot reservations restaurants",
+        "Where do I need a reservation in Epcot?",
+        "what places at epcot accept reservations",
+        "Reservation restaurants at Epcot?"
+      ]
+    },
+    {
+      "id": "frozen-outside-domain",
+      "expect": "decline",
+      "phrasings": [
+        "How much does a park ticket cost?",
+        "What's the tallest ride at Magic Kingdom?",
+        "Can I bring a stroller into the park?",
+        "Where is guest services?",
+        "How early should I get to rope drop?"
+      ]
+    },
+    {
+      "id": "frozen-unverifiable",
+      "expect": "decline",
+      "phrasings": [
+        "Which restaurant has the nicest atmosphere?",
+        "Where's the most romantic dinner spot?",
+        "What's the most Instagram-worthy dessert?",
+        "Which place has the friendliest staff?",
+        "Where can I sit somewhere with a good view?"
+      ]
+    },
+    {
+      "id": "frozen-allergy-judgment",
+      "expect": "decline",
+      "phrasings": [
+        "Which restaurant is safest for a gluten allergy?",
+        "Can I trust the gluten-free options at Epcot?",
+        "Is the fryer shared at Cosmic Rays?",
+        "Do they use separate equipment for allergies?",
+        "Should I avoid anywhere with a shellfish allergy?"
+      ]
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+import type { FoodLexicon } from './foodLexicon';
+
 export type QueryAction =
   | 'find'
   | 'check_menu'
@@ -29,7 +31,17 @@ export type ClaimType =
   | 'live_park_operations'
   | 'general_information';
 
-export type EntityType = 'restaurant' | 'park' | 'area' | 'resort';
+export type EntityType = 'restaurant' | 'park' | 'area' | 'resort' | 'attraction';
+export type LocationEntityType = 'park' | 'area' | 'resort';
+
+export interface DistanceAnchorConstraint {
+  entityId: string;
+  entityType: 'attraction' | 'area';
+  label: string;
+  latitude: number;
+  longitude: number;
+  approximation: 'representative-point' | 'central-area';
+}
 
 export interface SourceSpan {
   start: number;
@@ -42,6 +54,7 @@ export interface LinkedEntity extends SourceSpan {
   label: string;
   type: EntityType;
   matchedAlias: string;
+  distanceAnchor?: DistanceAnchorConstraint;
 }
 
 export type RestaurantFeature =
@@ -73,13 +86,13 @@ export interface QueryPlan {
     location?: {
       relation: 'in' | 'near';
       entityId: string;
-      entityType: Exclude<EntityType, 'restaurant'>;
+      entityType: LocationEntityType;
       label: string;
     };
     locations?: Array<{
       relation: 'in' | 'near';
       entityId: string;
-      entityType: Exclude<EntityType, 'restaurant'>;
+      entityType: LocationEntityType;
       label: string;
     }>;
     locationMode?: 'any';
@@ -91,6 +104,8 @@ export interface QueryPlan {
     priceOperation?: 'cheapest' | 'maximum';
     maxPrice?: number;
     distanceOperation?: 'nearest';
+    distanceAnchor?: DistanceAnchorConstraint;
+    distanceRadiusMiles?: number;
     time?: 'now' | 'today' | 'tomorrow';
   };
   linkedEntities: LinkedEntity[];
@@ -99,6 +114,10 @@ export interface QueryPlan {
     consumedSpans: SourceSpan[];
     meaningfulUnconsumedText: string;
     reasons: string[];
+    /** Name of the claim rule that fired. See claimRules.ts. */
+    claimRule?: string;
+    /** Every claim feature the question matched, not only the deciding one. */
+    claimFeatures?: string[];
   };
 }
 
@@ -107,10 +126,17 @@ export interface ParserEntity {
   label: string;
   type: EntityType;
   aliases: string[];
+  distanceAnchor?: DistanceAnchorConstraint;
 }
 
 export interface ParserVocabulary {
   entities: ParserEntity[];
   protectedFoodPhrases?: string[];
   cuisines?: string[];
+  /**
+   * Data-derived vocabulary of things a guest can ask for. When present the
+   * parser recognises food against it instead of inferring food by deleting
+   * everything it recognised as something else. See foodLexicon.ts.
+   */
+  foodLexicon?: FoodLexicon;
 }

@@ -2,8 +2,9 @@ import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/data
 import { resortAliases, resortFamilyAlias } from './location_aliases.ts';
 import { areaDisplayName, parkDisplayName } from '../../../../src/data/locationNames.ts';
 import { normalizeForSearch } from '../../../../src/data/diacritics.ts';
+import { DISTANCE_ANCHORS } from '../../../../src/askRumbly/distanceAnchors.ts';
 
-export type SuggestedEntityType = 'Park' | 'Area' | 'Resort' | 'Restaurant';
+export type SuggestedEntityType = 'Park' | 'Area' | 'Attraction' | 'Resort' | 'Restaurant';
 
 export interface EntitySuggestion {
   label: string;
@@ -36,6 +37,15 @@ function buildSuggestionIndex(data: LoadedData): IndexedEntity[] {
   for (const area of new Set(data.restaurants.map((restaurant) => restaurant.area).filter((value): value is string => !!value))) {
     const label = areaDisplayName(area);
     entities.push({ label, type: 'Area', aliases: normalizedAliases(label === area ? [label, area] : [label]) });
+  }
+  for (const anchor of DISTANCE_ANCHORS.filter((candidate) => candidate.entityType === 'attraction')) {
+    const plain = anchor.label
+      .replace(/[®™]/g, '')
+      .replace(/[\u2018\u2019]/g, "'")
+      .replace(/^"|"$/g, '')
+      .replace(/\s+-\s+Disney Animals$/i, '')
+      .trim();
+    entities.push({ label: anchor.label, type: 'Attraction', aliases: normalizedAliases([anchor.label, plain, plain.replace(/'/g, '')]) });
   }
 
   const resortFamilies = new Map<string, { label: string; aliases: string[] }>();
@@ -114,7 +124,7 @@ export function suggestEntities(query: string, data: LoadedData, limit = 5): Ent
     })
     .filter((entry) => Number.isFinite(entry.score))
     .sort((a, b) => {
-      const typePriority: Record<SuggestedEntityType, number> = { Park: 0, Resort: 1, Area: 2, Restaurant: 3 };
+      const typePriority: Record<SuggestedEntityType, number> = { Park: 0, Resort: 1, Area: 2, Attraction: 3, Restaurant: 4 };
       return (
         a.score - b.score ||
         typePriority[a.entity.type] - typePriority[b.entity.type] ||

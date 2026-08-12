@@ -7,11 +7,13 @@ import type { MenuItem, Restaurant } from '../../../../src/data/types.ts';
 import { distanceMiles, type Coordinates } from '../../../../src/location/proximity.ts';
 import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/dataTypes.ts';
 import { resortsShareGuestFacingFamily } from './location_aliases.ts';
+import { distanceAnchorById } from '../../../../src/askRumbly/distanceAnchors.ts';
 
 export interface ProofTarget {
   restaurantIds?: string[];
   itemIds?: string[];
   itemKeys?: string[];
+  distanceMilesByRestaurant?: Record<string, number>;
 }
 
 export interface ObjectiveCandidate {
@@ -77,8 +79,31 @@ function termAlternatives(term: string): string[][] {
   return required.length > 0 ? [required] : [];
 }
 
+// Broad food *classes* that Disney publishes directly in `norm_categories`.
+// Item names rarely repeat the class ("Chocolate Cake" is a dessert but never
+// says so), which made a whole family of ordinary requests fail as honest
+// no-matches. Only unambiguous single-concept slugs are listed: combined ones
+// such as `soups-salads` cannot prove which side of the pair a row belongs to,
+// which is the same rule already applied to mixed `category` strings below.
+const CLASS_TERM_CATEGORIES: Record<string, string> = {
+  dessert: 'desserts',
+  desserts: 'desserts',
+  appetizer: 'appetizers',
+  appetizers: 'appetizers',
+  starter: 'appetizers',
+  starters: 'appetizers',
+  entree: 'entrees',
+  entrees: 'entrees',
+  seafood: 'seafood',
+  sushi: 'sushi',
+};
+
 export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
   const normalizedTerm = normalizeForSearch(term).trim();
+  const classCategory = CLASS_TERM_CATEGORIES[normalizedTerm];
+  if (classCategory && (item.norm_categories ?? []).some((value) => normalizeForSearch(value) === classCategory)) {
+    return true;
+  }
   if (/^chilis?$/.test(normalizedTerm)) {
     // “Chili” as a guest food request means the dish, not every item with a
     // chili rub, chili-lime seasoning, chili crisp, or chili sauce.
@@ -185,7 +210,7 @@ function matchesLocation(restaurant: Restaurant, location: LocationConstraint): 
   const q = normalizeForSearch(location.label);
   if (location.entityType === 'park') {
     const canonical = (value: string) => normalizeForSearch(value).replace(/^disney'?s /, '').replace(/ theme park$/, '').trim();
-    return canonical(parkDisplayName(restaurant.park)) === canonical(location.label)
+    return canonical(parkDisplayName(restaurant.park)) === canonical(parkDisplayName(location.label))
       || (q === 'disney springs' && Boolean(restaurant.area && DISNEY_SPRINGS_AREAS.has(restaurant.area)));
   }
   if (location.entityType === 'area') return normalizeForSearch(restaurant.area ?? '') === q;
@@ -251,9 +276,49 @@ function proveItemConstraints(plan: QueryPlan, item: MenuItem, witnesses: Constr
   }
 }
 
-function restaurantProof(plan: QueryPlan, restaurant: Restaurant, items: MenuItem[], data: LoadedData): { witnesses: ConstraintWitness[]; failures: string[] } {
+function restaurantProof(
+  plan: QueryPlan,
+  restaurant: Restaurant,
+  items: MenuItem[],
+  data: LoadedData,
+  reportedDistance?: number,
+): { witnesses: ConstraintWitness[]; failures: string[] } {
   const witnesses: ConstraintWitness[] = [];
   const failures: string[] = [];
+  if (plan.constraints.distanceAnchor) {
+    const planned = plan.constraints.distanceAnchor;
+    const trusted = distanceAnchorById(planned.entityId);
+    if (!trusted
+      || trusted.entityType !== planned.entityType
+      || trusted.label !== planned.label
+      || Math.abs(trusted.latitude - planned.latitude) > 0.0000001
+      || Math.abs(trusted.longitude - planned.longitude) > 0.0000001) {
+      failures.push(`The named distance origin could not be verified: ${planned.label}`);
+    } else if (restaurant.lat == null || restaurant.lng == null || reportedDistance == null) {
+      failures.push(`${restaurant.restaurant} lacks a complete named-origin distance witness`);
+    } else {
+      const expected = distanceMiles(
+        { latitude: trusted.latitude, longitude: trusted.longitude },
+        { latitude: restaurant.lat, longitude: restaurant.lng },
+      );
+      if (Math.abs(expected - reportedDistance) <= 0.000001) {
+        witnesses.push({
+          constraint: `distance-anchor:${planned.entityId}`,
+          restaurantId: restaurant.restaurant_id,
+          evidence: [planned.label, planned.approximation, `${reportedDistance}mi`],
+        });
+        if (plan.constraints.distanceRadiusMiles != null) {
+          if (reportedDistance <= plan.constraints.distanceRadiusMiles) {
+            witnesses.push({
+              constraint: `distance-radius:${plan.constraints.distanceRadiusMiles}mi`,
+              restaurantId: restaurant.restaurant_id,
+              evidence: [`${reportedDistance}mi`],
+            });
+          } else failures.push(`${restaurant.restaurant} is outside the requested nearby radius`);
+        }
+      } else failures.push(`${restaurant.restaurant}'s distance was not calculated from ${planned.label}`);
+    }
+  }
   if (plan.constraints.locationSet === 'theme_parks') {
     if (restaurant.park && THEME_PARK_ORDER.includes(restaurant.park)) {
       witnesses.push({ constraint: 'location:set:theme-parks', restaurantId: restaurant.restaurant_id, evidence: [restaurant.park] });
@@ -263,7 +328,10 @@ function restaurantProof(plan: QueryPlan, restaurant: Restaurant, items: MenuIte
     if (plan.subject.restaurantIds.includes(restaurant.restaurant_id)) witnesses.push({ constraint: 'restaurant', restaurantId: restaurant.restaurant_id, evidence: [restaurant.restaurant] });
     else failures.push(`${restaurant.restaurant} is not one of the requested restaurants`);
   }
-  const locations = plan.constraints.locations?.length ? plan.constraints.locations : plan.constraints.location ? [plan.constraints.location] : [];
+  const rawLocations = plan.constraints.locations?.length ? plan.constraints.locations : plan.constraints.location ? [plan.constraints.location] : [];
+  // Match executor semantics and prevent an older plan from proving the same
+  // named area as both a coordinate origin and a legacy centroid scope.
+  const locations = rawLocations.filter((location) => location.entityId !== plan.constraints.distanceAnchor?.entityId);
   if (locations.length > 0 && plan.subject.restaurantIds.length === 0) {
     const matching = locations.filter((location) => {
       if (location.relation === 'in') return matchesLocation(restaurant, location);
@@ -361,7 +429,13 @@ export function proveExecutionResult(plan: QueryPlan, data: LoadedData, target: 
       failures.push(`Unknown returned restaurant: ${restaurantId}`);
       continue;
     }
-    const result = restaurantProof(plan, restaurant, targetItems(plan, target, data, restaurantId), data);
+    const result = restaurantProof(
+      plan,
+      restaurant,
+      targetItems(plan, target, data, restaurantId),
+      data,
+      target.distanceMilesByRestaurant?.[restaurantId],
+    );
     witnesses.push(...result.witnesses);
     failures.push(...result.failures);
   }

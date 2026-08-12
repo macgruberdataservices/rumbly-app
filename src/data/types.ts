@@ -19,6 +19,12 @@ export interface Restaurant {
   park: string | null;
   area: string | null;
   resort: string | null;
+  // Disney's ancestorEntertainmentVenue: "Disney Springs", "Disney's
+  // BoardWalk", "ESPN Wide World of Sports Complex" -- the only three values
+  // it takes. Published from 2026-08-11; optional because installs holding a
+  // pre-bump cache have records without it, and hand-coded venues have no
+  // facility doc to read it from, so it is null there by construction.
+  venue?: string | null;
   disney_url: string | null;
   description: string | null;
   service_style: string | null;

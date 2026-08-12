@@ -18,7 +18,7 @@ type ItemFilter = 'all' | 'added' | 'removed';
 // events, either scoped to a single restaurant (hides the redundant
 // restaurant name on each row) or "all restaurants" for that category.
 export function ChangesCategoryScreen({ navigation, route }: Props) {
-  const { catKey, catLabel, events, scopeRestaurant, groupMode } = route.params;
+  const { catKey, catLabel, events, scopeRestaurant, groupMode, rangeLabel, query } = route.params;
   const [itemFilter, setItemFilter] = useState<ItemFilter>('all');
 
   const filteredEvents = useMemo(() => {
@@ -36,8 +36,13 @@ export function ChangesCategoryScreen({ navigation, route }: Props) {
         <Text style={styles.title}>{catLabel}</Text>
         <Text style={text.bodyMuted}>
           {scopeRestaurant ? '' : 'All restaurants · '}
-          {filteredEvents.length} change{filteredEvents.length === 1 ? '' : 's'} in this range
+          {filteredEvents.length} change{filteredEvents.length === 1 ? '' : 's'}
+          {rangeLabel ? ` · ${rangeLabel}` : ' in this range'}
         </Text>
+        {/* Named explicitly rather than folded into the count line: these
+            events arrive pre-filtered by Level 0's search, so without this
+            the count reads as the range's true total. */}
+        {!!query && <Text style={text.bodyMuted}>Matching “{query}”</Text>}
       </View>
 
       {catKey === 'menu' && (

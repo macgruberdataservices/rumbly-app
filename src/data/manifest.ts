@@ -54,7 +54,12 @@ import { MANIFEST_URL, REFRESH_INTERVAL_MS, LOCAL_FILES } from './constants';
 // favor of the authoritative hand-coded stream, and menu items are gated on
 // their parent restaurant being visible. Force existing installs to discard
 // the two Energy Bytes records already cached under the old merge policy.
-const LOCAL_DATA_SCHEMA_VERSION = 10;
+// v11: Restaurant gained `venue` (Disney's ancestorEntertainmentVenue), which
+// the browse/search grouping now reads as its last check before the "Other"
+// bucket. A cached restaurant_data.json from before this has no such field, so
+// the 13 BoardWalk/Wide World of Sports/Disney Springs venues it rescues would
+// stay in Other until the next 24h check picked up the republished feed.
+const LOCAL_DATA_SCHEMA_VERSION = 11;
 
 interface MetaBlob {
   manifest: DataManifest | null;

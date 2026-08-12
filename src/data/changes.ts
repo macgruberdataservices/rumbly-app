@@ -21,17 +21,52 @@
 
 import type { ChangeEvent, ChangesManifest } from './types';
 import { CHANGES_MANIFEST_URL, DATA_BASE_URL } from './constants';
+import { normalizeForSearch } from './diacritics';
 
 const monthCache = new Map<string, ChangeEvent[]>();
 
+// Local calendar day, NOT toISOString().slice(0, 10) -- toISOString is UTC,
+// so for anyone behind UTC an evening "today" is already tomorrow's date
+// (9pm in Orlando is 1am UTC), which shifted every range by a day after
+// dinner time. Everything else in this file already reads day strings as
+// local midnight (see formatDateLabel / mondayOf's `T00:00:00`), so this
+// makes the write side agree with the read side.
+export function dayStr(d: Date): string {
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${month}-${day}`;
+}
+
+export function parseDayStr(dateStr: string): Date {
+  return new Date(`${dateStr}T00:00:00`);
+}
+
 export function todayStr(): string {
-  return new Date().toISOString().slice(0, 10);
+  return dayStr(new Date());
 }
 
 export function daysAgoStr(n: number): string {
   const d = new Date();
   d.setDate(d.getDate() - n);
-  return d.toISOString().slice(0, 10);
+  return dayStr(d);
+}
+
+export function addDaysStr(dateStr: string, n: number): string {
+  const d = parseDayStr(dateStr);
+  d.setDate(d.getDate() + n);
+  return dayStr(d);
+}
+
+// Inclusive span: a single-day range is 1 day, not 0.
+export function rangeSpanDays(from: string, to: string): number {
+  const ms = parseDayStr(to).getTime() - parseDayStr(from).getTime();
+  return Math.floor(ms / 86_400_000) + 1;
+}
+
+export function clampDayStr(value: string, min: string, max: string): string {
+  if (value < min) return min;
+  if (value > max) return max;
+  return value;
 }
 
 export function monthsInRange(from: string, to: string): string[] {
@@ -50,8 +85,42 @@ export function monthsInRange(from: string, to: string): string[] {
   return [...new Set(months)];
 }
 
+// Single in-flight/settled manifest promise rather than a fetch per call.
+// With only the two fixed presets a refetch per range switch was cheap
+// noise; a user-driven custom range can change several times while they
+// nudge dates around, and the manifest is the same small file every time.
+// Rejections clear the cache so a failed load doesn't poison every later
+// attempt for the life of the process.
+let manifestPromise: Promise<ChangesManifest> | null = null;
+
+function loadChangesManifest(): Promise<ChangesManifest> {
+  if (!manifestPromise) {
+    manifestPromise = fetch(CHANGES_MANIFEST_URL)
+      .then((r) => r.json() as Promise<ChangesManifest>)
+      .catch((err) => {
+        manifestPromise = null;
+        throw err;
+      });
+  }
+  return manifestPromise;
+}
+
+// First day the changes feed has any data for, so a custom-range picker can
+// stop the user scrolling back into months that were never published.
+// Null when the manifest is empty or unreachable -- callers fall back to
+// their own floor rather than blocking the picker on a network hiccup.
+export async function changesEarliestDate(): Promise<string | null> {
+  try {
+    const manifest = await loadChangesManifest();
+    const months = Object.keys(manifest.months ?? {}).sort();
+    return months.length ? `${months[0]}-01` : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function loadChangesForRange(from: string, to: string): Promise<ChangeEvent[]> {
-  const manifest = (await fetch(CHANGES_MANIFEST_URL).then((r) => r.json())) as ChangesManifest;
+  const manifest = await loadChangesManifest();
   const months = monthsInRange(from, to).filter((m) => manifest.months?.[m]);
 
   const fetches = months.map(async (m) => {
@@ -76,11 +145,27 @@ export function mondayOf(dateStr: string): string {
 }
 
 export function formatDateLabel(dateStr: string): string {
-  return new Date(`${dateStr}T00:00:00`).toLocaleDateString('en-US', {
+  return parseDayStr(dateStr).toLocaleDateString('en-US', {
     month: 'short',
     day: 'numeric',
     year: 'numeric',
   });
+}
+
+// Compact both-endpoints label for the custom-range chip and caption
+// ("Jul 1 – Aug 11"). The year is dropped when the whole range sits in the
+// current year -- it's the common case and the chip has little room -- and
+// kept on both endpoints otherwise so a range that straddles New Year
+// doesn't read as a nonsensical backwards span.
+export function formatRangeLabel(from: string, to: string): string {
+  const thisYear = String(new Date().getFullYear());
+  const showYear = from.slice(0, 4) !== thisYear || to.slice(0, 4) !== thisYear;
+  const opts: Intl.DateTimeFormatOptions = showYear
+    ? { month: 'short', day: 'numeric', year: 'numeric' }
+    : { month: 'short', day: 'numeric' };
+  const fromLabel = parseDayStr(from).toLocaleDateString('en-US', opts);
+  if (from === to) return fromLabel;
+  return `${fromLabel} – ${parseDayStr(to).toLocaleDateString('en-US', opts)}`;
 }
 
 export interface ChangeRowLine {
@@ -156,6 +241,16 @@ export interface EventGroup {
 
 export type GroupMode = 'day' | 'week';
 
+// Was hard-coded per preset ("This Week" -> day, "This Month" -> week);
+// with an arbitrary custom range there's no preset to key off, so derive it
+// from the span instead. Two weeks is the cutoff: beyond that, per-day
+// headings turn the list into mostly headings.
+export const DAY_GROUPING_MAX_SPAN = 14;
+
+export function groupModeForRange(from: string, to: string): GroupMode {
+  return rangeSpanDays(from, to) <= DAY_GROUPING_MAX_SPAN ? 'day' : 'week';
+}
+
 export function groupEvents(events: ChangeEvent[], groupMode: GroupMode): EventGroup[] {
   const groups = new Map<string, ChangeEvent[]>();
   for (const e of events) {
@@ -221,4 +316,37 @@ export function categoryBreakdown(events: ChangeEvent[]): CategoryGroup[] {
 
 export function isRowTappable(e: ChangeEvent): boolean {
   return !!e.restaurant_id && e.category !== 'restaurant_closed';
+}
+
+// Search scoped to the changes feed itself -- deliberately NOT the ranking
+// engine in src/search. That one scores and orders a catalog of
+// restaurants/menu items; here the events are already ordered by date and
+// the only question is "does this row belong on screen", so a plain
+// substring filter is the right shape and needs no index.
+//
+// Every token must appear somewhere in the row's text (AND, not OR), which
+// is what makes multi-word queries narrow rather than widen: "dole whip
+// magic" should find the Magic Kingdom Dole Whip, not every event that
+// mentions any one of those words.
+export function changeSearchHaystack(e: ChangeEvent): string {
+  return normalizeForSearch(
+    [e.item, e.restaurant, e.menu_category, e.dining_period].filter(Boolean).join(' ')
+  );
+}
+
+export function changeQueryTokens(query: string): string[] {
+  return normalizeForSearch(query).split(/\s+/).filter(Boolean);
+}
+
+export function haystackMatchesTokens(haystack: string, tokens: string[]): boolean {
+  return tokens.every((t) => haystack.includes(t));
+}
+
+// Convenience wrapper for callers with no per-event haystack cache. Screens
+// rendering on every keystroke should precompute haystacks once per loaded
+// range and use haystackMatchesTokens directly instead.
+export function filterChangesByQuery(events: ChangeEvent[], query: string): ChangeEvent[] {
+  const tokens = changeQueryTokens(query);
+  if (!tokens.length) return events;
+  return events.filter((e) => haystackMatchesTokens(changeSearchHaystack(e), tokens));
 }

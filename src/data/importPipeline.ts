@@ -52,10 +52,18 @@ async function fetchOptionalJSON<T>(fileName: string | undefined, fallback: T): 
 // all, an extra card of its own instead of folding into "Disney Resorts"
 // or "Disney Springs" the way the real data does.
 // Hand-verified against the live main-feed's own values for each of
-// these 13 restaurant_ids (2026-07-23) -- covers every hand-coded entry
+// these 12 restaurant_ids (2026-07-23) -- covers every hand-coded entry
 // that exists today. A newly hand-coded venue not listed here falls back
 // to its own (likely non-canonical) park/area/resort strings; fix at the
 // source (hand_coded_venues.json) if this keeps recurring.
+//
+// Was 13: energy-bytes dropped 2026-08-11 when Disney finally published a
+// real facility for it (411901863) and graduate_hand_coded.py retired
+// HANDCODE.010, keeping the slug. It now arrives as an ordinary main-feed
+// record carrying Magic Kingdom Park/Tomorrowland itself, and this table is
+// only consulted for records from hand_coded_data.json -- so the entry had
+// become unreachable. Anything graduated this way belongs out of here, or
+// the next reader takes the list as the current roster of hand-coded venues.
 const HAND_CODED_LOCATION_OVERRIDES: Record<
   string,
   { park: string | null; area: string | null; resort: string | null }
@@ -69,7 +77,6 @@ const HAND_CODED_LOCATION_OVERRIDES: Record<
   'pretzel-palooza': { park: "Disney's Hollywood Studios", area: 'Sunset Boulevard', resort: null },
   'boardwalk-snacks': { park: null, area: 'EPCOT Resort Area', resort: "Disney's BoardWalk Inn" },
   'garden-house': { park: 'EPCOT', area: 'World Showcase', resort: null },
-  'energy-bytes': { park: 'Magic Kingdom Park', area: 'Tomorrowland', resort: null },
   'regal-eagle-smokehouse-outdoor-bar': { park: 'EPCOT', area: 'World Showcase', resort: null },
   'paddys-bar': { park: null, area: 'The Landing', resort: null },
   'california-grill-lounge': { park: null, area: 'Magic Kingdom Resort Area', resort: "Disney's Contemporary Resort" },
@@ -114,8 +121,16 @@ function normalizeHandCodedMenuItem(item: MenuItem): MenuItem {
 // via disneyfoodblog.com's embedded official links, then each URL
 // confirmed live against disneyworld.disney.go.com itself before being
 // added here): the published restaurant_data.json's own disney_url is
-// null for these 37 restaurant_ids even though a real Disney dining page
-// exists. This is a Rumbly-local override, not a fix at the pipeline
+// null for these 36 restaurant_ids even though a real Disney dining page
+// exists.
+//
+// Was 37: tylers-coffee-bar dropped 2026-08-11. Disney's own facility
+// description reads "Tyler's Coffee Bar at Golden Oak" (its media lives under
+// parks-global-assets/golden-oak/), so it is a private residential community's
+// cafe, not a Disney Springs venue -- excluded upstream as off-property, the
+// same call already made for Capa and Ravello at the Four Seasons in that same
+// community. Its override URL was the one Disney-Springs-shaped thing left
+// asserting otherwise. This is a Rumbly-local override, not a fix at the pipeline
 // source (Disney Dining Dev's backend, which also feeds the PWA) -- an
 // owner decision, so the PWA doesn't pick this up and a future upstream
 // fix wouldn't conflict with it (this only fills a null, never
@@ -135,7 +150,6 @@ const DISNEY_URL_OVERRIDES: Record<string, string> = {
   'the-ganachery': 'https://disneyworld.disney.go.com/dining/disney-springs/the-ganachery/',
   'level99': 'https://disneyworld.disney.go.com/dining/disney-springs/level99/',
   'morimoto-street-food': 'https://disneyworld.disney.go.com/dining/disney-springs/morimoto-asia-street-food/',
-  'tylers-coffee-bar': 'https://disneyworld.disney.go.com/dining/disney-springs/tylers-coffee-bar/',
   'raglan-road': 'https://disneyworld.disney.go.com/dining/disney-springs/raglan-road-irish-pub-and-restaurant/',
   'funnel-cake-cart---temporarily-unavailable': 'https://disneyworld.disney.go.com/dining/boardwalk/funnel-cake-cart/',
   'boardwalk-joes': 'https://disneyworld.disney.go.com/dining/boardwalk/boardwalk-joes-marvelous-margaritas/',

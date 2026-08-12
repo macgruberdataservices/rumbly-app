@@ -69,7 +69,7 @@ function matchesLocation(restaurant: Restaurant, location: LocationConstraint): 
       .replace(/^disney'?s /, '')
       .replace(/ theme park$/, '')
       .trim();
-    if (canonicalPark(parkDisplayName(restaurant.park)) === canonicalPark(location.label)) return true;
+    if (canonicalPark(parkDisplayName(restaurant.park)) === canonicalPark(parkDisplayName(location.label))) return true;
     return q === 'disney springs' && Boolean(restaurant.area && DISNEY_SPRINGS_AREAS.has(restaurant.area));
   }
   if (location.entityType === 'area') return normalizeForSearch(restaurant.area ?? '') === q;
@@ -326,6 +326,9 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
     return a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
   });
   if (rows.length === 0) return { kind: 'no-match', text: 'No restaurants matched every requested constraint.', trace };
+  if (plan.action === 'distance' && rows.every((row) => row.distance == null)) {
+    return { kind: 'no-match', text: 'I do not have coordinates for that restaurant yet.', trace };
+  }
   const objectiveCandidates: ObjectiveCandidate[] = rows.map(({ restaurant, distance }) => ({
     restaurantId: restaurant.restaurant_id,
     itemKeys: [],
@@ -345,7 +348,11 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
   });
   const result: UnprovenPlanExecution = {
     kind: 'answer',
-    text: `${plan.constraints.distanceOperation === 'nearest' ? 'Nearest verified restaurant' : `${rows.length} matching restaurant${rows.length === 1 ? '' : 's'}`}: ${labels.join('; ')}${plan.constraints.distanceOperation !== 'nearest' && rows.length > shown.length ? `; and ${rows.length - shown.length} more` : ''}.`,
+    text: plan.action === 'distance' && resultRows.length === 1 && resultRows[0].distance != null
+      ? plan.constraints.distanceAnchor
+        ? `${resultRows[0].restaurant.restaurant} is about ${formatProximityDistance(resultRows[0].distance).replace(/ away$/, '')} from ${plan.constraints.distanceAnchor.approximation === 'central-area' ? `central ${plan.constraints.distanceAnchor.label}` : plan.constraints.distanceAnchor.label}.`
+        : `${resultRows[0].restaurant.restaurant} is about ${formatProximityDistance(resultRows[0].distance)} from your current location.`
+      : `${plan.constraints.distanceOperation === 'nearest' ? 'Nearest verified restaurant' : `${rows.length} matching restaurant${rows.length === 1 ? '' : 's'}`}: ${labels.join('; ')}${plan.constraints.distanceOperation !== 'nearest' && rows.length > shown.length ? `; and ${rows.length - shown.length} more` : ''}.`,
     restaurantIds: resultRows.map(({ restaurant }) => restaurant.restaurant_id),
     distanceMilesByRestaurant: Object.fromEntries(
       resultRows.flatMap(({ restaurant, distance }) => distance == null ? [] : [[restaurant.restaurant_id, distance]]),
@@ -487,21 +494,41 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
 
   const applied: string[] = [];
   const genericFood = hasGenericFood(plan);
-  let origin = userOrigin;
+  const namedDistanceAnchor = plan.constraints.distanceAnchor;
+  let origin = namedDistanceAnchor
+    ? { latitude: namedDistanceAnchor.latitude, longitude: namedDistanceAnchor.longitude }
+    : userOrigin;
   let restaurants = source.restaurants;
   if (plan.constraints.locationSet === 'theme_parks') {
     const themeParks = new Set<string>(THEME_PARK_ORDER);
     restaurants = restaurants.filter((restaurant) => restaurant.park != null && themeParks.has(restaurant.park));
     applied.push('location:set:theme-parks');
   }
+  if (namedDistanceAnchor) applied.push(`distance-anchor:${namedDistanceAnchor.entityId}`);
+  if (namedDistanceAnchor) {
+    restaurants = restaurants.filter((restaurant) => restaurant.lat != null && restaurant.lng != null);
+    applied.push('distance-coordinate-available');
+  }
+  if (namedDistanceAnchor && plan.constraints.distanceRadiusMiles != null) {
+    const radius = plan.constraints.distanceRadiusMiles;
+    restaurants = restaurants.filter((restaurant) => restaurant.lat != null && restaurant.lng != null
+      && distanceMiles(
+        { latitude: namedDistanceAnchor.latitude, longitude: namedDistanceAnchor.longitude },
+        { latitude: restaurant.lat, longitude: restaurant.lng },
+      ) <= radius);
+    applied.push(`distance-radius:${radius}mi`);
+  }
   if (plan.subject.restaurantIds.length > 0) {
     const ids = new Set(plan.subject.restaurantIds);
     restaurants = restaurants.filter((restaurant) => ids.has(restaurant.restaurant_id));
     applied.push('restaurant');
   }
-  const locations = plan.constraints.locations?.length
+  const rawLocations = plan.constraints.locations?.length
     ? plan.constraints.locations
     : plan.constraints.location ? [plan.constraints.location] : [];
+  // Defensive compatibility for plans created before named area anchors were
+  // separated from location scopes in the parser.
+  const locations = rawLocations.filter((location) => location.entityId !== namedDistanceAnchor?.entityId);
   if (locations.length > 0 && plan.subject.restaurantIds.length === 0) {
     const accepted = new Set<string>();
     const approximations: string[] = [];
@@ -518,7 +545,7 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
           if (restaurant.lat == null || restaurant.lng == null) return;
           if (distanceMiles(anchor, { latitude: restaurant.lat, longitude: restaurant.lng }) <= radius) accepted.add(restaurant.restaurant_id);
         });
-        if (locations.length === 1) origin = anchor;
+        if (locations.length === 1 && !namedDistanceAnchor) origin = anchor;
         approximations.push(`${location.label} dining-location centroid`);
         applied.push(`location:near:${radius}mi`);
       }
@@ -609,7 +636,11 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     appliedConstraints: applied,
     candidateRestaurants: restaurants.length,
     candidateItems: menuItems.length,
-    ...(locations.some((location) => location.relation === 'near')
+    ...(namedDistanceAnchor
+      ? { locationApproximation: namedDistanceAnchor.approximation === 'central-area'
+        ? `Direct distance from central ${namedDistanceAnchor.label}.`
+        : `Direct distance from the representative point for ${namedDistanceAnchor.label}.` }
+      : locations.some((location) => location.relation === 'near')
       ? { locationApproximation: `Direct distance from ${locations.filter((location) => location.relation === 'near').map((location) => `the dining-location centroid for ${location.label}`).join(' or ')}.` }
       : {}),
   };
@@ -654,8 +685,10 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     || plan.constraints.dietaryKeys.length > 0
     || plan.constraints.mealPeriods.length > 0;
   const restaurantListing = plan.action === 'hours'
+    || plan.action === 'distance'
     || plan.claimType === 'restaurant_hours'
     || (genericFood && plan.constraints.distanceOperation === 'nearest' && !itemConstrained)
+    || (genericFood && Boolean(namedDistanceAnchor) && !itemConstrained)
     || (genericFood && locations.length > 0 && !itemConstrained)
     || (genericFood && Boolean(plan.constraints.cuisine))
     || (plan.constraints.requiredFeatures.length > 0 && !itemConstrained);

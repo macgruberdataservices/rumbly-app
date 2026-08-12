@@ -2,6 +2,7 @@ import type { PlanExecutionResult } from './execution';
 import type { QueryPlan } from './queryPlan';
 import {
   cheapestResultTitle,
+  nearestResultTitle,
   restaurantInfoTitle,
   resultListTitle,
   subjectiveResultTitle,
@@ -58,9 +59,11 @@ function locationLabels(plan: QueryPlan): string[] {
   if (plan.constraints.locations?.length) {
     return plan.constraints.locations.map((location) => `${location.relation} ${location.label}`);
   }
-  return plan.constraints.location
-    ? [`${plan.constraints.location.relation} ${plan.constraints.location.label}`]
-    : [];
+  if (plan.constraints.location) return [`${plan.constraints.location.relation} ${plan.constraints.location.label}`];
+  if (plan.constraints.distanceAnchor) {
+    return [`${plan.constraints.distanceRadiusMiles != null ? 'near' : 'from'} ${plan.constraints.distanceAnchor.label}`];
+  }
+  return [];
 }
 
 function locationSuffix(plan: QueryPlan, includeLocation: boolean): string {
@@ -68,7 +71,11 @@ function locationSuffix(plan: QueryPlan, includeLocation: boolean): string {
   const locations = plan.constraints.locations?.length
     ? plan.constraints.locations
     : plan.constraints.location ? [plan.constraints.location] : [];
-  if (locations.length === 0) return plan.constraints.locationSet === 'theme_parks' ? ' across all four parks' : '';
+  if (locations.length === 0) {
+    if (plan.constraints.locationSet === 'theme_parks') return ' across all four parks';
+    if (plan.constraints.distanceAnchor) return ` near ${plan.constraints.distanceAnchor.label}`;
+    return '';
+  }
   return ` ${locations.map((location) => `${location.relation} ${location.label}`).join(' or ')}`;
 }
 
@@ -97,8 +104,9 @@ function genericSubject(plan: QueryPlan): string {
 function broaderFoodTerm(term: string): string | null {
   const normalized = term.toLowerCase();
   for (const candidate of BROADER_FOOD_TERMS) {
-    if (normalized === candidate) return null;
-    const pattern = new RegExp(`\\b${candidate.replace(/ /g, '\\s+')}s?\\b`, 'i');
+    const candidatePattern = candidate.replace(/ /g, '\\s+');
+    if (new RegExp(`^${candidatePattern}(?:s|es)?$`, 'i').test(normalized)) return null;
+    const pattern = new RegExp(`\\b${candidatePattern}s?\\b`, 'i');
     if (pattern.test(normalized)) return candidate;
   }
   return null;
@@ -132,12 +140,17 @@ function searchQuery(
   return `${prefix}${allergies}${subject}${price}${exclusions}${locationSuffix(plan, options.includeLocation !== false)}${time}?`;
 }
 
-function defaultSuggestions(): AskRumblySuggestion[] {
-  return [
+function defaultSuggestions(seed: string): AskRumblySuggestion[] {
+  const suggestions: AskRumblySuggestion[] = [
     { kind: 'query', label: 'Find burgers', query: 'Where can I get a burger?' },
     { kind: 'query', label: 'Find coffee', query: 'Where can I get coffee?' },
     { kind: 'query', label: 'Find ice cream', query: 'Where can I get ice cream?' },
+    { kind: 'query', label: 'Find chicken tenders', query: 'Where can I get chicken tenders?' },
+    { kind: 'query', label: 'Find pretzels', query: 'Where can I get a pretzel?' },
   ];
+  const offset = Array.from(seed.toLowerCase()).reduce((sum, character) => sum + character.charCodeAt(0), 0)
+    % suggestions.length;
+  return [...suggestions.slice(offset), ...suggestions.slice(0, offset)].slice(0, 3);
 }
 
 function dedupeSuggestions(suggestions: AskRumblySuggestion[]): AskRumblySuggestion[] {
@@ -153,6 +166,14 @@ function dedupeSuggestions(suggestions: AskRumblySuggestion[]): AskRumblySuggest
 function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
   const suggestions: AskRumblySuggestion[] = [];
   const terms = usefulFoodTerms(plan);
+  const locations = plan.constraints.locations?.length
+    ? plan.constraints.locations
+    : plan.constraints.location ? [plan.constraints.location] : [];
+  const singleInsideArea = locations.length === 1
+    && locations[0].relation === 'in'
+    && locations[0].entityType === 'area'
+    ? locations[0]
+    : null;
   const hasLocation = locationLabels(plan).length > 0
     || plan.constraints.locationSet === 'theme_parks'
     || plan.subject.restaurantIds.length > 0;
@@ -182,6 +203,14 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
       });
     }
   }
+  if (singleInsideArea && terms.length > 0) {
+    const unscoped = searchQuery(plan, { includeLocation: false }).replace(/\?$/, '');
+    suggestions.push({
+      kind: 'query',
+      label: `Search near ${singleInsideArea.label}`,
+      query: `${unscoped} near ${singleInsideArea.label}?`,
+    });
+  }
   if (hasLocation && terms.length > 0) {
     suggestions.push({
       kind: 'query',
@@ -205,7 +234,8 @@ function clarificationSuggestions(plan: QueryPlan, hasCurrentLocation: boolean):
       ];
     }
   }
-  const needsLocation = plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest';
+  const needsLocation = (plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest')
+    && !plan.constraints.distanceAnchor;
   if (needsLocation && !hasCurrentLocation) return [{ kind: 'enable_location', label: 'Use my location' }];
   if (plan.constraints.maxPrice != null && usefulFoodTerms(plan).length === 0) {
     const price = plan.constraints.maxPrice;
@@ -215,7 +245,7 @@ function clarificationSuggestions(plan: QueryPlan, hasCurrentLocation: boolean):
       { kind: 'query', label: `Meals under $${price}`, query: `Where can I get meals for $${price} or less?` },
     ]);
   }
-  return defaultSuggestions();
+  return defaultSuggestions(plan.sourceText);
 }
 
 function unsupportedCopy(plan: QueryPlan): Pick<AskRumblyPresentation, 'title' | 'message'> {
@@ -277,7 +307,7 @@ function unsupportedSuggestions(plan: QueryPlan, hasCurrentLocation: boolean): A
       return [{ kind: 'query', label: `Search just for ${joinTerms(terms, plan.subject.foodMode)}`, query: searchQuery(plan) }];
     }
   }
-  return defaultSuggestions();
+  return defaultSuggestions(plan.sourceText);
 }
 
 export function buildAskRumblyPresentation(
@@ -286,7 +316,7 @@ export function buildAskRumblyPresentation(
   context: PresentationContext,
 ): AskRumblyPresentation {
   const trace = 'trace' in result ? result.trace : undefined;
-  const trustNote = trace?.locationApproximation
+  const trustNote = trace?.locationApproximation && !plan.constraints.distanceAnchor
     ? 'Nearby-area distances are straight-line estimates from known dining locations, not walking routes.'
     : undefined;
 
@@ -307,7 +337,7 @@ export function buildAskRumblyPresentation(
     const title = allergyAnswer
       ? proximityRanked
         ? count === 1 ? 'This is the closest Disney-labeled menu match.' : 'Here are the closest Disney-labeled menu matches.'
-        : count === 1 ? 'One Disney-labeled menu item matches.' : 'Here are the Disney-labeled menu matches.'
+        : count === 1 ? 'Found one Disney-labeled match.' : 'Here are the Disney-labeled menu matches.'
       : popTartAlias
       ? 'Disney calls these Lunch Box Tarts.'
       : context.subjectiveOptions
@@ -321,12 +351,14 @@ export function buildAskRumblyPresentation(
           ? 'These restaurant pages have the current menus.'
           : plan.action === 'hours'
             ? plan.constraints.time === 'tomorrow'
-              ? "Here are tomorrow's hours in Rumbly."
-              : 'Here are the current hours in Rumbly.'
-            : 'Here is what the restaurant data says.'
+              ? "Here are tomorrow's hours."
+              : 'Here are the current hours.'
+            : "Here's what I found for that restaurant."
       : context.linkedKind
-      ? nearest
-        ? `Here's the closest ${noun} I could verify.`
+      ? nearest && plan.constraints.distanceAnchor
+        ? `Here's the closest ${usefulFoodTerms(plan).join(plan.subject.foodMode === 'any' ? ' or ' : ' and ') || noun} I found to ${plan.constraints.distanceAnchor.label}.`
+        : nearest
+        ? nearestResultTitle(plan.sourceText, usefulFoodTerms(plan))
         : cheapest
           ? cheapestResultTitle(plan.sourceText, noun, count)
           : context.linkedKind === 'item'
@@ -338,7 +370,7 @@ export function buildAskRumblyPresentation(
           : count === 1
             ? `Here's one ${noun} I found.`
             : `Here's a list of ${noun} I found.`
-      : 'I found the right place to continue.';
+      : "Here's the place you were looking for.";
     return {
       tone: 'answer',
       eyebrow: allergyAnswer
@@ -348,19 +380,29 @@ export function buildAskRumblyPresentation(
         : context.subjectiveOptions
         ? 'A few options'
         : distanceAnswer
-        ? context.hasCurrentLocation ? 'Distance from you' : 'Distance'
+        ? plan.constraints.distanceAnchor
+          ? `Distance from ${plan.constraints.distanceAnchor.label}`
+          : context.hasCurrentLocation ? 'Distance from you' : 'Distance'
+        : nearest
+        ? 'Closest match'
         : context.linkedKind ? `Found ${count} ${possibilityLabel}` : 'Ready',
       title,
       message: allergyAnswer
         ? 'Disney lists these for the requested allergy label. Review the allergy note below.'
         : popTartAlias
         ? context.subjectiveOptions
-          ? "I can't rank which is best, but here are the verified options I found."
-          : 'Here are the verified menu options I found.'
+          ? "I can't rank which is best, but here's what I found."
+          : "Here's what I found on the menu."
         : context.subjectiveOptions
         ? 'These are menu matches, not a ranking.'
         : distanceAnswer
-        ? 'Straight-line distance from your current location.'
+        ? plan.constraints.distanceAnchor
+          ? 'Straight-line estimate, not a walking route.'
+          : 'Straight-line distance from your current location.'
+        : plan.constraints.distanceAnchor
+        ? context.linkedKind === 'item'
+          ? 'Straight-line estimate. Tap one to see it on the menu.'
+          : 'Straight-line estimate. Tap one to see the restaurant.'
         : directAnswer || !context.linkedKind
         ? result.text
         : context.linkedKind === 'item'
@@ -373,22 +415,53 @@ export function buildAskRumblyPresentation(
 
   if (result.kind === 'no-match') {
     const allergy = result.safety?.kind === 'allergy' || plan.constraints.allergenKeys.length > 0;
-    const pitaPocket = usefulFoodTerms(plan).some((term) => /\bpita\s+pocket\b/i.test(term));
     const terms = usefulFoodTerms(plan);
+    const broader = terms.length === 1
+      ? /\bpita\s+pocket\b/i.test(terms[0]) ? 'pita' : broaderFoodTerm(terms[0])
+      : null;
     const restaurantScoped = plan.subject.restaurantIds.length > 0;
+    const locations = plan.constraints.locations?.length
+      ? plan.constraints.locations
+      : plan.constraints.location ? [plan.constraints.location] : [];
+    const singleStrictLocation = locations.length === 1 && locations[0].relation === 'in'
+      ? locations[0]
+      : null;
+    const plainFoodLocationSearch = Boolean(singleStrictLocation)
+      && terms.length > 0
+      && !allergy
+      && plan.constraints.dietaryKeys.length === 0
+      && plan.constraints.mealPeriods.length === 0
+      && plan.constraints.requiredFeatures.length === 0
+      && plan.constraints.excludedFeatures.length === 0
+      && plan.subject.excludedFoodTerms.length === 0
+      && plan.constraints.maxPrice == null
+      && plan.constraints.cuisine == null
+      && plan.constraints.time == null;
+    const nearbyAreaSearch = plan.constraints.distanceAnchor?.entityType === 'area'
+      && plan.constraints.distanceRadiusMiles != null
+      && terms.length > 0
+      && !allergy;
     const suggestions = noMatchSuggestions(plan);
     return {
       tone: 'no-match',
       eyebrow: "Let's try that again",
-      title: pitaPocket
-        ? "I couldn't verify “pita pocket” as a current menu name."
+      title: broader
+        ? `I couldn't verify "${terms[0]}" as a current menu name.`
+        : plainFoodLocationSearch && singleStrictLocation
+        ? `I don't have any current menu matches for ${joinTerms(terms, plan.subject.foodMode)} in ${singleStrictLocation.label}.`
+        : nearbyAreaSearch
+        ? `I don't have any current menu matches for ${joinTerms(terms, plan.subject.foodMode)} near ${plan.constraints.distanceAnchor?.label}.`
         : allergy
         ? "Sorry, I couldn't find a Disney-labeled match."
         : context.subjectiveOptions
         ? "Sorry, I couldn't find a matching menu item."
         : "Sorry, I couldn't find what you're looking for.",
-      message: pitaPocket
-        ? 'Try searching for pita instead.'
+      message: broader
+        ? `Try searching for ${broader} instead.`
+        : plainFoodLocationSearch && singleStrictLocation
+        ? `Try looking near ${singleStrictLocation.label} instead, or search all of Disney World.`
+        : nearbyAreaSearch
+        ? 'Try searching without the nearby limit, or choose another area.'
         : allergy
         ? "Try another food or area. Disney's labels can be limited, so check with a Cast Member before ordering."
         : restaurantScoped && terms.length > 0
@@ -396,7 +469,7 @@ export function buildAskRumblyPresentation(
           : context.subjectiveOptions
             ? 'Try a broader food name, another area, or ask a different way.'
             : 'Try a food, restaurant, park, or resort. You can also ask a different way.',
-      suggestions: suggestions.length > 0 ? suggestions : defaultSuggestions(),
+      suggestions: suggestions.length > 0 ? suggestions : defaultSuggestions(plan.sourceText),
       trustNote,
     };
   }
@@ -405,7 +478,9 @@ export function buildAskRumblyPresentation(
     const allergySafety = plan.claimType === 'allergy_safety';
     const unknownAllergyLabel = plan.claimType === 'disney_label' && plan.constraints.allergenKeys.length === 0;
     const needsLocation = /current location is required/i.test(result.text)
-      || ((plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest') && !context.hasCurrentLocation);
+      || ((plan.action === 'distance' || plan.constraints.distanceOperation === 'nearest')
+        && !plan.constraints.distanceAnchor
+        && !context.hasCurrentLocation);
     return {
       tone: 'clarification',
       eyebrow: 'One quick detail',
@@ -414,7 +489,7 @@ export function buildAskRumblyPresentation(
         : allergySafety
         ? "I can search Disney's labels, but I can't decide what's safe."
         : needsLocation
-          ? 'Where should I measure from?'
+          ? 'Where should I search from?'
           : 'I need one more detail.',
       message: unknownAllergyLabel
         ? 'Try gluten/wheat, milk, egg, fish, shellfish, peanut, tree nut, sesame, or soy.'
@@ -453,6 +528,6 @@ export function buildAskRumblyPresentation(
     eyebrow: 'Something went wrong',
     title: "Sorry, I couldn't finish that search.",
     message: 'Please try it again or ask a different way.',
-    suggestions: defaultSuggestions(),
+    suggestions: defaultSuggestions(plan.sourceText),
   };
 }

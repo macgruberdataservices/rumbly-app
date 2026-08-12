@@ -52,6 +52,7 @@
     "test:challenges": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/challenges.test.mjs",
     "test:changes": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs --test tests/changes.test.mjs",
     "test:locations": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/locationNames.test.mjs",
+    "test:groups": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs --test tests/groups.test.mjs",
     "test:menu-items-schema": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/menuItemsSchema.test.mjs",
     "test:perf-log": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/perfLog.test.mjs",
     "test:activity-identity": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test tests/activityIdentity.test.mjs",
@@ -72,7 +73,9 @@
     "measure:ask-rumbly": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON modules/ask-rumbly/scripts/ask-rumbly/architecture_metrics.ts",
     "measure:search": "node --expose-gc --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs scripts/search_benchmark.ts",
     "measure:feed": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs scripts/feed_benchmark.ts",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "eval:ask-rumbly-paraphrase": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs modules/ask-rumbly/scripts/ask-rumbly/paraphrase_eval.ts",
+    "audit:ask-rumbly-claims": "node --experimental-strip-types --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --import ./modules/ask-rumbly/scripts/ask-rumbly/register-loader.mjs modules/ask-rumbly/scripts/ask-rumbly/claim_rule_audit.ts"
   },
   "private": true
 }

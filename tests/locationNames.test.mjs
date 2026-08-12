@@ -76,3 +76,69 @@ test('compact location labels prefer a real resort over an administrative area',
     "Disney's Contemporary Resort"
   );
 });
+
+test('entertainment venue rescues restaurants Disney gives no park and no resort', () => {
+  assert.deepEqual(
+    locationHierarchy(restaurant({ area: 'EPCOT Resort Area', venue: "Disney's BoardWalk" })),
+    {
+      topKey: "Disney's BoardWalk",
+      topLabel: "Disney's BoardWalk",
+      topOrder: 35,
+      // Never the area: areaDisplayName would render this one "Epcot Park
+      // Entrance", which is the wrong place entirely for a BoardWalk venue.
+      subKey: null,
+      subLabel: null,
+    }
+  );
+
+  assert.deepEqual(
+    locationHierarchy(
+      restaurant({ area: 'Wide World of Sports Resort Area', venue: 'ESPN Wide World of Sports Complex' })
+    ),
+    {
+      topKey: 'Disney Resorts',
+      topLabel: 'Resorts',
+      topOrder: 20,
+      subKey: 'ESPN Wide World of Sports Complex',
+      subLabel: 'ESPN Wide World of Sports',
+    }
+  );
+
+  assert.deepEqual(
+    locationHierarchy(restaurant({ area: 'Disney Springs Resort Area', venue: 'Disney Springs' })),
+    { topKey: 'Disney Springs', topLabel: 'Disney Springs', topOrder: 30, subKey: null, subLabel: null }
+  );
+});
+
+test('venue never outranks a park, resort or Disney Springs land', () => {
+  // The whole safety argument for adding venue grouping: it is the last check
+  // before Other, so no restaurant that already classifies can move. A
+  // Disney Springs restaurant keeps its land sub-heading rather than
+  // collapsing into the venue's null one...
+  assert.deepEqual(
+    locationHierarchy(restaurant({ area: 'The Landing', venue: 'Disney Springs' })),
+    { topKey: 'Disney Springs', topLabel: 'Disney Springs', topOrder: 30, subKey: 'The Landing', subLabel: 'The Landing' }
+  );
+
+  // ...and a venue value can never pull a restaurant out of its park or resort.
+  assert.equal(
+    locationHierarchy(restaurant({ park: 'EPCOT', area: 'World Showcase', venue: 'Disney Springs' })).topKey,
+    'EPCOT'
+  );
+  assert.equal(
+    locationHierarchy(
+      restaurant({ resort: "Disney's Yacht Club Resort", area: 'EPCOT Resort Area', venue: "Disney's BoardWalk" })
+    ).topKey,
+    'Disney Resorts'
+  );
+});
+
+test('an unknown or absent venue still falls through to Other', () => {
+  // Records cached before the field shipped have no `venue` at all, and
+  // hand-coded venues have no facility doc to read one from.
+  assert.equal(locationHierarchy(restaurant({ area: 'Disney Springs Resort Area' })).topKey, 'Other');
+  assert.equal(
+    locationHierarchy(restaurant({ area: 'Somewhere New', venue: 'Some Future Venue' })).topKey,
+    'Other'
+  );
+});

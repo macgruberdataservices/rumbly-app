@@ -174,7 +174,7 @@ function MenuResultCard({
       style={({ pressed }) => [styles.menuResultCard, pressed && styles.pressed]}
     >
       <View style={styles.menuResultHeader}>
-        <Text style={text.restaurantName}>{item.item}</Text>
+        <Text style={[text.restaurantName, styles.menuResultName]}>{item.item}</Text>
         {item.price_display ? <Text style={styles.price}>{item.price_display}</Text> : null}
       </View>
       <Text style={[text.bodyMuted, styles.menuRestaurant]}>{restaurantMeta}</Text>
@@ -1220,8 +1220,20 @@ const styles = StyleSheet.create({
     borderRadius: RADII.xl,
     backgroundColor: DAYLIGHT.sky,
   },
-  menuResultHeader: { flexDirection: 'row', justifyContent: 'space-between', gap: SPACING.md },
+  menuResultHeader: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: SPACING.md,
+  },
+  menuResultName: {
+    flex: 1,
+    minWidth: 0,
+  },
   price: {
+    flexShrink: 0,
+    marginTop: 2,
+    textAlign: 'right',
     fontFamily: FONT_FAMILY.workSansSemiBold,
     fontSize: 15,
     color: DAYLIGHT.ocean,

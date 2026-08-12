@@ -1,6 +1,9 @@
 import type { ParserEntity, ParserVocabulary } from '../../../../src/askRumbly/queryPlan.ts';
 import type { AskRumblyData as LoadedData } from '../../../../src/askRumbly/dataTypes.ts';
+import { DISTANCE_ANCHORS, distanceAnchorById } from '../../../../src/askRumbly/distanceAnchors.ts';
+import { buildFoodLexicon } from '../../../../src/askRumbly/foodLexicon.ts';
 import { resortAliases } from './location_aliases.ts';
+import { buildFoodLexiconPhrases } from './food_lexicon_source.ts';
 
 function slug(value: string): string {
   return value
@@ -48,14 +51,70 @@ function locationEntities(data: LoadedData, field: 'park' | 'area' | 'resort'): 
       .map((restaurant) => restaurant[field])
       .filter((name): name is string => Boolean(name?.trim()))
   );
-  return Array.from(names).map((name) => ({
-    id: `location:${field}:${slug(name)}`,
-    label: name,
-    type: field,
-    aliases: field === 'resort'
-      ? resortAliases(name).filter((alias) => !RESERVED_PARK_ALIASES.has(alias.toLowerCase()))
-      : [name, ...(PARK_SHORT_ALIASES[name] ?? [])],
-  }));
+  return Array.from(names).map((name) => {
+    const id = `location:${field}:${slug(name)}`;
+    const anchor = field === 'area' ? distanceAnchorById(id) : undefined;
+    return {
+      id,
+      label: name,
+      type: field,
+      aliases: field === 'resort'
+        ? resortAliases(name).filter((alias) => !RESERVED_PARK_ALIASES.has(alias.toLowerCase()))
+        : [name, ...(PARK_SHORT_ALIASES[name] ?? [])],
+      distanceAnchor: anchor ? {
+        entityId: anchor.id,
+        entityType: anchor.entityType,
+        label: anchor.label,
+        latitude: anchor.latitude,
+        longitude: anchor.longitude,
+        approximation: anchor.approximation,
+      } : undefined,
+    } satisfies ParserEntity;
+  });
+}
+
+function attractionAliases(name: string): string[] {
+  const plain = name
+    .replace(/[®™]/g, '')
+    .replace(/[\u2018\u2019]/g, "'")
+    .replace(/^"|"$/g, '')
+    .replace(/\s+-\s+Disney Animals$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return Array.from(new Set([
+    name,
+    plain,
+    plain.replace(/'/g, ''),
+    ...(ATTRACTION_ALIAS_OVERRIDES[name] ?? []),
+  ]));
+}
+
+const ATTRACTION_ALIAS_OVERRIDES: Readonly<Record<string, string[]>> = {
+  'Star Wars: Rise of the Resistance': ['rise of the resistance', 'rise of resistance'],
+  'The Twilight Zone™ Tower of Terror': ['tower of terror'],
+  'Avatar Flight of Passage': ['flight of passage'],
+  'Expedition Everest - Legend of the Forbidden Mountain': ['expedition everest', 'everest'],
+  'Kilimanjaro Safaris': ['kilimanjaro safaris exit'],
+  'Cinderella Castle': ['the castle', 'castle'],
+};
+
+function attractionEntities(): ParserEntity[] {
+  return DISTANCE_ANCHORS
+    .filter((anchor) => anchor.entityType === 'attraction')
+    .map((anchor) => ({
+      id: anchor.id,
+      label: anchor.label,
+      type: 'attraction' as const,
+      aliases: attractionAliases(anchor.label),
+      distanceAnchor: {
+        entityId: anchor.id,
+        entityType: anchor.entityType,
+        label: anchor.label,
+        latitude: anchor.latitude,
+        longitude: anchor.longitude,
+        approximation: anchor.approximation,
+      },
+    }));
 }
 
 const RESERVED_PARK_ALIASES = new Set(['magic kingdom', 'epcot', 'animal kingdom', 'hollywood studios', 'disney springs']);
@@ -130,7 +189,21 @@ function menuDerivedProtectedFoodPhrases(data: LoadedData): string[] {
   return Array.from(phrases);
 }
 
+// runAskRumbly() builds the vocabulary on every submitted question. Scanning
+// 46k menu rows for the food lexicon per keystroke-sized query would undo the
+// launch/feed performance work, so the result is cached against the data
+// snapshot it was derived from and rebuilt only when that snapshot changes.
+const vocabularyCache = new WeakMap<object, ParserVocabulary>();
+
 export function buildParserVocabulary(data: LoadedData): ParserVocabulary {
+  const cached = vocabularyCache.get(data as unknown as object);
+  if (cached) return cached;
+  const vocabulary = createParserVocabulary(data);
+  vocabularyCache.set(data as unknown as object, vocabulary);
+  return vocabulary;
+}
+
+function createParserVocabulary(data: LoadedData): ParserVocabulary {
   const restaurants: ParserEntity[] = data.restaurants.map((restaurant) => ({
     id: restaurant.restaurant_id,
     label: restaurant.restaurant,
@@ -149,12 +222,19 @@ export function buildParserVocabulary(data: LoadedData): ParserVocabulary {
     entity.aliases.push(...(LOCATION_ALIAS_OVERRIDES[entity.label] ?? []));
   }
   const cuisines = Array.from(new Set(data.restaurants.flatMap((restaurant) => restaurant.cuisine_tags ?? [])));
+  const protectedFoodPhrases = Array.from(new Set([
+    ...PROTECTED_FOOD_PHRASES,
+    ...menuDerivedProtectedFoodPhrases(data),
+  ]));
   return {
-    entities: [...restaurants, ...locations],
-    protectedFoodPhrases: Array.from(new Set([
-      ...PROTECTED_FOOD_PHRASES,
-      ...menuDerivedProtectedFoodPhrases(data),
-    ])),
+    // Exact attraction names precede area aliases so "Space Mountain" binds
+    // to its measured point instead of the broader Tomorrowland alias.
+    entities: [...restaurants, ...attractionEntities(), ...locations],
+    protectedFoodPhrases,
     cuisines,
+    // Protected phrases lead: they are the multi-word dish names that contain
+    // a meal word ("lunch box tart") and must stay atomic rather than being
+    // split into a meal-period constraint plus a food.
+    foodLexicon: buildFoodLexicon([...protectedFoodPhrases, ...buildFoodLexiconPhrases(data)]),
   };
 }
