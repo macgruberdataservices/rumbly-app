@@ -25,6 +25,21 @@ export interface Restaurant {
   // pre-bump cache have records without it, and hand-coded venues have no
   // facility doc to read it from, so it is null there by construction.
   venue?: string | null;
+  // Which EPCOT World Showcase pavilion this venue sits in -- "Japan",
+  // "Morocco", "The American Adventure", "Outpost" (Disney's own name for the
+  // African Outpost), "World Showcase Plaza", and the eight other countries.
+  // Disney publishes no such field: their deepest geography, ancestorLand,
+  // bottoms out at the flat string "World Showcase" for all 49 in-park venues,
+  // which is why `area` alone can never answer "restaurants in Japan". The
+  // pipeline carries a curated table transcribed from the official EPCOT guide
+  // map (Backend/world_showcase_pavilions.py); published from 2026-08-12.
+  //
+  // Optional for the same reason venue is -- installs holding a pre-bump cache
+  // have records without it. Treat absent and null IDENTICALLY: both mean
+  // "pavilion unknown", never "not in World Showcase". A World Showcase venue
+  // added upstream before the table catches up will be null here while still
+  // carrying area === 'World Showcase'.
+  world_showcase_pavilion?: string | null;
   disney_url: string | null;
   description: string | null;
   service_style: string | null;
