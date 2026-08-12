@@ -25,7 +25,7 @@ export function IllustrationSlot({
       accessibilityLabel={source ? spec.label : `Illustration placeholder: ${spec.label}, tag ${tagId}`}
     >
       {source ? (
-        <Image source={source} style={StyleSheet.absoluteFill} resizeMode="cover" />
+        <Image source={source} style={styles.artwork} resizeMode="cover" />
       ) : variant === 'artwork' ? (
         <>
           <View style={[styles.artworkSun, { backgroundColor: spec.accentColor }]} />
@@ -68,6 +68,17 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     minHeight: 96,
     borderRadius: RADII.lg,
+  },
+  // A static require() carries its intrinsic size, and RN puts that width/height
+  // ahead of this style. StyleSheet.absoluteFill alone therefore does not stretch
+  // the artwork -- an explicit width/height is what overrides the asset's own size
+  // so resizeMode can crop it to the slot.
+  artwork: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    width: '100%',
+    height: '100%',
   },
   cornerCircle: {
     position: 'absolute',

@@ -5,4 +5,14 @@ import type { IllustrationTagId } from './catalog';
 // add one static require here; every slot using that tag updates at once.
 // Example:
 // 'menu.category.drinks.v1': require('../../assets/illustrations/menu-category-drinks-v1.png'),
-export const ILLUSTRATION_ASSETS: Partial<Record<IllustrationTagId, ImageSourcePropType>> = {};
+//
+// The artwork is transparent, so each slot's `backgroundColor` from
+// ILLUSTRATION_SPECS still supplies the field color behind it. Vector sources
+// live in Design/illustrations/; re-export with Design/illustrations/export.sh.
+export const ILLUSTRATION_ASSETS: Partial<Record<IllustrationTagId, ImageSourcePropType>> = {
+  'find.editorial.feature-card.v1': require('../../assets/illustrations/find-editorial-feature-card-v1.png'),
+  'journal.hero.memory-book.v1': require('../../assets/illustrations/journal-hero-memory-book-v1.png'),
+  'journal.composer.capture-memory.v1': require('../../assets/illustrations/journal-composer-capture-memory-v1.png'),
+  'journal.state.empty.v1': require('../../assets/illustrations/journal-state-empty-v1.png'),
+  'my-rumbly.hero.collection.v1': require('../../assets/illustrations/my-rumbly-hero-collection-v1.png'),
+};
