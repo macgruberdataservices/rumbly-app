@@ -15,4 +15,9 @@ export const ILLUSTRATION_ASSETS: Partial<Record<IllustrationTagId, ImageSourceP
   'journal.composer.capture-memory.v1': require('../../assets/illustrations/journal-composer-capture-memory-v1.png'),
   'journal.state.empty.v1': require('../../assets/illustrations/journal-state-empty-v1.png'),
   'my-rumbly.hero.collection.v1': require('../../assets/illustrations/my-rumbly-hero-collection-v1.png'),
+  'ask.hero.companion.v1': require('../../assets/illustrations/ask-hero-companion-v1.png'),
+  'activity.state.empty.v1': require('../../assets/illustrations/activity-state-empty-v1.png'),
+  'changes.hero.whats-new.v1': require('../../assets/illustrations/changes-hero-whats-new-v1.png'),
+  'explore.editorial.challenge.v1': require('../../assets/illustrations/explore-editorial-challenge-v1.png'),
+  'explore.editorial.exclusive-items.v1': require('../../assets/illustrations/explore-editorial-exclusive-items-v1.png'),
 };
