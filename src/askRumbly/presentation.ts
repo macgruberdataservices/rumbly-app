@@ -455,6 +455,11 @@ export function buildAskRumblyPresentation(
         ? plan.constraints.distanceAnchor
           ? `Distance from ${plan.constraints.distanceAnchor.label}`
           : context.hasCurrentLocation ? 'Distance from you' : 'Distance'
+        // Before proximity, because a cheapest request has no location scope
+        // and so reads as proximity-ranked -- which labelled the single
+        // lowest-priced row "Closest match", the wrong superlative entirely.
+        : cheapest
+        ? 'Lowest price'
         : nearest
         ? 'Closest match'
         : proximityRanked
