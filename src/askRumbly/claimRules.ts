@@ -89,7 +89,7 @@ const REPORTED_OUTCOME_PATTERN = /\b(?:reviews?|mistakes?|complaints?|reported|r
 // "surrounded by sea life", "latte art", and "printed on the foam" were single
 // corpus sentences; the general concepts (aquarium, decoration) replace them.
 const VENUE_AMENITY_PATTERN = /\b(?:quiet(?:est)?|shade|shaded|outdoor seating|air[ -]con(?:ditioned)?|air[ -]conditioned|indoors?|out of (?:the )?(?:heat|rain)|views?|fireworks?\s+(?:views?|show)|view(?:ing)?[\s\S]{0,20}fireworks?|live music(?:al entertainment)?|away from crowds|crowd levels?|aquarium|ambiance|ambience|atmosphere|decor(?:ated|ations?)?|themed? (?:seating|dining room))\b/i;
-const LIVE_AVAILABILITY_PATTERN = /\b(?:availability|wait times?|line time|huge wait|same[\s-]?day|right now|currently|at the moment|still (?:get|book|available)|to[ -]?go[\s\S]*app)\b/i;
+const LIVE_AVAILABILITY_PATTERN = /\b(?:availability|wait times?|line time|huge wait|same[\s-]?day|right now|currently|at the moment|today|tonight|still (?:get|book|available)|to[ -]?go[\s\S]*app)\b/i;
 // Named parks are linked entities whose spans are blanked before claim
 // detection, so listing them here never fired; the typed `park-hours-subject`
 // rule handles that case. What remains is the literal word "park" and
@@ -179,7 +179,7 @@ const FEATURE_TESTS: ReadonlyArray<{ feature: ClaimFeature; test: (input: ClaimI
   },
   { feature: 'sensory', test: ({ text }) => /\b(?:spicy|spiciness|mild|hot and spicy|sweetness|saltiness|texture)\b|\b(?:shaped|printed|drawn|decorated|topped)\s+(?:like|on|into|with)\b/i.test(text) },
   { feature: 'live_availability_language', test: ({ text }) => LIVE_AVAILABILITY_PATTERN.test(text) },
-  { feature: 'bookable_subject', test: ({ text }) => /\b(?:reservation|book|mobile[\s-]?order|walk[\s-]?up|wait ?list|wait times?|line time|huge wait|to[ -]?go|availability|available)\b/i.test(text) },
+  { feature: 'bookable_subject', test: ({ text }) => /\b(?:reservation|book|mobile[\s-]?order|walk[\s-]?up|wait ?list|wait times?|line time|huge wait|to[ -]?go|availability)\b/i.test(text) },
   { feature: 'venue_amenity', test: ({ text }) => VENUE_AMENITY_PATTERN.test(text) },
   { feature: 'price_comparison', test: ({ text }) => /\bpriced (?:the )?same|\bsame price\b|\bcompare prices?\b/i.test(text) },
   { feature: 'ingredient', test: ({ text }) => INGREDIENT_PATTERN.test(text) },
@@ -242,7 +242,7 @@ export const CLAIM_RULES: ReadonlyArray<ClaimRule> = [
   { name: 'editorial-ranking', claim: 'editorial_judgment', all: ['editorial_language'], none: ['soft_subjective_ignorable'], why: 'Ranking language has no editorial ground truth.' },
   { name: 'should-i-choose', claim: 'editorial_judgment', all: ['should_i_choose'], why: 'Choosing for the guest is an editorial judgment.' },
   { name: 'sensory-attribute', claim: 'sensory_attribute', all: ['sensory'], why: 'Spiciness and similar qualities are not structured data.' },
-  { name: 'live-availability', claim: 'live_availability', all: ['live_availability_language', 'bookable_subject'], why: 'Current availability needs an official handoff.' },
+  { name: 'live-availability', claim: 'live_availability', all: ['live_availability_language', 'bookable_subject'], why: 'Current availability needs an official handoff. The bookable subject is what separates it from a menu question that merely mentions now.' },
   { name: 'venue-amenity', claim: 'venue_amenity', all: ['venue_amenity'], why: 'Seating, views, and atmosphere are not structured data.' },
   { name: 'price-comparison', claim: 'price_comparison', all: ['price_comparison'], why: 'A comparable item pair must be identified first.' },
   { name: 'ingredient-content', claim: 'ingredient_content', all: ['ingredient'], why: 'Menu descriptions are not complete ingredient statements.' },

@@ -116,6 +116,7 @@ const DINING_SCAFFOLDING = new Set([
   'pavilion', 'pavilions', 'picky', 'simple', 'easy', 'basic', 'plain',
   'normal', 'regular', 'quiet', 'busy', 'accept', 'accepts', 'require',
   'requires', 'required', 'join', 'joining', 'reserve', 'book', 'booking',
+  'thing', 'things', 'stuff',
 ]);
 
 export type WordClass = 'function' | 'scaffolding' | 'content';

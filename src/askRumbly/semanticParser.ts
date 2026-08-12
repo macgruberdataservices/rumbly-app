@@ -43,7 +43,7 @@ const FEATURE_PATTERNS: ReadonlyArray<{ feature: RestaurantFeature; pattern: Reg
   { feature: 'table_service', pattern: /\btable[\s-]*service\b|\bsit[\s-]*down\b/gi },
   { feature: 'character_dining', pattern: /\bcharacter (?:dining|breakfasts?|meals?)\b/gi },
   { feature: 'festival_booth', pattern: /\bfestival booths?\b|\bfood and wine(?: festival)?\b/gi },
-  { feature: 'resort_bar', pattern: /\bresort\s+(?:bars?|lounges?)\b|\blounges?\b/gi },
+  { feature: 'resort_bar', pattern: /\bresorts?\b[\s\S]{0,24}?\b(?:bars?|lounges?)\b|\b(?:bars?|lounges?)\b[\s\S]{0,24}?\bresorts?\b/gi },
   // Wait and queue vocabulary rather than the two phrasings ("without a huge
   // line", "waiting forever") that happened to appear in the corpus.
   { feature: 'wait_time', pattern: /\bwait\s?times?\b|\b(?:shortest|short|long|longest|huge|no|big)\s+(?:current\s+)?(?:wait|line|queue)\b|\bwaiting\b|\bhow long is the (?:wait|line|queue)\b/gi },
@@ -270,7 +270,7 @@ function foodCapture(query: string): string {
     /\b(?:we need|i need|looking for)\s+(.+?)(?:\s+(?:at|in|near)\b|[?.!]*$)/i,
     /\b(?:i(?:'d| would) like|craving)\s+(.+?)\??$/i,
     /\bshow me\s+(.+?)\??$/i,
-    /\bis (?:the )?(.+?)\s+(?:still\s+)?(?:on (?:the )?menu|(?:still\s+)?(?:around|available|served|sold))\b/i,
+    /\b(?:is|are)\s+(?:the\s+)?(.+?)\s+(?:still\s+)?(?:on (?:the )?menu|(?:still\s+)?(?:around|available|served|sold))\b/i,
     /\bare there\s+(.+?)\s+(?:options?|items?|dishes?|meals?|snacks?)\b/i,
     /\b(?:what|which)\s+(.+?)\s+(?:options?|items?|dishes?|meals?|snacks?)\s+(?:are|can|do|have)\b/i,
     /\b(?:what|which)\s+(.+?\b(?:options?|items?|dishes?|meals?|snacks?))\s+(?:are|can|do|have)\b/i,
