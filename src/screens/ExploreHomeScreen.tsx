@@ -353,7 +353,7 @@ const styles = StyleSheet.create({
     left: 0,
     width: '100%',
     height: '100%',
-    transform: [{ scale: 1.2 }],
+    transform: [{ scale: 1.35 }],
   },
   cardTitle: {
     fontFamily: text.sectionTitle.fontFamily,
