@@ -8,7 +8,7 @@ import type { AskRumblyPresentation } from './presentation';
 
 const STORAGE_KEY = 'rumbly.development.askRumblyNegativeFeedback.v1';
 const MAX_ENTRIES = 100;
-export const ASK_RUMBLY_RUNTIME_VERSION = 'semantic-2026-08-11.1';
+export const ASK_RUMBLY_RUNTIME_VERSION = 'semantic-2026-08-13.1';
 
 export type AskRumblyFeedbackReason =
   | 'misunderstood'
@@ -28,6 +28,7 @@ export interface AskRumblyNegativeFeedback {
   plan: AskRumblyResponse['plan'];
   result: AskRumblyResponse['result'];
   adaptation?: AskRumblyResponse['adaptation'];
+  continuation?: AskRumblyResponse['continuation'];
   dataLastSyncedAt: number | null;
   feedbackReason?: AskRumblyFeedbackReason;
   runtimeVersion?: string;
@@ -90,7 +91,12 @@ export function askRumblyFeedbackRemoteRow(entry: AskRumblyNegativeFeedback) {
     result_kind: entry.resultKind,
     plan: entry.plan,
     result,
-    adaptation: entry.adaptation ?? null,
+    adaptation: entry.adaptation || entry.continuation
+      ? {
+          ...(entry.adaptation ? { adaptation: entry.adaptation } : {}),
+          ...(entry.continuation ? { continuation: entry.continuation } : {}),
+        }
+      : null,
     feedback_reason: entry.feedbackReason ?? null,
     runtime_version: entry.runtimeVersion ?? ASK_RUMBLY_RUNTIME_VERSION,
     data_last_synced_at: entry.dataLastSyncedAt === null
@@ -176,6 +182,7 @@ export function createAskRumblyNegativeFeedback({
     plan: response.plan,
     result: response.result,
     ...(response.adaptation ? { adaptation: response.adaptation } : {}),
+    ...(response.continuation ? { continuation: response.continuation } : {}),
     dataLastSyncedAt,
     ...(feedbackReason ? { feedbackReason } : {}),
     runtimeVersion: ASK_RUMBLY_RUNTIME_VERSION,

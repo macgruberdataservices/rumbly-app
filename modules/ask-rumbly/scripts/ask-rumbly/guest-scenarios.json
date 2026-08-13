@@ -110,6 +110,7 @@
     {
       "persona": "first-time",
       "expect": "answer",
+      "allowedMenuItemKinds": ["dessert"],
       "q": "can we get ice cream in magic kingdom"
     },
     {

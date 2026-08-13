@@ -201,11 +201,13 @@ proof: ${escapeHtml(data.result.proof ? `${data.result.proof.status}; ${data.res
         const options = document.createElement('div');
         options.className = 'clarification-options';
         for (const option of data.result.clarification?.options || []) {
-          if (!option.nextQuery) continue;
+          if (!option.nextQuery && !option.refinement) continue;
           const button = document.createElement('button');
           button.type = 'button';
           button.textContent = option.label;
-          button.onclick = () => sendQuestion({ classified: option.nextQuery }, `${displayQuery} → ${option.label}`);
+          button.onclick = () => option.refinement
+            ? sendQuestion({ plan: data.classified, refinement: option.refinement }, `${displayQuery} → ${option.label}`)
+            : sendQuestion({ classified: option.nextQuery }, `${displayQuery} → ${option.label}`);
           options.appendChild(button);
         }
         entry.insertBefore(options, entry.querySelector('pre'));

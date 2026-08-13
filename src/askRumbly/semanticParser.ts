@@ -5,13 +5,15 @@ import type {
   LocationEntityType,
   ParserEntity,
   ParserVocabulary,
+  BeverageRole,
+  MenuItemKind,
   QueryAction,
   QueryPlan,
   RestaurantFeature,
   SourceSpan,
 } from './queryPlan.ts';
 import { classifyWord, stripFunctionWordEdges } from './closedClass.ts';
-import { matchFoodSpans } from './foodLexicon.ts';
+import { lexiconHasTerm, matchFoodSpans } from './foodLexicon.ts';
 import { canonicalGuestTerm } from './foodSynonyms.ts';
 import {
   EDITORIAL_PATTERN,
@@ -19,6 +21,7 @@ import {
   RESTAURANT_PROXIMITY_CLOSE_PATTERN,
   resolveClaim,
 } from './claimRules.ts';
+import { ORDERING_AMBIGUITY_REASON } from './queryRefinement.ts';
 
 const ALLERGEN_PATTERNS: ReadonlyArray<{ keys: string[]; pattern: RegExp }> = [
   // Disney publishes one combined Gluten/Wheat label. Keep that exact
@@ -66,7 +69,7 @@ const DIETARY_PATTERNS = [
 // "alcoholic", and a guest asking for the virgin version must not be read as
 // asking for the opposite.
 const ALCOHOL_PATTERNS = [
-  { key: 'excluded' as const, pattern: /\b(?:non[\s-]?alcoholic|alcohol[\s-]?free|without\s+(?:the\s+)?alcohol|no\s+alcohol|virgin|mocktails?)\b/gi },
+  { key: 'excluded' as const, pattern: /\b(?:non[\s-]?alcoholic|alcohol[\s-]?free|without\s+(?:the\s+)?alcohol|no\s+alcohol|virgin|mocktails?|zero[\s-]?proof|spirit[\s-]?free)\b/gi },
   { key: 'required' as const, pattern: /\bwith\s+(?:alcohol|booze|liquor)\b|\b(?:alcoholic|spiked|boozy)\b/gi },
 ];
 
@@ -676,6 +679,81 @@ function meaningfulUnconsumed(query: string, spans: SourceSpan[]): string {
     .trim();
 }
 
+function explicitMenuItemKind(
+  terms: string[],
+  vocabulary: ParserVocabulary,
+): { terms: string[]; kind?: MenuItemKind } {
+  if (terms.length !== 1 || !vocabulary.foodLexicon) return { terms };
+  const term = terms[0].trim();
+  const patterns: Array<{ kind: MenuItemKind; suffix: RegExp }> = [
+    { kind: 'cocktail', suffix: /\s+(?:cocktails?)$/i },
+    { kind: 'dessert', suffix: /\s+(?:desserts?|treats?)$/i },
+    { kind: 'savory', suffix: /\s+(?:entr(?:e|é)es?|main courses?|savory (?:foods?|dish(?:es)?))$/i },
+  ];
+  for (const { kind, suffix } of patterns) {
+    const base = term.replace(suffix, '').trim();
+    const canonicalBase = normalizeFoodTerm(base.replace(/[\u2010-\u2015-]+/g, ' '));
+    // A generic role may refine a phrase, but it must not turn a concrete
+    // food such as “chocolate ice cream” into a broader chocolate search.
+    if (canonicalBase.split(/[^a-z0-9]+/i).filter(Boolean).length >= 2
+      && base !== term
+      && lexiconHasTerm(vocabulary.foodLexicon, canonicalBase)) {
+      return { terms: [canonicalGuestTerm(canonicalBase)], kind };
+    }
+  }
+  return { terms };
+}
+
+function explicitBeverageRole(
+  terms: string[],
+  sourceText: string,
+  alcohol: QueryPlan['constraints']['alcohol'],
+  vocabulary: ParserVocabulary,
+): { terms: string[]; kind?: MenuItemKind; beverageRole?: BeverageRole } {
+  if (!vocabulary.foodLexicon) return { terms };
+  const coordinated = /\b(?:and|or)\s+(?:a\s+|an\s+)?(?:drinks?|beverages?)\b|\b(?:drinks?|beverages?)\s+(?:and|or)\b/i.test(sourceText);
+  if (coordinated) return { terms };
+
+  // A bare generic beverage still needs one canonical item concept so the
+  // executor can prove an actual menu row. Alcohol wording resolves its kind;
+  // the noun spelling/number should not create different searches.
+  if (/^(?:(?:where can i (?:find|get)|find|get|show me|i (?:want|need))\s+)?(?:an?\s+)?(?:(?:non[\s-]?alcoholic|alcohol[\s-]?free|alcoholic|spiked|boozy)\s+)(?:drinks?|beverages?)[?.!]*$/i.test(sourceText.trim())
+    && alcohol != null) {
+    return {
+      terms: ['drink'],
+      kind: alcohol === 'required' ? 'cocktail' : 'non_alcoholic_drink',
+    };
+  }
+
+  const sourceMatch = sourceText.match(/\b(.+?)\s+(?:(?:non[\s-]?alcoholic|alcohol[\s-]?free|alcoholic|spiked|boozy)\s+)?(?:drinks?|beverages?)\b/i);
+  const splitAlcoholRole = terms.length === 2 && /^(?:drinks?|beverages?)$/i.test(terms[1]);
+  if (terms.length !== 1 && !splitAlcoholRole) return { terms };
+  const strippedSingleTerm = terms.length === 1
+    ? terms[0].replace(/\s+(?:drinks?|beverages?)$/i, '').trim()
+    : '';
+  const candidates = [
+    ...(terms.length === 1 && strippedSingleTerm !== terms[0] ? [strippedSingleTerm] : []),
+    ...(splitAlcoholRole ? [terms[0]] : []),
+    ...(sourceMatch?.[1] ? [sourceMatch[1]
+      .replace(/^.*?\b(?:find|get|show|want|need|have|serve|serves|sell|sells|offer|offers)\s+(?:me\s+|us\s+)?(?:an?\s+)?/i, '')
+      .replace(/\b(?:non[\s-]?alcoholic|alcohol[\s-]?free|alcoholic|spiked|boozy)\s+/gi, '')
+      .trim()] : []),
+  ];
+  const base = candidates
+    .map((candidate) => normalizeFoodTerm(candidate))
+    .find((candidate) => candidate.split(/[^a-z0-9]+/i).filter(Boolean).length >= 2
+      && lexiconHasTerm(vocabulary.foodLexicon!, candidate));
+  if (!base) return { terms };
+  return {
+    terms: [canonicalGuestTerm(base)],
+    ...(alcohol === 'required'
+      ? { kind: 'cocktail' as const }
+      : alcohol === 'excluded'
+        ? { kind: 'non_alcoholic_drink' as const }
+        : { beverageRole: 'unspecified' as const }),
+  };
+}
+
 export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): QueryPlan {
   const sourceText = query.trim();
   // These substitutions preserve string length, so every extracted span still
@@ -762,6 +840,11 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     vocabulary
   );
   let foodTerms = foods.terms.filter((term) => normalizeForMatching(term) !== normalizeForMatching(cuisine.value ?? ''));
+  const zeroProofCocktailRequest = /\b(?:mocktails?|zero[\s-]?proof(?:\s+cocktails?)?|spirit[\s-]?free(?:\s+cocktails?)?|virgin\s+cocktails?|non[\s-]?alcoholic\s+cocktails?|alcohol[\s-]?free\s+cocktails?)\b/i.test(grammarText);
+  if (zeroProofCocktailRequest
+    && (foodTerms.length === 0 || (foodTerms.length === 1 && /^cocktails?$/i.test(foodTerms[0])))) {
+    foodTerms = ['mocktail'];
+  }
   let fallbackFoodSpan: SourceSpan | undefined;
   if (foodTerms.length === 0 && allergens.keys.length > 0) {
     const match = analysisText.match(/\b(?:gluten|wheat|dairy|milk|egg|soy|nut|peanut|shellfish)[\s-]?free\s+([a-z]+(?:\s+(?!anywhere\b|at\b|in\b|near\b|or\b)[a-z]+)?)(?=\s+(?:anywhere|at|in|near|or am)\b|[?.!]*$)/i);
@@ -793,6 +876,40 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     && (action === 'find' || action === 'check_menu')
     && linkedEntities.some((entity) => entity.type === 'restaurant')) {
     action = 'open_menu';
+  }
+  const explicitKind = explicitMenuItemKind(foodTerms, vocabulary);
+  foodTerms = explicitKind.terms;
+  let requestedMenuItemKind = explicitKind.kind;
+  const beverageRole = explicitBeverageRole(foodTerms, grammarText, alcohol, vocabulary);
+  foodTerms = beverageRole.terms;
+  requestedMenuItemKind ??= beverageRole.kind;
+  if (!requestedMenuItemKind) {
+    const savoryQualifier = normalizeFoodTerm(grammarText.match(/\b(.+?)\s+savory\s+(?:foods?|dish(?:es)?)\b/i)?.[1]
+      .replace(/^.*?\b(?:find|get|show|want|need|have|serve|serves|sell|sells|offer|offers)\s+(?:me\s+|us\s+)?/i, '')
+      .replace(/[\u2010-\u2015-]+/g, ' ')
+      .trim() ?? '');
+    if (savoryQualifier
+      && savoryQualifier.split(/[^a-z0-9]+/i).filter(Boolean).length >= 2
+      && vocabulary.foodLexicon
+      && lexiconHasTerm(vocabulary.foodLexicon, savoryQualifier)) {
+      foodTerms = [canonicalGuestTerm(savoryQualifier)];
+      requestedMenuItemKind = 'savory';
+    }
+  }
+  if (alcohol === 'excluded'
+    && foodTerms.length > 0
+    && requestedMenuItemKind == null
+    && zeroProofCocktailRequest) {
+    requestedMenuItemKind = 'non_alcoholic_drink';
+  }
+  if (alcohol === 'excluded'
+    && (requestedMenuItemKind == null || requestedMenuItemKind === 'non_alcoholic_drink')
+    && foodTerms.some((term) => normalizeForMatching(term).replace(/-/g, ' ') === 'old fashioned')) {
+    // "Virgin Old Fashioned" names a zero-proof rendition of the cocktail,
+    // not any non-alcoholic row containing the adjectives (milk and soda
+    // floats included). Fail closed when the current data has no such drink.
+    requestedMenuItemKind = 'non_alcoholic_drink';
+    beverageRole.beverageRole = 'zero_proof_cocktail';
   }
   const operationSpans = [
     ...collectPatternSpans(analysisText, /\b(?:under|below|less than|up to)\s*\$\s*\d+(?:\.\d{1,2})?/gi),
@@ -841,6 +958,15 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...recencySpans, ...alcoholSpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
   const unconsumed = meaningfulUnconsumed(analysisText, consumedSpans);
   const reasons: string[] = [];
+  const priceOperation = /\b(?:cheapest|lowest priced|least expensive)\b/i.test(grammarText)
+    ? 'cheapest' as const
+    : /\b(?:under|below|less than|up to)\s*\$/i.test(grammarText) ? 'maximum' as const : undefined;
+  const maxPrice = Number(grammarText.match(/\b(?:under|below|less than|up to)\s*\$\s*(\d+(?:\.\d{1,2})?)/i)?.[1]) || undefined;
+  const distanceOperation = /\b(?:closest|nearest)\b/i.test(grammarText)
+    ? 'nearest' as const
+    : /\b(?:near me|nearby|around here|close by)\b/i.test(grammarText) || proximityClose
+      ? 'nearby' as const
+      : undefined;
 
   if (claimType === 'allergy_safety') reasons.push('Safety cannot be inferred; offer to search Disney-published labels instead.');
   if (claimType === 'cross_contact') reasons.push('Cross-contact is not represented in the local dataset.');
@@ -932,6 +1058,10 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     action = 'clarify';
     reasons.push('What time should count as late night for this search?');
   }
+  if (priceOperation === 'cheapest' && distanceOperation === 'nearest') {
+    action = 'clarify';
+    reasons.push(ORDERING_AMBIGUITY_REASON);
+  }
 
   const riskyUnconsumed = unconsumed && !/^(?:cheapest|closest|nearest|menu|hours?|open|close|cart|stand|location|mobile order|walk up list|reservations?)$/i.test(unconsumed);
   const confidence = riskyUnconsumed ? 'low' : reasons.length > 0 ? 'medium' : 'high';
@@ -965,15 +1095,11 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       cuisine: cuisine.value,
       recency: asksWhatsNew ? { withinDays: RECENCY_WINDOW_DAYS } : undefined,
       alcohol,
-      priceOperation: /\b(?:cheapest|lowest priced|least expensive)\b/i.test(grammarText)
-        ? 'cheapest'
-        : /\b(?:under|below|less than|up to)\s*\$/i.test(grammarText) ? 'maximum' : undefined,
-      maxPrice: Number(grammarText.match(/\b(?:under|below|less than|up to)\s*\$\s*(\d+(?:\.\d{1,2})?)/i)?.[1]) || undefined,
-      distanceOperation: /\b(?:closest|nearest)\b/i.test(grammarText)
-        ? 'nearest'
-        : /\b(?:near me|nearby|around here|close by)\b/i.test(grammarText) || proximityClose
-          ? 'nearby'
-          : undefined,
+      menuItemKind: requestedMenuItemKind,
+      beverageRole: beverageRole.beverageRole,
+      priceOperation,
+      maxPrice,
+      distanceOperation,
       distanceAnchor,
       distanceRadiusMiles: distanceAnchorRadius(analysisText, distanceAnchor, linkedEntities),
       time: /\btomorrow\b/i.test(grammarText) ? 'tomorrow' : /\b(?:right now|currently|open now|rn)\b/i.test(grammarText) ? 'now' : /\b(?:today|this morning)\b/i.test(grammarText) ? 'today' : undefined,

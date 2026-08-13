@@ -1,6 +1,6 @@
 import { assessPlanCapability } from '../../../../src/askRumbly/capabilityRegistry.ts';
 import type { PlanExecutionResult, ExecutionTrace, ResultProof } from '../../../../src/askRumbly/execution.ts';
-import type { QueryPlan, RestaurantFeature } from '../../../../src/askRumbly/queryPlan.ts';
+import type { MenuItemKind, QueryPlan, RestaurantFeature } from '../../../../src/askRumbly/queryPlan.ts';
 import { normalizeForSearch } from '../../../../src/data/diacritics.ts';
 import { ALLERGY_ACKNOWLEDGEMENT_VERSION } from '../../../../src/data/allergyPolicy.ts';
 import { parkDisplayName, DISNEY_SPRINGS_AREAS, THEME_PARK_ORDER } from '../../../../src/data/locationNames.ts';
@@ -13,6 +13,16 @@ import { answerQuery, DEFAULT_ORIGIN, type ExecutorAction, type ExecutorResult }
 import { compileQueryPlan } from './plan_compiler.ts';
 import { FOOD_MATCH_PRIMARY, foodMatchStrength, itemProvesFoodTerm, proveExecutionResult, proveGlobalObjective, restaurantProvesCuisine, type ObjectiveCandidate } from './result_proof.ts';
 import { itemIsRecent } from '../../../../src/askRumbly/recency.ts';
+import {
+  effectiveMenuItemKindForPlan,
+  expectedMenuItemKindForTerm,
+  itemMatchesBeverageRole,
+  itemMatchesMenuItemKind,
+  MENU_ITEM_KIND_LABELS,
+  menuItemHasAlcohol,
+  menuItemKind,
+  preferredMenuItemVersion,
+} from '../../../../src/askRumbly/menuItemKind.ts';
 
 export type TypedPlanExecution = PlanExecutionResult<ExecutorAction>;
 // Candidate gathering intentionally runs before the independent proof pass.
@@ -65,8 +75,83 @@ function diversifyRestaurants<T extends { restaurant: Restaurant }>(rows: T[]): 
  */
 function presentationRank(item: MenuItem, term: string, plan: QueryPlan): number {
   const strength = foodMatchStrength(item, term);
-  const wantsAlcohol = plan.constraints.alcohol === 'required';
+  const wantsAlcohol = plan.constraints.alcohol === 'required'
+    || effectiveMenuItemKindForPlan(plan) === 'cocktail';
   return item.is_alcoholic && !wantsAlcohol ? strength - FOOD_MATCH_PRIMARY : strength;
+}
+
+const MENU_KIND_PRIORITY: MenuItemKind[] = ['cocktail', 'dessert', 'savory', 'non_alcoholic_drink'];
+
+function menuKindClarification(plan: QueryPlan, items: MenuItem[]): UnprovenPlanExecution | null {
+  if (plan.subject.foodTerms.length !== 1
+    || plan.constraints.menuItemKind != null
+    || plan.constraints.alcohol != null
+    || plan.constraints.beverageRole === 'zero_proof_cocktail'
+    || expectedMenuItemKindForTerm(plan.subject.foodTerms[0]) != null) return null;
+
+  const term = plan.subject.foodTerms[0];
+  const versionsByKey = new Map<string, MenuItem[]>();
+  for (const item of items.filter((candidate) => orderableItem(candidate) && itemProvesFoodTerm(candidate, term))) {
+    const key = `${item.restaurant_id}:${item.item_id}`;
+    versionsByKey.set(key, [...(versionsByKey.get(key) ?? []), item]);
+  }
+  // Menu-period/category duplicates are one guest-visible item identity. Let
+  // the same canonical-row policy used by proof and UI choose one version so
+  // duplicated metadata cannot invent an ambiguity prompt by itself.
+  const matches = [...versionsByKey.values()]
+    .map((versions) => preferredMenuItemVersion(plan, versions, itemProvesFoodTerm))
+    .filter((item): item is MenuItem => Boolean(item));
+  const allVenues = new Set(matches.map((item) => item.restaurant_id));
+  if (allVenues.size < 2
+    && plan.subject.restaurantIds.length === 0
+    && plan.constraints.beverageRole == null) return null;
+  const venuesByKind = new Map<MenuItemKind, Set<string>>();
+  for (const item of matches) {
+    const kind = menuItemKind(item);
+    if (!kind) continue;
+    const venues = venuesByKind.get(kind) ?? new Set<string>();
+    venues.add(item.restaurant_id);
+    venuesByKind.set(kind, venues);
+  }
+  // One-off riffs stay behind the dominant interpretation. A second role is
+  // material only when it appears at several scoped venues and represents at
+  // least five percent of the scoped candidate set.
+  const represented = MENU_KIND_PRIORITY.filter((kind) => (venuesByKind.get(kind)?.size ?? 0) > 0);
+  const eligibleKinds = plan.constraints.beverageRole === 'unspecified'
+    ? represented.filter((kind) => kind === 'cocktail' || kind === 'non_alcoholic_drink')
+    : represented;
+  const restaurantScoped = plan.subject.restaurantIds.length > 0;
+  const polysemousOldFashioned = normalizeForSearch(term).replace(/[^a-z0-9]+/g, ' ').trim() === 'old fashioned';
+  const material = plan.constraints.beverageRole === 'unspecified'
+    // The role came from the guest's words, not an accidental minority row.
+    // Keep both continuations available even when the current scope has only
+    // one; selecting the absent branch then returns an honest no-match.
+    ? (['cocktail', 'non_alcoholic_drink'] satisfies MenuItemKind[])
+    : restaurantScoped ? eligibleKinds : MENU_KIND_PRIORITY.filter((kind) => {
+    const count = venuesByKind.get(kind)?.size ?? 0;
+    if (polysemousOldFashioned) return count > 0;
+    return count >= (allVenues.size <= 10 ? 2 : 3) && count / allVenues.size >= 0.05;
+  });
+  if (material.length < 2) return null;
+
+  const orderedKinds = [...material].sort((a, b) =>
+    (venuesByKind.get(b)?.size ?? 0) - (venuesByKind.get(a)?.size ?? 0));
+  const prompt = `What kind of ${term} did you mean?`;
+  const capability = assessPlanCapability(plan);
+  return {
+    kind: 'clarification',
+    text: prompt,
+    capability: { ...capability, disposition: 'clarify', reason: 'The menu phrase spans materially different item kinds in the current result set.' },
+    clarification: {
+      kind: 'menu_item_kind',
+      prompt,
+      options: orderedKinds.map((kind) => ({
+        id: `menu-item-kind:${kind}`,
+        label: MENU_ITEM_KIND_LABELS[kind],
+        refinement: { kind: 'menu_item_kind', value: kind },
+      })),
+    },
+  };
 }
 
 function hasGenericFood(plan: QueryPlan): boolean {
@@ -405,13 +490,16 @@ function nativeVerifiedFoodAnswer(
   trace: ExecutionTrace,
 ): UnprovenPlanExecution | null {
   if (plan.subject.foodTerms.length === 0) return null;
+  const effectiveMenuKind = effectiveMenuItemKindForPlan(plan);
   const restaurants = new Map(data.restaurants.map((restaurant) => [restaurant.restaurant_id, restaurant]));
   const byRestaurant = new Map<string, MenuItem[]>();
   for (const item of data.menuItems) {
     if (!item.show_in_menu || !orderableItem(item)) continue;
     if (plan.constraints.priceOperation === 'cheapest' && item.price_value <= 0) continue;
-    if (plan.constraints.alcohol === 'required' && !item.is_alcoholic) continue;
-    if (plan.constraints.alcohol === 'excluded' && item.is_alcoholic) continue;
+    if (plan.constraints.alcohol === 'required' && !menuItemHasAlcohol(item)) continue;
+    if (plan.constraints.alcohol === 'excluded' && menuItemHasAlcohol(item)) continue;
+    if (plan.constraints.beverageRole === 'zero_proof_cocktail'
+      && !itemMatchesBeverageRole(item, 'zero_proof_cocktail')) continue;
     const list = byRestaurant.get(item.restaurant_id) ?? [];
     list.push(item);
     byRestaurant.set(item.restaurant_id, list);
@@ -448,7 +536,21 @@ function nativeVerifiedFoodAnswer(
         return plan.constraints.priceOperation === 'cheapest' ? sorted.slice(0, 1) : sorted;
       })
       .forEach((item) => selectedByKey.set(`${item.restaurant_id}:${item.item_id}`, item));
+    // A source item identity can have several menu-period/category versions.
+    // Retain an identity only when one canonical version can itself witness
+    // the food and all effective constraints; otherwise proof and the screen
+    // could each choose a different row and manufacture a cross-version hit.
+    for (const [key] of selectedByKey) {
+      const versions = available.filter((item) => `${item.restaurant_id}:${item.item_id}` === key);
+      const preferred = preferredMenuItemVersion(plan, versions, itemProvesFoodTerm);
+      if (!preferred
+        || !plan.subject.foodTerms.some((term) => itemProvesFoodTerm(preferred, term))
+        || (effectiveMenuKind != null && !itemMatchesMenuItemKind(preferred, effectiveMenuKind))) {
+        selectedByKey.delete(key);
+      } else selectedByKey.set(key, preferred);
+    }
     const selected = Array.from(selectedByKey.values());
+    if (selected.length === 0) return [];
     const distance = restaurantDistance(origin, restaurant);
     const objectiveScore = plan.constraints.priceOperation === 'cheapest'
       ? selected.reduce((sum, item) => sum + (item.price_value > 0 ? item.price_value : Infinity), 0)
@@ -463,16 +565,21 @@ function nativeVerifiedFoodAnswer(
       entry.items.map((item) => presentationRank(item, entry.term, plan))));
     return [{ restaurant, items: selected, distance, objectiveScore, bestRank }];
   });
-  // Rank only separates ordinary lists. Objective winner sets are exact and
-  // must not be reweighted, and a guest who said "near me" or "cheapest" asked
-  // for that ordering explicitly -- reordering it would be answering a
-  // different question. Distance still ranks the rest, but as an incidental
-  // tiebreak it yields to how well a row actually answers the question.
-  const objectivelyOrdered = plan.constraints.priceOperation != null || plan.constraints.distanceOperation != null;
+  // Admission and proof have already removed rows that do not answer the
+  // requested food/kind. Once current location is available, ordinary result
+  // lists retain Rumbly's established closest-first behavior. Semantic rank is
+  // still the first ordering key without location and remains the tiebreaker
+  // for venues at the same distance. A price objective continues to own the
+  // ordering when the guest explicitly asks for it.
+  const proximityFirst = origin != null && plan.constraints.priceOperation == null;
   rows.sort((a, b) => {
-    const rankDifference = objectivelyOrdered ? 0 : b.bestRank - a.bestRank;
+    const rankDifference = b.bestRank - a.bestRank;
     const objectiveDifference = a.objectiveScore - b.objectiveScore;
-    return rankDifference || objectiveDifference || a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
+    return proximityFirst
+      ? objectiveDifference || rankDifference || a.restaurant.restaurant.localeCompare(b.restaurant.restaurant)
+      : plan.constraints.priceOperation != null
+        ? objectiveDifference || rankDifference || a.restaurant.restaurant.localeCompare(b.restaurant.restaurant)
+        : rankDifference || objectiveDifference || a.restaurant.restaurant.localeCompare(b.restaurant.restaurant);
   });
   if (rows.length === 0) return null;
 
@@ -678,6 +785,16 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     applied.push('generic-meal-as-entree');
   }
 
+  const effectiveMenuKind = effectiveMenuItemKindForPlan(plan);
+  if (effectiveMenuKind != null && plan.subject.foodTerms.length === 1) {
+    const term = plan.subject.foodTerms[0];
+    menuItems = menuItems.filter((item) => !itemProvesFoodTerm(item, term)
+      || itemMatchesMenuItemKind(item, effectiveMenuKind));
+    applied.push(plan.constraints.menuItemKind != null
+      ? `menu-item-kind:${effectiveMenuKind}`
+      : `menu-item-kind:inferred:${effectiveMenuKind}`);
+  }
+
   const menuKeys = new Set(menuItems.map((item) => `${item.restaurant_id}:${item.item_id}`));
   const exposeFilteredAllergyRows = plan.constraints.allergenKeys.length > 0;
   const executionMenuItems = exposeFilteredAllergyRows
@@ -759,8 +876,28 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
   }
   if (genericFood && itemConstrained) return nativeList(plan, data, origin, trace);
 
+  const clarification = menuKindClarification(plan, menuItems);
+  if (clarification) return clarification;
+
   const verifiedFoodAnswer = nativeVerifiedFoodAnswer(plan, data, origin, trace);
   if (verifiedFoodAnswer) return verifiedFoodAnswer;
+
+  // A resolved kind is a hard semantic constraint. If it has no witness in
+  // the current scope, stop here instead of falling through to the legacy
+  // adapter (which deliberately cannot represent the kind).
+  if ((plan.constraints.menuItemKind != null || plan.constraints.beverageRole === 'zero_proof_cocktail')
+    && plan.subject.foodTerms.length > 0) {
+    const requested = plan.subject.foodTerms.join(plan.subject.foodMode === 'any' ? ' or ' : ' and ');
+    const interpretation = plan.constraints.beverageRole === 'zero_proof_cocktail'
+      ? 'a zero-proof version of the cocktail'
+      : MENU_ITEM_KIND_LABELS[plan.constraints.menuItemKind!].toLowerCase();
+    return {
+      kind: 'no-match',
+      text: `I understood "${requested}" as ${interpretation}, but didn't find a verified match that satisfies every requested constraint.`,
+      trace,
+      safety: acknowledgement(plan),
+    };
+  }
 
   if (plan.action === 'check_menu' && restaurants.length === 1 && plan.subject.foodTerms.length > 0) {
     const restaurant = restaurants[0];
@@ -779,6 +916,25 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     return {
       kind: 'no-match',
       text: `I didn't find a matching menu item that Disney lists for the requested allergy label(s). Disney's labels are informational; ask a Cast Member about your needs before ordering.`,
+      trace,
+      safety: acknowledgement(plan),
+    };
+  }
+
+  // Native filtering has already applied the restaurant-level constraints.
+  // Falling through would erase them before compiling the legacy adapter and
+  // can turn an honest scoped miss into either a broader answer or an adapter
+  // error. A specific food with no native witness must fail closed here.
+  if (plan.subject.foodTerms.length > 0 && (
+    plan.constraints.requiredFeatures.length > 0
+    || plan.constraints.excludedFeatures.length > 0
+    || plan.constraints.serviceStyle != null
+    || plan.constraints.cuisine != null
+  )) {
+    const requested = plan.subject.foodTerms.join(plan.subject.foodMode === 'any' ? ' or ' : ' and ');
+    return {
+      kind: 'no-match',
+      text: `I understood the requested restaurant constraints, but didn't find a verified "${requested}" match that satisfies all of them.`,
       trace,
       safety: acknowledgement(plan),
     };

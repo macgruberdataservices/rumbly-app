@@ -19,11 +19,16 @@ import { runAskRumbly } from '../../../../src/askRumbly/appExecutor.ts';
 import { parseQueryPlan } from '../../../../src/askRumbly/semanticParser.ts';
 import { loadData } from './data.ts';
 import { buildParserVocabulary } from './parser_vocabulary.ts';
+import type { MenuItemKind } from '../../../../src/askRumbly/queryPlan.ts';
+import { menuItemKind } from '../../../../src/askRumbly/menuItemKind.ts';
 
 interface Scenario {
   persona: string;
-  expect: 'answer' | 'decline' | 'either';
+  expect: 'answer' | 'decline' | 'either' | 'clarification';
   q: string;
+  clarificationKind?: 'menu_item_kind' | 'ordering';
+  requiredOptionIds?: string[];
+  allowedMenuItemKinds?: MenuItemKind[];
 }
 
 const verbose = process.argv.includes('--verbose');
@@ -46,20 +51,41 @@ interface Row extends Scenario { outcome: string; ok: boolean; detail: string }
 const rows: Row[] = corpus.scenarios.map((scenario) => {
   const plan = parseQueryPlan(scenario.q, vocabulary);
   let outcome: string;
+  let clarificationKind: string | undefined;
+  let optionIds: string[] = [];
+  let returnedKinds: Array<MenuItemKind | 'unclassified'> = [];
   try {
     const execution = runAskRumbly(scenario.q, data, withLocation ? SIMULATED_ORIGIN : undefined).result;
     const proof = 'proof' in execution
       ? (execution as { proof?: { status: string } }).proof?.status
       : undefined;
     outcome = proof && proof !== 'proven' ? `${execution.kind}:${proof}` : execution.kind;
+    if (execution.kind === 'clarification') {
+      clarificationKind = execution.clarification?.kind;
+      optionIds = execution.clarification?.options.map((option) => option.id) ?? [];
+    }
+    if (execution.kind === 'answer' && execution.itemKeys?.length) {
+      const keys = new Set(execution.itemKeys);
+      returnedKinds = [...new Set(data.menuItems
+        .filter((item) => keys.has(`${item.restaurant_id}:${item.item_id}`))
+        .map((item) => menuItemKind(item) ?? 'unclassified'))];
+    }
   } catch (error) {
     outcome = `throw:${(error as Error).message.slice(0, 40)}`;
   }
-  const ok = scenario.expect === 'answer'
+  const shapeOk = scenario.expect === 'answer'
     ? outcome === 'answer'
+    : scenario.expect === 'clarification'
+      ? outcome === 'clarification'
     : scenario.expect === 'decline'
       ? DECLINE_SHAPES.has(outcome)
       : outcome === 'answer' || outcome.startsWith('no-match');
+  const clarificationOk = (!scenario.clarificationKind || clarificationKind === scenario.clarificationKind)
+    && (scenario.requiredOptionIds?.every((id) => optionIds.includes(id)) ?? true);
+  const contentOk = !scenario.allowedMenuItemKinds
+    || (returnedKinds.length > 0 && returnedKinds.every((kind) =>
+      kind !== 'unclassified' && scenario.allowedMenuItemKinds?.includes(kind)));
+  const ok = shapeOk && clarificationOk && contentOk;
   return {
     ...scenario,
     outcome,
@@ -68,6 +94,8 @@ const rows: Row[] = corpus.scenarios.map((scenario) => {
       `${plan.claimType}/${plan.action}`,
       plan.diagnostics.claimRule ?? '',
       `food=[${plan.subject.foodTerms.join('|')}]`,
+      clarificationKind ? `clarification=${clarificationKind}[${optionIds.join('|')}]` : '',
+      returnedKinds.length ? `kinds=[${returnedKinds.join('|')}]` : '',
       plan.diagnostics.meaningfulUnconsumedText ? `left="${plan.diagnostics.meaningfulUnconsumedText}"` : '',
     ].filter(Boolean).join('  '),
   };
@@ -99,7 +127,7 @@ for (const persona of [...new Set(rows.map((row) => row.persona))]) {
 }
 
 console.log('\n=== by contract expectation ===');
-for (const expect of ['answer', 'decline', 'either'] as const) {
+for (const expect of ['answer', 'clarification', 'decline', 'either'] as const) {
   const group = rows.filter((row) => row.expect === expect);
   if (group.length === 0) continue;
   const passed = group.filter((row) => row.ok).length;

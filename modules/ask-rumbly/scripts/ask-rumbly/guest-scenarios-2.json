@@ -66,7 +66,7 @@
     { "persona": "frequent", "expect": "answer", "q": "italian food in epcot" },
     { "persona": "frequent", "expect": "answer", "q": "japanese restaurants at epcot" },
     { "persona": "frequent", "expect": "answer", "q": "any indian food at disney springs" },
-    { "persona": "frequent", "expect": "answer", "q": "where can i get a good old fashioned in disney springs" },
+    { "persona": "frequent", "expect": "clarification", "clarificationKind": "menu_item_kind", "requiredOptionIds": ["menu-item-kind:cocktail", "menu-item-kind:dessert"], "q": "where can i get a good old fashioned in disney springs" },
     { "persona": "frequent", "expect": "answer", "q": "wine bars in disney springs" },
     { "persona": "frequent", "expect": "answer", "q": "cheapest quick service in hollywood studios" },
     { "persona": "frequent", "expect": "answer", "q": "vegan options at satuli" },

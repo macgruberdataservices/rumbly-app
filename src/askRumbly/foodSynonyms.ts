@@ -47,7 +47,11 @@ export const FOOD_TERM_ALTERNATIVES: Readonly<Record<string, string[][]>> = {
   water: [['water'], ['dasani'], ['aquafina'], ['smartwater']],
   'bottled water': [['bottled', 'water'], ['dasani'], ['aquafina'], ['smartwater']],
   nuggets: [['nugget']],
-  'chicken nuggets': [['chicken', 'nugget'], ['nugget']],
+  // The chicken token is mandatory. A bare "Nuggets" row can still qualify
+  // when its single Disney category supplies chicken evidence, but Pretzel
+  // Nuggets must never enter a chicken-nugget result set merely because it is
+  // closer to the guest.
+  'chicken nuggets': [['chicken', 'nugget']],
   // Disney has been renaming pizzas to "flatbread" -- Pinocchio's Village Haus
   // now publishes All-Meat, Pepperoni, and Gourmet Cheese *Flatbread*, and its
   // only remaining row with "pizza" in the name is the plant-based one. A

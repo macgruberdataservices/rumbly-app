@@ -73,6 +73,27 @@ export type RestaurantFeature =
   | 'resort_bar'
   | 'wait_time';
 
+/**
+ * Mutually exclusive guest-facing menu roles used to resolve a phrase whose
+ * literal name matches different kinds of menu item. This is deliberately
+ * narrower than Disney's category taxonomy: it exists to preserve intent at
+ * the execution/proof boundary, not to replace menu categories.
+ */
+export type MenuItemKind =
+  | 'cocktail'
+  | 'non_alcoholic_drink'
+  | 'dessert'
+  | 'savory';
+
+export type BeverageRole =
+  | 'unspecified'
+  | 'zero_proof_cocktail';
+
+/** A bounded continuation operation that cannot erase unrelated constraints. */
+export type QueryPlanRefinement =
+  | { kind: 'menu_item_kind'; value: MenuItemKind }
+  | { kind: 'ordering'; value: 'cheapest' | 'nearest' };
+
 export interface QueryPlan {
   version: 1;
   sourceText: string;
@@ -124,6 +145,19 @@ export interface QueryPlan {
      * and matched almost nothing.
      */
     alcohol?: 'required' | 'excluded';
+    /**
+     * Set only after the guest supplies or selects an otherwise ambiguous
+     * menu-item role. The executor filters on it and proof independently
+     * witnesses it.
+     */
+    menuItemKind?: MenuItemKind;
+    /**
+     * A guest explicitly described the requested item as a drink or beverage,
+     * but did not say whether they meant an alcoholic or zero-proof version.
+     * Kept separate from `menuItemKind`: it narrows a clarification to the two
+     * beverage branches without pretending the ambiguity has been resolved.
+     */
+    beverageRole?: BeverageRole;
     priceOperation?: 'cheapest' | 'maximum';
     maxPrice?: number;
     /**

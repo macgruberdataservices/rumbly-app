@@ -55,6 +55,12 @@ export function compileQueryPlan(plan: QueryPlan): PlanCompilation {
   if (plan.constraints.maxPrice != null) {
     return decline(plan, 'The legacy executor has no maximum-price operation.');
   }
+  if (plan.constraints.menuItemKind != null) {
+    return decline(plan, 'The legacy executor cannot preserve a resolved menu-item kind.');
+  }
+  if (plan.constraints.beverageRole != null) {
+    return decline(plan, 'The legacy executor cannot preserve an unresolved beverage role.');
+  }
   if (plan.subject.excludedFoodTerms.length > 0) {
     return decline(plan, 'The legacy executor cannot preserve excluded food terms.');
   }

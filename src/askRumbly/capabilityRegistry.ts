@@ -111,6 +111,12 @@ export function assessPlanCapability(plan: QueryPlan): CapabilityDecision {
       reason: 'The local dataset does not provide structured kosher-meal evidence.',
     };
   }
+  // A parser-level ambiguity cannot make an unsupported or handoff-only
+  // claim answerable. Preserve that capability boundary before considering
+  // clarification state on the plan.
+  if (rule.disposition === 'unsupported' || rule.disposition === 'handoff') {
+    return { claimType: plan.claimType, ...rule };
+  }
   if (plan.action === 'clarify') {
     return {
       claimType: plan.claimType,

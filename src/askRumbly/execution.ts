@@ -1,4 +1,19 @@
 import type { CapabilityDecision } from './capabilityRegistry';
+import type { QueryPlanRefinement } from './queryPlan';
+
+export type ClarificationKind = 'menu_item_kind' | 'ordering';
+
+export interface ClarificationOption {
+  id: string;
+  label: string;
+  refinement: QueryPlanRefinement;
+}
+
+export interface ClarificationRequest {
+  kind: ClarificationKind;
+  prompt: string;
+  options: ClarificationOption[];
+}
 
 export interface ExecutionTrace {
   appliedConstraints: string[];
@@ -37,6 +52,8 @@ export type PlanExecutionResult<Action = unknown> =
       kind: 'clarification' | 'handoff' | 'unsupported';
       text: string;
       capability: CapabilityDecision;
+      /** Present when the follow-up can be applied without reparsing prose. */
+      clarification?: ClarificationRequest;
       actions?: Action[];
     }
   | {

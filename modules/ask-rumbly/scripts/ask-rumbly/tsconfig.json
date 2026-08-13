@@ -5,5 +5,5 @@
     "types": ["node"],
     "lib": ["ES2023", "DOM"]
   },
-  "include": ["./*.ts", "../../../../src/**/*.ts"]
+  "include": ["./*.ts", "../../../../src/**/*.ts", "../../../../src/screens/AskRumblyScreen.tsx"]
 }

@@ -1,5 +1,6 @@
 import type { PlanExecutionResult } from './execution';
 import type { QueryPlan } from './queryPlan';
+import { MENU_ITEM_KIND_LABELS } from './menuItemKind';
 import {
   cheapestResultTitle,
   nearestResultTitle,
@@ -10,6 +11,7 @@ import {
 
 export type AskRumblySuggestion =
   | { kind: 'query'; label: string; query: string }
+  | { kind: 'clarification'; label: string; optionId: string }
   | { kind: 'enable_location'; label: string };
 
 export interface AskRumblyPresentation {
@@ -139,9 +141,19 @@ function searchQuery(
       .map((key) => key === 'kids' ? 'kids' : key)
       .join(' ')
     : '';
-  const subject = terms.length
+  const rawSubject = terms.length
     ? `${dietaryPrefix ? `${dietaryPrefix} ` : ''}${joinTerms(terms, plan.subject.foodMode)}`
     : genericSubject(plan);
+  const baseSubject = plan.constraints.menuItemKind && terms.length > 0
+    ? plan.constraints.menuItemKind === 'cocktail'
+      ? `${rawSubject} cocktail`
+      : plan.constraints.menuItemKind === 'non_alcoholic_drink'
+        ? `${rawSubject} non-alcoholic drink`
+        : plan.constraints.menuItemKind === 'dessert'
+          ? `${rawSubject} dessert`
+          : `${rawSubject} savory dish`
+    : rawSubject;
+  const subject = plan.constraints.recency ? `new ${baseSubject}` : baseSubject;
   const prefix = options.operation === 'nearest'
     ? 'Where is the closest '
     : options.operation === 'cheapest'
@@ -152,8 +164,16 @@ function searchQuery(
   const exclusions = plan.subject.excludedFoodTerms.length === 0
     ? ''
     : ` without ${joinTerms(plan.subject.excludedFoodTerms, 'all')}`;
-  const time = plan.constraints.time === 'now' ? ' open now' : '';
-  return `${prefix}${allergies}${subject}${price}${exclusions}${locationSuffix(plan, options.includeLocation !== false)}${time}?`;
+  const alcohol = plan.constraints.alcohol === 'required'
+    ? ' with alcohol'
+    : plan.constraints.alcohol === 'excluded' && plan.constraints.menuItemKind !== 'non_alcoholic_drink'
+      ? ' without alcohol' : '';
+  const time = plan.constraints.time === 'now'
+    ? ' open now'
+    : plan.constraints.time === 'today'
+      ? ' today'
+      : plan.constraints.time === 'tomorrow' ? ' tomorrow' : '';
+  return `${prefix}${allergies}${subject}${alcohol}${price}${exclusions}${locationSuffix(plan, options.includeLocation !== false)}${time}?`;
 }
 
 function defaultSuggestions(seed: string): AskRumblySuggestion[] {
@@ -193,6 +213,9 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
   const hasLocation = locationLabels(plan).length > 0
     || plan.constraints.locationSet === 'theme_parks'
     || plan.subject.restaurantIds.length > 0;
+  const hasRecoverableSubject = terms.length > 0
+    || genericSubject(plan) !== 'food'
+    || plan.constraints.recency != null;
   if (plan.constraints.allergenKeys.length > 0 && terms.length > 0) {
     suggestions.push({
       kind: 'query',
@@ -219,7 +242,7 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
       });
     }
   }
-  if (singleInsideArea && terms.length > 0) {
+  if (singleInsideArea && hasRecoverableSubject) {
     const unscoped = searchQuery(plan, { includeLocation: false }).replace(/\?$/, '');
     // Nothing in Morocco is a good reason to offer World Showcase, not all of
     // EPCOT -- the pavilions next door are a two-minute walk.
@@ -234,7 +257,7 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
         : `${unscoped} near ${widerScope}?`,
     });
   }
-  if (hasLocation && terms.length > 0) {
+  if (hasLocation && hasRecoverableSubject) {
     suggestions.push({
       kind: 'query',
       label: 'Search all Disney World',
@@ -245,6 +268,9 @@ function noMatchSuggestions(plan: QueryPlan): AskRumblySuggestion[] {
 }
 
 function clarificationSuggestions(plan: QueryPlan, hasCurrentLocation: boolean): AskRumblySuggestion[] {
+  const needsLocation = (plan.action === 'distance' || plan.constraints.distanceOperation != null)
+    && !plan.constraints.distanceAnchor;
+  if (needsLocation && !hasCurrentLocation) return [{ kind: 'enable_location', label: 'Use my location' }];
   if (plan.claimType === 'allergy_safety' && plan.constraints.allergenKeys.length > 0) {
     return [{ kind: 'query', label: 'Search Disney labels instead', query: searchQuery(plan) }];
   }
@@ -257,9 +283,6 @@ function clarificationSuggestions(plan: QueryPlan, hasCurrentLocation: boolean):
       ];
     }
   }
-  const needsLocation = (plan.action === 'distance' || plan.constraints.distanceOperation != null)
-    && !plan.constraints.distanceAnchor;
-  if (needsLocation && !hasCurrentLocation) return [{ kind: 'enable_location', label: 'Use my location' }];
   if (plan.constraints.maxPrice != null && usefulFoodTerms(plan).length === 0) {
     const price = plan.constraints.maxPrice;
     return dedupeSuggestions([
@@ -402,6 +425,18 @@ export function buildAskRumblyPresentation(
     const directAnswer = ['open_menu', 'compare', 'check_feature', 'hours', 'distance'].includes(plan.action);
     const allergyAnswer = result.safety?.kind === 'allergy' || plan.constraints.allergenKeys.length > 0;
     const recencyAnswer = plan.constraints.recency != null;
+    const resolvedMenuKind = plan.constraints.menuItemKind;
+    const resolvedTerms = usefulFoodTerms(plan);
+    const resolvedSubject = resolvedTerms.join(plan.subject.foodMode === 'any' ? ' or ' : ' and ');
+    const resolvedKindTitle = resolvedMenuKind && resolvedSubject
+      ? resolvedMenuKind === 'cocktail'
+        ? `Here are the ${resolvedSubject} cocktail matches.`
+        : resolvedMenuKind === 'non_alcoholic_drink'
+          ? `Here are the non-alcoholic ${resolvedSubject} drink matches.`
+          : resolvedMenuKind === 'dessert'
+            ? `Here are the ${resolvedSubject} dessert matches.`
+            : `Here are the savory ${resolvedSubject} matches.`
+      : null;
     const popTartAlias = /\bpop[ -]?tarts?\b/i.test(plan.sourceText)
       && usefulFoodTerms(plan).includes('lunch box tart');
     const title = recencyAnswer
@@ -412,6 +447,8 @@ export function buildAskRumblyPresentation(
         : count === 1 ? 'Found one Disney-labeled match.' : 'Here are the Disney-labeled menu matches.'
       : popTartAlias
       ? 'Disney calls these Lunch Box Tarts.'
+      : resolvedKindTitle
+      ? resolvedKindTitle
       : context.subjectiveOptions
       ? subjectiveResultTitle(plan.sourceText, proximityRanked)
       : directAnswer
@@ -449,6 +486,8 @@ export function buildAskRumblyPresentation(
         ? 'Disney allergy labels'
         : popTartAlias
         ? 'Disney menu name'
+        : resolvedMenuKind
+        ? MENU_ITEM_KIND_LABELS[resolvedMenuKind]
         : context.subjectiveOptions
         ? 'A few options'
         : distanceAnswer
@@ -540,10 +579,17 @@ export function buildAskRumblyPresentation(
       && terms.length > 0
       && !allergy;
     const suggestions = noMatchSuggestions(plan);
+    const resolvedKind = plan.constraints.menuItemKind;
+    const resolvedSubject = joinTerms(terms, plan.subject.foodMode);
+    const resolvedKindLabel = plan.constraints.beverageRole === 'zero_proof_cocktail'
+      ? 'zero-proof cocktail'
+      : resolvedKind ? MENU_ITEM_KIND_LABELS[resolvedKind].replace(/^A\s+/i, '').toLowerCase() : '';
     return {
       tone: 'no-match',
       eyebrow: "Let's try that again",
-      title: broader
+      title: resolvedKind && resolvedSubject
+        ? `I couldn't verify a ${resolvedKindLabel} match for "${resolvedSubject}".`
+        : broader
         ? `I couldn't verify "${terms[0]}" as a current menu name.`
         : plainFoodLocationSearch && singleStrictLocation
         ? `I don't have any current menu matches for ${joinTerms(terms, plan.subject.foodMode)} in ${locationPhrase(singleStrictLocation)}.`
@@ -554,7 +600,9 @@ export function buildAskRumblyPresentation(
         : context.subjectiveOptions
         ? "Sorry, I couldn't find a matching menu item."
         : "Sorry, I couldn't find what you're looking for.",
-      message: broader
+      message: resolvedKind
+        ? result.text
+        : broader
         ? `Try searching for ${broader} instead.`
         : plainFoodLocationSearch && singleStrictLocation
         // A pavilion's neighbours are a two-minute walk, so widening to World
@@ -577,6 +625,7 @@ export function buildAskRumblyPresentation(
   }
 
   if (result.kind === 'clarification') {
+    const structured = result.clarification;
     const allergySafety = plan.claimType === 'allergy_safety';
     const unknownAllergyLabel = plan.claimType === 'disney_label' && plan.constraints.allergenKeys.length === 0;
     const needsLocation = /current location is required/i.test(result.text)
@@ -586,21 +635,31 @@ export function buildAskRumblyPresentation(
     return {
       tone: 'clarification',
       eyebrow: 'One quick detail',
-      title: unknownAllergyLabel
+      title: structured?.prompt ?? (unknownAllergyLabel
         ? "Sorry, I don't recognize that Disney allergy label."
         : allergySafety
         ? "I can search Disney's labels, but I can't decide what's safe."
         : needsLocation
           ? 'Where should I search from?'
-          : 'I need one more detail.',
-      message: unknownAllergyLabel
+          : 'I need one more detail.'),
+      message: structured?.kind === 'menu_item_kind'
+        ? 'I found that name on different kinds of menu items.'
+        : structured?.kind === 'ordering'
+          ? 'Choose which one should decide how the matches are ordered.'
+        : unknownAllergyLabel
         ? 'Try gluten/wheat, milk, egg, fish, shellfish, peanut, tree nut, sesame, or soy.'
         : allergySafety
         ? 'Continue to see only Disney-labeled items, then confirm with a Cast Member.'
         : needsLocation
           ? 'Use your location, or name a park, resort, or area.'
           : 'Try adding a food, restaurant, park, resort, price, or dining feature.',
-      suggestions: clarificationSuggestions(plan, context.hasCurrentLocation),
+      suggestions: structured
+        ? structured.options.map((option) => ({
+            kind: 'clarification' as const,
+            label: option.label,
+            optionId: option.id,
+          }))
+        : clarificationSuggestions(plan, context.hasCurrentLocation),
       trustNote,
     };
   }

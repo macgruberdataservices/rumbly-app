@@ -10,6 +10,7 @@ import { resortsShareGuestFacingFamily } from './location_aliases.ts';
 import { distanceAnchorById } from '../../../../src/askRumbly/distanceAnchors.ts';
 import { CLASS_TERM_CATEGORIES, FOOD_TERM_ALTERNATIVES } from '../../../../src/askRumbly/foodSynonyms.ts';
 import { itemIsRecent } from '../../../../src/askRumbly/recency.ts';
+import { effectiveMenuItemKindForPlan, itemMatchesBeverageRole, itemMatchesMenuItemKind, menuItemHasAlcohol, menuItemKindEvidence, preferredMenuItemVersion } from '../../../../src/askRumbly/menuItemKind.ts';
 
 export interface ProofTarget {
   restaurantIds?: string[];
@@ -68,9 +69,50 @@ function termAlternatives(term: string): string[][] {
   return required.length > 0 ? [required] : [];
 }
 
+function phrasePattern(value: string): string {
+  return normalizeForSearch(value)
+    .split(/[^a-z0-9]+/)
+    .filter(Boolean)
+    .map((token) => token.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('[^a-z0-9]+');
+}
+
+/** A brewery/city suffix describes provenance, not the thing being sold. */
+function termIsTrailingProvenance(item: MenuItem, term: string): boolean {
+  const pattern = phrasePattern(term);
+  if (!pattern) return false;
+  const name = normalizeForSearch(item.item);
+  // Require city/state-shaped evidence. A generic trailing qualifier such as
+  // "Cake - Chocolate" or "Lait - Milk" is still the requested food.
+  const cityState = new RegExp(`(?:[-–—,]\\s*)${pattern}\\s*,\\s*[a-z]{2}(?:\\s*(?:-|with)\\s*(?:a\\s+)?(?:draft|souvenir cup))?(?:\\s*\\|[^|]+)?\\s*$`, 'i').test(name);
+  if (cityState) return true;
+  // Some source names omit the state. Restrict that weaker shape to beverage
+  // provenance so ordinary qualifiers remain searchable.
+  const category = normalizeForSearch(`${item.category} ${item.category_group} ${(item.norm_categories ?? []).join(' ')}`);
+  return /\b(?:beer|lager|ale|cider|wine|spirits?[ -]cocktails?)\b/.test(category)
+    && new RegExp(`(?:[-–—,]\\s*)${pattern}(?:\\s+mo)?(?:\\s*(?:-|with)\\s*(?:a\\s+)?(?:draft|souvenir cup))?(?:\\s*\\|[^|]+)?\\s*$`, 'i').test(name);
+}
+
 
 export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
   const normalizedTerm = normalizeForSearch(term).trim();
+  if (termIsTrailingProvenance(item, term)) return false;
+  if (/^mocktails?$/.test(normalizedTerm)) {
+    const name = normalizeForSearch(item.item);
+    const published = normalizeForSearch(`${item.category} ${item.category_group}`);
+    if (/\b(?:zero[ -]proof|non[ -]alcoholic)[ -]cocktails?\b|\bmocktails?\b|\bconcoctions? without alcohol\b/.test(`${name} ${published}`)) return true;
+    if (/\bspirit[ -]free\b/.test(published)) {
+      const commodity = /\b(?:soda|water|tea|coffee|juice|jarritos?|agua fresca)\b/.test(name);
+      const craftedDescription = normalizeForSearch(item.description).split(',').filter(Boolean).length >= 3;
+      return !commodity && craftedDescription;
+    }
+    return false;
+  }
+  if (/^milk[ -]?shakes?$/.test(normalizedTerm)) {
+    const name = normalizeForSearch(item.item).trim();
+    return /\bmilk[ -]?shakes?\b/.test(name)
+      || /\bshakes?\b(?:\s*(?:[-–—|].*)?)?$/.test(name);
+  }
   const classCategories = CLASS_TERM_CATEGORIES[normalizedTerm];
   if (classCategories) {
     const published = (item.norm_categories ?? []).map((value) => normalizeForSearch(value));
@@ -135,10 +177,8 @@ export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
  *
  * `itemProvesFoodTerm` is deliberately binary: a row either carries evidence
  * or it does not, and nothing weaker is ever admitted. But the alternatives it
- * accepts are not equally good. "Chicken nuggets" accepts a bare `nugget` so
- * that a row named only "Nuggets" under a chicken category still counts --
- * which also let Pretzel Nuggets at the nearest venue lead the results for a
- * guest who asked for chicken nuggets.
+ * accepts are not equally good. A synonym or a bounded category completion
+ * can be valid without being as direct as the guest's own wording.
  *
  * So admission stays binary and *presentation order* gets this. Rank never
  * adds a row and never removes one; it decides which proven row a guest sees
@@ -147,8 +187,14 @@ export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
 export const FOOD_MATCH_PRIMARY = 3;
 export const FOOD_MATCH_SECONDARY = 2;
 export const FOOD_MATCH_INDIRECT = 1;
+export const FOOD_MATCH_EXACT = 4;
 
 export function foodMatchStrength(item: MenuItem, term: string): number {
+  const comparable = (value: string) => normalizeForSearch(value)
+    .replace(/[®™*]/g, '')
+    .replace(/[^a-z0-9]+/g, ' ')
+    .trim();
+  if (comparable(item.item) === comparable(term)) return FOOD_MATCH_EXACT;
   const alternatives = termAlternatives(term);
   const nameTokens = tokens(item.item);
   const index = alternatives.findIndex((alternative) => alternative.every((token) => nameTokens.has(token)));
@@ -183,23 +229,6 @@ export function restaurantProvesCuisine(restaurant: Restaurant, cuisine: string)
     : null;
 }
 
-function itemConstraintFailureCount(plan: QueryPlan, item: MenuItem): number {
-  let failures = 0;
-  if (plan.constraints.maxPrice != null && !(item.price_value > 0 && item.price_value <= plan.constraints.maxPrice)) failures += 1;
-  failures += plan.constraints.allergenKeys.filter((allergen) =>
-    !(item.is_allergy_friendly && (allergen === 'allergy-friendly' || item.allergens.includes(allergen)))).length;
-  failures += plan.constraints.dietaryKeys.filter((dietary) => dietary === 'kids'
-    ? !item.is_kids
-    : (dietary === 'plant-based' || dietary === 'vegetarian')
-      ? !/plant[ -]based/.test(normalizeForSearch(`${item.category} ${item.category_group}`))
-      : true).length;
-  const effectivePeriods = plan.subject.foodTerms.length > 0
-    ? plan.constraints.mealPeriods.filter((period) => period !== 'snack')
-    : plan.constraints.mealPeriods;
-  if (effectivePeriods.length > 0 && !effectivePeriods.some((period) => normalizeForSearch(item.dining_period).includes(period))) failures += 1;
-  return failures;
-}
-
 function targetItems(plan: QueryPlan, target: ProofTarget, data: LoadedData, restaurantId: string): MenuItem[] {
   const exactKeys = new Set(target.itemKeys ?? []);
   const itemIds = new Set(target.itemIds ?? []);
@@ -213,8 +242,9 @@ function targetItems(plan: QueryPlan, target: ProofTarget, data: LoadedData, res
     const key = `${item.restaurant_id}:${item.item_id}`;
     byKey.set(key, [...(byKey.get(key) ?? []), item]);
   }
-  return Array.from(byKey.values()).map((versions) => [...versions]
-    .sort((a, b) => itemConstraintFailureCount(plan, a) - itemConstraintFailureCount(plan, b))[0]);
+  return Array.from(byKey.values())
+    .map((versions) => preferredMenuItemVersion(plan, versions, itemProvesFoodTerm))
+    .filter((item): item is MenuItem => Boolean(item));
 }
 
 type LocationConstraint = NonNullable<QueryPlan['constraints']['location']>;
@@ -298,16 +328,44 @@ function proveItemConstraints(plan: QueryPlan, item: MenuItem, witnesses: Constr
       witnesses.push({ constraint: 'meal-period', itemKey: key, evidence: [item.dining_period] });
     } else failures.push(`${item.item} lacks the requested meal-period evidence`);
   }
+  const effectiveKind = effectiveMenuItemKindForPlan(plan);
+  if (effectiveKind != null) {
+    if (itemMatchesMenuItemKind(item, effectiveKind)) {
+      witnesses.push({
+        constraint: plan.constraints.menuItemKind != null
+          ? `menu-item-kind:${effectiveKind}`
+          : `menu-item-kind:inferred:${effectiveKind}`,
+        itemKey: key,
+        evidence: menuItemKindEvidence(item),
+      });
+    } else failures.push(`${item.item} does not prove menu-item kind: ${effectiveKind}`);
+  }
+  if (plan.constraints.beverageRole === 'zero_proof_cocktail') {
+    if (itemMatchesBeverageRole(item, 'zero_proof_cocktail')) {
+      witnesses.push({
+        constraint: 'beverage-role:zero-proof-cocktail',
+        itemKey: key,
+        evidence: menuItemKindEvidence(item),
+      });
+    } else failures.push(`${item.item} does not prove a zero-proof cocktail-style role`);
+  }
 }
 
 function proveAlcohol(plan: QueryPlan, item: MenuItem, witnesses: ConstraintWitness[], failures: string[]): void {
   if (plan.constraints.alcohol == null) return;
   const wanted = plan.constraints.alcohol === 'required';
-  if (item.is_alcoholic === wanted) {
+  const hasAlcohol = menuItemHasAlcohol(item);
+  if (hasAlcohol === wanted) {
     witnesses.push({
       constraint: `alcohol:${plan.constraints.alcohol}`,
       itemKey: `${item.restaurant_id}:${item.item_id}`,
-      evidence: [`is_alcoholic=${item.is_alcoholic}`],
+      evidence: [
+        `is_alcoholic=${item.is_alcoholic}`,
+        item.category,
+        item.category_group,
+        ...(item.norm_categories ?? []),
+        item.description,
+      ].filter((value): value is string => Boolean(value)),
     });
   } else failures.push(`${item.item} is ${wanted ? 'not ' : ''}alcoholic`);
 }

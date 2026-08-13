@@ -2,8 +2,10 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import { assessPlanCapability } from '../src/askRumbly/capabilityRegistry.ts';
-import { runAskRumbly } from '../src/askRumbly/appExecutor.ts';
+import { continueAskRumbly, runAskRumbly, runAskRumblyPlan } from '../src/askRumbly/appExecutor.ts';
 import { buildAskRumblyPresentation } from '../src/askRumbly/presentation.ts';
+import { applyQueryPlanRefinement } from '../src/askRumbly/queryRefinement.ts';
+import { itemMatchesMenuItemKind, menuItemHasAlcohol, menuItemKind, preferredMenuItemVersion } from '../src/askRumbly/menuItemKind.ts';
 import { resultListTitle, subjectiveResultTitle } from '../src/askRumbly/responseCopy.ts';
 import { parseQueryPlan } from '../src/askRumbly/semanticParser.ts';
 import { CLAIM_FEATURES, CLAIM_RULES } from '../src/askRumbly/claimRules.ts';
@@ -12,7 +14,7 @@ import { buildParserVocabulary } from '../modules/ask-rumbly/scripts/ask-rumbly/
 import { compileQueryPlan } from '../modules/ask-rumbly/scripts/ask-rumbly/plan_compiler.ts';
 import { answerQuery } from '../modules/ask-rumbly/scripts/ask-rumbly/executor.ts';
 import { executeQueryPlan } from '../modules/ask-rumbly/scripts/ask-rumbly/typed_plan_executor.ts';
-import { itemProvesFoodTerm } from '../modules/ask-rumbly/scripts/ask-rumbly/result_proof.ts';
+import { itemProvesFoodTerm, proveExecutionResult } from '../modules/ask-rumbly/scripts/ask-rumbly/result_proof.ts';
 import { THEME_PARK_ORDER } from '../src/data/locationNames.ts';
 import { DISTANCE_ANCHORS, DISTANCE_ANCHOR_SOURCE_VERSION } from '../src/askRumbly/distanceAnchors.ts';
 
@@ -78,6 +80,523 @@ test('food conjunctions are compositional while known dish names stay atomic', (
   assert.deepEqual(parse('Where can I get pizza or burgers?').plan.subject, {
     foodTerms: ['pizza', 'burgers'], excludedFoodTerms: [], foodMode: 'any', restaurantIds: [],
   });
+});
+
+test('divergent menu-item meanings ask a typed clarification before returning cards', () => {
+  const response = runAskRumbly('old fashioned', data);
+  assert.equal(response.plan.diagnostics.confidence, 'high');
+  assert.equal(response.result.kind, 'clarification');
+  assert.equal(response.result.clarification?.kind, 'menu_item_kind');
+  assert.ok(response.result.clarification?.options.some((option) => option.id === 'menu-item-kind:cocktail'));
+  assert.ok(response.result.clarification?.options.some((option) => option.id === 'menu-item-kind:dessert'));
+  assert.ok(response.result.clarification?.options.some((option) => option.id === 'menu-item-kind:savory'));
+
+  const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  assert.match(presentation.title, /what kind of old fashioned/i);
+  assert.match(presentation.message, /different kinds of menu items/i);
+  assert.ok(presentation.suggestions.every((suggestion) => suggestion.kind === 'clarification'));
+
+  for (const question of [
+    'Where can I get an Old-Fashioned?',
+    'OLD FASHIONED',
+    'Could you find me an old fashioned?',
+  ]) {
+    const variant = runAskRumbly(question, data);
+    assert.equal(variant.result.kind, 'clarification', question);
+    assert.equal(variant.result.clarification?.kind, 'menu_item_kind', question);
+    assert.deepEqual(variant.result.clarification?.options.map((option) => option.id),
+      response.result.clarification?.options.map((option) => option.id), question);
+  }
+
+  const itemsByKey = new Map(data.menuItems.map((item) => [`${item.restaurant_id}:${item.item_id}`, item]));
+  for (const option of response.result.clarification?.options ?? []) {
+    const continued = continueAskRumbly(response.plan, option, data);
+    assert.equal(continued.result.kind, 'answer', option.id);
+    assert.equal(continued.result.proof.status, 'proven', option.id);
+    assert.equal(continued.continuation?.optionId, option.id);
+    assert.equal(continued.plan.constraints.menuItemKind, option.refinement.value);
+    const returned = (continued.result.itemKeys ?? []).map((key) => itemsByKey.get(key)).filter(Boolean);
+    assert.ok(returned.length > 0, option.id);
+    assert.ok(returned.every((item) => itemMatchesMenuItemKind(item, option.refinement.value)), option.id);
+    if (option.refinement.value === 'cocktail') {
+      assert.match(returned[0].item, /^old[ -]fashioned$/i, 'an exact canonical cocktail leads after resolution');
+    }
+    const continuedPresentation = buildAskRumblyPresentation(continued.plan, continued.result, {
+      linkedKind: 'item',
+      totalPossibilities: continued.result.itemKeys?.length ?? 0,
+      hasCurrentLocation: false,
+    });
+    assert.match(continuedPresentation.title, option.refinement.value === 'cocktail'
+      ? /old fashioned cocktail matches/i
+      : option.refinement.value === 'non_alcoholic_drink'
+        ? /non-alcoholic old fashioned drink matches/i
+        : option.refinement.value === 'dessert'
+          ? /old fashioned dessert matches/i
+          : /savory old fashioned matches/i);
+  }
+});
+
+test('menu-item clarification options are scoped and refinements preserve the original plan', () => {
+  const response = runAskRumbly('where can i get a good old fashioned in disney springs', data);
+  assert.equal(response.result.kind, 'clarification');
+  assert.equal(response.result.clarification?.kind, 'menu_item_kind');
+  const cocktail = response.result.clarification?.options.find((option) => option.refinement.value === 'cocktail');
+  assert.ok(cocktail);
+  const continued = continueAskRumbly(response.plan, cocktail, data);
+  assert.equal(continued.result.kind, 'answer');
+  assert.equal(continued.plan.constraints.location?.label, 'Disney Springs');
+  assert.equal(continued.plan.constraints.location?.relation, 'in');
+  assert.equal(continued.plan.constraints.menuItemKind, 'cocktail');
+  assert.equal(continued.adaptation, undefined, 'the caller preserves the original subjective adaptation alongside the typed continuation');
+  assert.equal(continued.continuation?.basePlan.constraints.location?.label, 'Disney Springs');
+
+  for (const question of [
+    'Does the Boathouse have an old fashioned?',
+    'Does 50s Prime Time Cafe have an old fashioned?',
+    'old fashioned at Crocketts Tavern',
+    'old fashioned in Hollywood Studios',
+    'old fashioned in Grand Floridian Resort',
+  ]) {
+    const scoped = runAskRumbly(question, data);
+    assert.equal(scoped.result.kind, 'clarification', question);
+    assert.equal(scoped.result.clarification?.kind, 'menu_item_kind', question);
+    assert.ok((scoped.result.clarification?.options.length ?? 0) >= 2, question);
+  }
+});
+
+test('explicit generic role words refine a known phrase without weakening concrete foods', () => {
+  for (const [question, kind] of [
+    ['old fashioned cocktail', 'cocktail'],
+    ['old fashioned dessert', 'dessert'],
+    ['old fashioned entree', 'savory'],
+    ['old fashioned savory dish', 'savory'],
+    ['old-fashioned cocktail', 'cocktail'],
+    ['old-fashioned dessert', 'dessert'],
+    ['old-fashioned savory dish', 'savory'],
+  ]) {
+    const plan = parseQueryPlan(question, vocabulary);
+    assert.deepEqual(plan.subject.foodTerms, ['old fashioned'], question);
+    assert.equal(plan.constraints.menuItemKind, kind, question);
+    const result = executeQueryPlan(plan, data);
+    assert.equal(result.kind, 'answer', question);
+    assert.equal(result.proof.status, 'proven', question);
+  }
+  const concrete = parseQueryPlan('old fashioned pot roast', vocabulary);
+  assert.deepEqual(concrete.subject.foodTerms, ['old fashioned pot roast']);
+  assert.equal(concrete.constraints.menuItemKind, undefined);
+  const iceCream = parseQueryPlan('chocolate ice cream', vocabulary);
+  assert.deepEqual(iceCream.subject.foodTerms, ['chocolate ice cream']);
+  assert.equal(iceCream.constraints.menuItemKind, undefined);
+  const synonym = parseQueryPlan('pop tart dessert', vocabulary);
+  assert.deepEqual(synonym.subject.foodTerms, ['lunch box tart']);
+  assert.equal(synonym.constraints.menuItemKind, 'dessert');
+  for (const question of [
+    'virgin old fashioned cocktail',
+    'non-alcoholic old fashioned cocktail',
+    'old fashioned cocktail without alcohol',
+  ]) {
+    const plan = parseQueryPlan(question, vocabulary);
+    assert.equal(plan.constraints.alcohol, 'excluded', question);
+    assert.equal(plan.constraints.menuItemKind, 'cocktail', question);
+    const result = executeQueryPlan(plan, data);
+    assert.equal(result.kind, 'no-match', question);
+  }
+});
+
+test('generic beverage wording refines or clarifies one item instead of creating a cross-row AND query', () => {
+  for (const question of ['old fashioned drink', 'old fashioned beverage', 'old fashioned drink at The BOATHOUSE']) {
+    const response = runAskRumbly(question, data);
+    assert.deepEqual(response.plan.subject.foodTerms, ['old fashioned'], question);
+    assert.equal(response.plan.constraints.beverageRole, 'unspecified', question);
+    assert.equal(response.result.kind, 'clarification', question);
+    assert.deepEqual(response.result.clarification?.options.map((option) => option.id), [
+      'menu-item-kind:cocktail',
+      'menu-item-kind:non_alcoholic_drink',
+    ], question);
+  }
+
+  for (const question of ['old fashioned alcoholic drink', 'alcoholic old fashioned beverage']) {
+    const response = runAskRumbly(question, data);
+    assert.deepEqual(response.plan.subject.foodTerms, ['old fashioned'], question);
+    assert.equal(response.plan.constraints.alcohol, 'required', question);
+    assert.equal(response.plan.constraints.menuItemKind, 'cocktail', question);
+    assert.equal(response.result.kind, 'answer', question);
+    const keys = new Set(response.result.itemKeys ?? []);
+    assert.ok(keys.size > 0, question);
+    assert.ok([...keys].every((key) => data.menuItems.some((item) =>
+      `${item.restaurant_id}:${item.item_id}` === key
+      && itemProvesFoodTerm(item, 'old fashioned')
+      && itemMatchesMenuItemKind(item, 'cocktail')
+      && menuItemHasAlcohol(item))), question);
+  }
+
+  for (const question of [
+    'old fashioned non-alcoholic drink',
+    'non-alcoholic old fashioned beverage',
+    'virgin old fashioned',
+    'mocktail old fashioned',
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.deepEqual(response.plan.subject.foodTerms, ['old fashioned'], question);
+    assert.equal(response.plan.constraints.alcohol, 'excluded', question);
+    assert.equal(response.plan.constraints.menuItemKind, 'non_alcoholic_drink', question);
+    assert.equal(response.plan.constraints.beverageRole, 'zero_proof_cocktail', question);
+    assert.equal(response.result.kind, 'no-match', question);
+  }
+
+  for (const [question, alcohol, kind] of [
+    ['alcoholic drink', 'required', 'cocktail'],
+    ['alcoholic beverages', 'required', 'cocktail'],
+    ['non-alcoholic drink', 'excluded', 'non_alcoholic_drink'],
+    ['non alcoholic beverages', 'excluded', 'non_alcoholic_drink'],
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.deepEqual(response.plan.subject.foodTerms, ['drink'], question);
+    assert.equal(response.plan.constraints.alcohol, alcohol, question);
+    assert.equal(response.plan.constraints.menuItemKind, kind, question);
+    assert.notEqual(response.result.kind, 'error', question);
+  }
+
+  for (const [question, kind] of [
+    ['old fashioned dessert without alcohol', 'dessert'],
+    ['old fashioned savory dish without alcohol', 'savory'],
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.equal(response.plan.constraints.alcohol, 'excluded', question);
+    assert.equal(response.plan.constraints.menuItemKind, kind, question);
+  }
+
+  assert.deepEqual(parse('old fashioned drink and fries').plan.subject.foodTerms, ['old fashioned drink', 'fries']);
+  assert.deepEqual(parse('old fashioned beverage or burger').plan.subject.foodTerms, ['old fashioned beverage', 'burger']);
+  assert.equal(runAskRumbly('what is the weather for an old fashioned drink', data).result.kind, 'unsupported');
+});
+
+test('food plus restaurant-feature misses fail closed without dropping the feature', () => {
+  const miss = runAskRumbly('pizza with mobile order in Adventureland', data);
+  assert.equal(miss.plan.constraints.requiredFeatures.includes('mobile_order'), true);
+  assert.equal(miss.result.kind, 'no-match');
+  assert.ok(miss.result.trace.appliedConstraints.includes('feature:mobile_order'));
+
+  const match = runAskRumbly('burger with mobile order in Magic Kingdom', data);
+  assert.equal(match.result.kind, 'answer');
+  assert.equal(match.result.proof.status, 'proven');
+  assert.ok(match.result.proof.witnesses.some((entry) => entry.constraint === 'feature:mobile_order'));
+});
+
+test('zero-proof Old Fashioned intent can match a future explicit cocktail-style row', () => {
+  const template = data.menuItems.find((item) =>
+    `${item.restaurant_id}:${item.item_id}` === 'citricos:411454275');
+  assert.ok(template);
+  const futureItem = {
+    ...template,
+    item_id: 'future-zero-proof-old-fashioned',
+    item: 'Old Fashioned',
+    category: 'Spirit-Free Cocktails',
+    category_group: 'spirit-free-cocktails',
+    description: 'Spirit-free whiskey alternative, aromatic spice, orange peel',
+    is_alcoholic: false,
+    norm_categories: ['non-alcoholic'],
+  };
+  const futureData = {
+    ...data,
+    menuItems: [...data.menuItems, futureItem],
+  };
+  const response = runAskRumbly('virgin old fashioned', futureData);
+  assert.equal(response.plan.constraints.menuItemKind, 'non_alcoholic_drink');
+  assert.equal(response.plan.constraints.beverageRole, 'zero_proof_cocktail');
+  assert.equal(response.result.kind, 'answer');
+  assert.equal(response.result.proof.status, 'proven');
+  assert.ok(response.result.itemKeys?.includes('citricos:future-zero-proof-old-fashioned'));
+  assert.ok(response.result.proof.witnesses.some((entry) =>
+    entry.constraint === 'beverage-role:zero-proof-cocktail'));
+});
+
+test('no-match recovery preserves alcohol, recency, and meal intent when widening scope', () => {
+  const alcoholic = runAskRumbly('Where can I get a Dole Whip with alcohol in Magic Kingdom?', data);
+  assert.equal(alcoholic.result.kind, 'no-match');
+  const alcoholPresentation = buildAskRumblyPresentation(alcoholic.plan, alcoholic.result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  const allDisney = alcoholPresentation.suggestions.find((suggestion) =>
+    suggestion.kind === 'query' && suggestion.label === 'Search all Disney World');
+  assert.ok(allDisney && allDisney.kind === 'query');
+  const widenedAlcohol = parseQueryPlan(allDisney.query, vocabulary);
+  assert.equal(widenedAlcohol.constraints.alcohol, 'required');
+  assert.deepEqual(widenedAlcohol.subject.foodTerms, alcoholic.plan.subject.foodTerms);
+
+  const recent = runAskRumbly('What snacks are new in Liberty Square?', data);
+  assert.equal(recent.result.kind, 'no-match');
+  const recentPresentation = buildAskRumblyPresentation(recent.plan, recent.result, {
+    linkedKind: null,
+    totalPossibilities: 0,
+    hasCurrentLocation: false,
+  });
+  assert.ok(recentPresentation.suggestions.length > 0);
+  for (const suggestion of recentPresentation.suggestions) {
+    if (suggestion.kind !== 'query') continue;
+    const recovered = parseQueryPlan(suggestion.query, vocabulary);
+    assert.deepEqual(recovered.constraints.recency, recent.plan.constraints.recency, suggestion.query);
+    assert.deepEqual(recovered.constraints.mealPeriods, recent.plan.constraints.mealPeriods, suggestion.query);
+  }
+});
+
+test('resolved menu-item kind is independently required by result proof', () => {
+  const response = runAskRumbly('old fashioned', data);
+  assert.equal(response.result.kind, 'clarification');
+  const cocktail = response.result.clarification?.options.find((option) => option.refinement.value === 'cocktail');
+  const dessert = response.result.clarification?.options.find((option) => option.refinement.value === 'dessert');
+  assert.ok(cocktail && dessert);
+  const cocktailPlan = applyQueryPlanRefinement(response.plan, cocktail.refinement);
+  const dessertResult = continueAskRumbly(response.plan, dessert, data).result;
+  assert.equal(dessertResult.kind, 'answer');
+  const wrongKey = dessertResult.itemKeys[0];
+  const wrongItem = data.menuItems.find((item) => `${item.restaurant_id}:${item.item_id}` === wrongKey);
+  assert.ok(wrongItem);
+  const proof = proveExecutionResult(cocktailPlan, data, {
+    restaurantIds: [wrongItem.restaurant_id],
+    itemIds: [wrongItem.item_id],
+    itemKeys: [wrongKey],
+  });
+  assert.equal(proof.status, 'failed');
+  assert.ok(proof.failures.some((failure) => /menu-item kind/i.test(failure)));
+});
+
+test('competing global orderings use typed continuations and do not lose other constraints', () => {
+  const origin = { latitude: 28.4177, longitude: -81.5812 };
+  const response = runAskRumbly('cheapest and closest burger', data, origin);
+  assert.equal(response.plan.action, 'clarify');
+  assert.equal(response.result.kind, 'clarification');
+  assert.equal(response.result.clarification?.kind, 'ordering');
+  assert.deepEqual(response.result.clarification?.options.map((option) => option.id), [
+    'ordering:cheapest',
+    'ordering:nearest',
+  ]);
+  for (const option of response.result.clarification?.options ?? []) {
+    const continued = continueAskRumbly(response.plan, option, data, origin);
+    assert.equal(continued.result.kind, 'answer', option.id);
+    assert.equal(continued.result.proof.status, 'proven', option.id);
+    if (option.refinement.value === 'cheapest') {
+      assert.equal(continued.plan.constraints.priceOperation, 'cheapest');
+      assert.equal(continued.plan.constraints.distanceOperation, undefined);
+    } else {
+      assert.equal(continued.plan.constraints.priceOperation, undefined);
+      assert.equal(continued.plan.constraints.distanceOperation, 'nearest');
+    }
+  }
+
+  const rich = parseQueryPlan('cheapest and closest dairy-free burger in epcot under $20 open now', vocabulary);
+  const nearest = applyQueryPlanRefinement(rich, { kind: 'ordering', value: 'nearest' });
+  assert.deepEqual(nearest.subject, rich.subject);
+  assert.deepEqual(nearest.constraints.allergenKeys, rich.constraints.allergenKeys);
+  assert.deepEqual(nearest.constraints.location, rich.constraints.location);
+  assert.equal(nearest.constraints.maxPrice, 20);
+  assert.equal(nearest.constraints.time, 'now');
+  assert.equal(nearest.constraints.distanceOperation, 'nearest');
+  assert.equal(nearest.constraints.priceOperation, undefined);
+
+  const anchored = parseQueryPlan('cheapest and closest burger to Space Mountain', vocabulary);
+  assert.ok(anchored.constraints.distanceAnchor);
+  const anchoredCheapest = applyQueryPlanRefinement(anchored, { kind: 'ordering', value: 'cheapest' });
+  assert.equal(anchoredCheapest.constraints.distanceAnchor, undefined);
+
+  const nearScoped = runAskRumbly('cheapest and closest burger near Epcot', data);
+  assert.equal(nearScoped.result.kind, 'clarification');
+  assert.match(nearScoped.result.clarification?.options.find((option) => option.refinement.value === 'nearest')?.label ?? '', /closest near epcot/i);
+
+  const boundedNearest = runAskRumbly('closest burger under $15', data, origin);
+  assert.notEqual(boundedNearest.result.kind, 'clarification');
+  assert.equal(boundedNearest.plan.constraints.priceOperation, 'maximum');
+  assert.equal(boundedNearest.plan.constraints.distanceOperation, 'nearest');
+
+  const withoutLocation = runAskRumbly('cheapest and closest burger', data);
+  assert.equal(withoutLocation.result.kind, 'clarification');
+  assert.equal(withoutLocation.result.clarification?.kind, 'ordering');
+  const nearestOption = withoutLocation.result.clarification?.options.find((option) => option.refinement.value === 'nearest');
+  assert.ok(nearestOption);
+  const needsLocation = continueAskRumbly(withoutLocation.plan, nearestOption, data);
+  assert.equal(needsLocation.result.kind, 'clarification');
+  assert.match(needsLocation.result.text, /location/i);
+  const afterLocation = runAskRumblyPlan(needsLocation.plan, data, origin);
+  assert.equal(afterLocation.result.kind, 'answer');
+  assert.equal(afterLocation.plan.constraints.priceOperation, undefined);
+  assert.equal(afterLocation.plan.constraints.distanceOperation, 'nearest');
+
+  const unsupported = runAskRumbly('where is the cheapest and closest bathroom', data, origin);
+  assert.equal(unsupported.result.kind, 'unsupported');
+});
+
+test('menu-kind coherence generalizes beyond old fashioned without over-clarifying canonical terms', () => {
+  const ambiguous = runAskRumbly('blood orange', data);
+  assert.equal(ambiguous.result.kind, 'clarification');
+  assert.equal(ambiguous.result.clarification?.kind, 'menu_item_kind');
+
+  const expected = [
+    ['espresso martini', 'cocktail'],
+    ['cold brew', 'non_alcoholic_drink'],
+    ['st louis', 'savory'],
+  ];
+  const itemsByKey = new Map(data.menuItems.map((item) => [`${item.restaurant_id}:${item.item_id}`, item]));
+  for (const [question, kind] of expected) {
+    const response = runAskRumbly(question, data);
+    assert.equal(response.result.kind, 'answer', question);
+    const returned = (response.result.itemKeys ?? []).map((key) => itemsByKey.get(key)).filter(Boolean);
+    assert.ok(returned.length > 0, question);
+    assert.ok(returned.every((item) => menuItemKind(item) === kind), question);
+    if (question === 'st louis') assert.ok(returned.every((item) => /ribs?/i.test(item.item)));
+  }
+
+  for (const question of [
+    'Does Planet Hollywood have ice cream?',
+    "Does Chef Art Smith's Homecomin' have coffee?",
+    'coffee at Muddy Rivers',
+    'coffee at Stir',
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.equal(response.result.kind, 'no-match', question);
+  }
+
+  const pizza = data.menuItems.find((item) => /margherita pizza/i.test(item.item) && /thin crust pies/i.test(item.category));
+  assert.ok(pizza);
+  assert.equal(menuItemKind(pizza), 'savory');
+  const handLabeled = [
+    [/^churro iced latte$/i, 'non_alcoholic_drink'],
+    [/^coffee cake$/i, 'dessert'],
+    [/^beer cheese flatbread$/i, 'savory'],
+    [/^crab cake$/i, 'savory'],
+    [/^pizza margarita$/i, 'savory'],
+  ];
+  for (const [name, kind] of handLabeled) {
+    const item = data.menuItems.find((candidate) => name.test(candidate.item));
+    assert.ok(item, String(name));
+    assert.equal(menuItemKind(item), kind, item.item);
+  }
+
+  const cocktail = runAskRumbly('cocktail', data);
+  assert.equal(cocktail.result.kind, 'answer');
+  const cocktailKeys = new Set(cocktail.result.itemKeys ?? []);
+  const cocktailRows = [...cocktailKeys].map((key) => data.menuItems.find((item) =>
+    `${item.restaurant_id}:${item.item_id}` === key && itemMatchesMenuItemKind(item, 'cocktail'))).filter(Boolean);
+  assert.ok(cocktailRows.length > 0);
+  assert.equal(cocktailRows.length, cocktailKeys.size);
+  assert.ok(cocktailRows.every((item) => !/shrimp|prawn|cocktail sauce/i.test(item.item)));
+
+  const pie = runAskRumbly('pie', data);
+  assert.equal(pie.result.kind, 'clarification');
+  assert.ok(pie.result.clarification?.options.some((option) => option.refinement.value === 'dessert'));
+  assert.ok(pie.result.clarification?.options.some((option) => option.refinement.value === 'savory'));
+  for (const pattern of [/shepherd'?s pie/i, /lobster pot pie/i]) {
+    const item = data.menuItems.find((candidate) => pattern.test(candidate.item));
+    assert.ok(item, String(pattern));
+    assert.equal(menuItemKind(item), 'savory', item.item);
+  }
+
+  for (const question of [
+    'kentucky coffee',
+    'long island iced tea',
+    'bourbon lemonade',
+    'vodka lemonade',
+    'electric lemonade',
+    'hard root beer',
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.notEqual(response.result.kind, 'no-match', question);
+  }
+
+  const cheese = runAskRumbly('cheese', data);
+  assert.equal(cheese.result.kind, 'clarification');
+  assert.ok(!cheese.result.clarification?.options.some((option) => option.refinement.value === 'cocktail'));
+
+  const apple = runAskRumbly('apple', data);
+  assert.equal(apple.result.kind, 'clarification');
+  assert.equal(apple.result.clarification?.options.length, 4);
+
+  for (const question of [
+    'croissant at Sunshine Seasons',
+    'chocolate croissant at Sunshine Seasons',
+    'fresh fruit bowl at Kusafiri Coffee Shop and Bakery',
+  ]) {
+    assert.notEqual(runAskRumbly(question, data).result.kind, 'clarification', question);
+  }
+});
+
+test('hand-labeled item identities guard against classifier and duplicate-row circularity', () => {
+  const versions = (key) => data.menuItems.filter((item) => `${item.restaurant_id}:${item.item_id}` === key);
+  const cocktailPlan = runAskRumbly('cocktail', data).plan;
+  const cocktailAnswer = runAskRumbly('cocktail', data);
+  assert.equal(cocktailAnswer.result.kind, 'answer');
+  assert.ok(cocktailAnswer.result.itemKeys?.includes('hollywood-and-vine:19464892'));
+  const longIsland = preferredMenuItemVersion(
+    cocktailPlan,
+    versions('hollywood-and-vine:19464892'),
+    itemProvesFoodTerm,
+  );
+  assert.equal(longIsland?.category, 'Cocktails');
+  assert.equal(longIsland?.is_alcoholic, true);
+
+  const pie = runAskRumbly('pie', data);
+  assert.equal(pie.result.kind, 'clarification');
+  const dessertOption = pie.result.clarification?.options.find((option) => option.refinement.value === 'dessert');
+  const cocktailOption = pie.result.clarification?.options.find((option) => option.refinement.value === 'cocktail');
+  assert.ok(dessertOption && cocktailOption);
+  const dessert = continueAskRumbly(pie.plan, dessertOption, data);
+  const cocktail = continueAskRumbly(pie.plan, cocktailOption, data);
+  assert.equal(dessert.result.kind, 'answer');
+  assert.ok(dessert.result.itemKeys?.includes('wine-bar-george:19039758'));
+  assert.equal(cocktail.result.kind, 'answer');
+  assert.ok(!cocktail.result.itemKeys?.includes('wine-bar-george:19039758'));
+
+  const alcoholicShake = runAskRumbly('alcoholic milkshake', data);
+  assert.equal(alcoholicShake.result.kind, 'answer');
+  assert.ok(!alcoholicShake.result.itemKeys?.includes('the-cake-bake-shop-restaurant-by-gwendolyn-rogers:412252166'));
+
+  const alcoholicCheese = runAskRumbly('alcoholic cheese at Wine Bar George', data);
+  assert.equal(alcoholicCheese.result.kind, 'no-match');
+});
+
+test('hand-labeled Old Fashioned branches stay mutually exclusive', () => {
+  const response = runAskRumbly('old fashioned', data);
+  assert.equal(response.result.kind, 'clarification');
+  const expected = {
+    cocktail: 'belle-vue-lounge:18431661',
+    dessert: 'beaches-and-cream-soda-shop:17081902',
+    non_alcoholic_drink: 'citricos:411454275',
+    savory: '50s-prime-time-cafe:17015224',
+  };
+  const allWitnesses = Object.values(expected);
+  for (const [kind, requiredKey] of Object.entries(expected)) {
+    const option = response.result.clarification?.options.find((candidate) => candidate.refinement.value === kind);
+    assert.ok(option, kind);
+    const continued = continueAskRumbly(response.plan, option, data);
+    assert.equal(continued.result.kind, 'answer', kind);
+    assert.equal(continued.result.proof.status, 'proven', kind);
+    assert.ok(continued.result.itemKeys?.includes(requiredKey), kind);
+    assert.ok(allWitnesses.filter((key) => key !== requiredKey).every((key) =>
+      !continued.result.itemKeys?.includes(key)), kind);
+  }
+});
+
+test('zero-proof cocktail wording returns crafted zero-proof rows, not commodity beverages', () => {
+  for (const question of ['mocktail', 'zero proof cocktail', 'spirit-free cocktail', 'virgin cocktail', 'non-alcoholic cocktail']) {
+    const response = runAskRumbly(question, data);
+    assert.deepEqual(response.plan.subject.foodTerms, ['mocktail'], question);
+    assert.equal(response.plan.constraints.alcohol, 'excluded', question);
+    assert.equal(response.plan.constraints.menuItemKind, 'non_alcoholic_drink', question);
+    assert.equal(response.result.kind, 'answer', question);
+    assert.equal(response.result.proof.status, 'proven', question);
+    assert.ok(response.result.itemKeys?.includes('geo-82:412382726'), question);
+    for (const forbidden of [
+      'chill:411345770',
+      'energy-bytes:412651742',
+      'energy-bytes:412651745',
+      'rosa-mexicano:411952667',
+    ]) assert.ok(!response.result.itemKeys?.includes(forbidden), `${question}: ${forbidden}`);
+  }
 });
 
 test('suggest phrasing is treated as objective food discovery', () => {
@@ -648,6 +1167,11 @@ test('compiler refuses plans the old executor would silently weaken', () => {
   assert.equal(maximum.plan.constraints.maxPrice, 15);
   assert.equal(maximum.compilation.kind, 'not_compiled');
   assert.match(maximum.compilation.reason, /maximum-price/i);
+
+  const resolvedKind = compile('old fashioned cocktail');
+  assert.equal(resolvedKind.plan.constraints.menuItemKind, 'cocktail');
+  assert.equal(resolvedKind.compilation.kind, 'not_compiled');
+  assert.match(resolvedKind.compilation.reason, /menu-item kind/i);
 });
 
 test('park names cannot be stolen by similarly named resorts', () => {
@@ -1554,23 +2078,45 @@ test('an explicit alcohol request narrows the drink instead of becoming the dish
   const returned = new Set(response.result.itemKeys ?? []);
   const items = data.menuItems.filter((item) => returned.has(`${item.restaurant_id}:${item.item_id}`));
   assert.ok(items.length > 0);
-  assert.ok(items.every((item) => item.is_alcoholic), 'every returned row is actually alcoholic');
+  assert.ok(items.every(menuItemHasAlcohol), 'every returned row has redundant alcohol evidence');
+  assert.ok(items.some((item) => !item.is_alcoholic), 'known false-negative booleans do not hide otherwise proven matches');
+
+  const excluded = runAskRumbly('dole whip without alcohol', data).result;
+  assert.equal(excluded.kind, 'answer');
+  const excludedKeys = new Set(excluded.itemKeys ?? []);
+  const excludedRows = data.menuItems.filter((item) => excludedKeys.has(`${item.restaurant_id}:${item.item_id}`));
+  assert.ok(excludedRows.every((item) => !menuItemHasAlcohol(item)));
+  assert.ok(excludedRows.every((item) => !/angry orchard|hard cider/i.test(`${item.item} ${item.description ?? ''}`)));
 });
 
 test('a virgin request excludes alcohol rather than requiring it', () => {
   const plan = parseQueryPlan('non-alcoholic dole whip', vocabulary);
   assert.equal(plan.constraints.alcohol, 'excluded');
   assert.equal(plan.diagnostics.meaningfulUnconsumedText, '');
+
+  for (const question of [
+    'mocktail at GEO-82',
+    'non-alcoholic cocktail at GEO-82',
+    'zero-proof cocktail at GEO-82',
+  ]) {
+    const response = runAskRumbly(question, data);
+    assert.equal(response.plan.constraints.alcohol, 'excluded', question);
+    assert.equal(response.result.kind, 'answer', question);
+    const keys = new Set(response.result.itemKeys ?? []);
+    const rows = data.menuItems.filter((item) => keys.has(`${item.restaurant_id}:${item.item_id}`));
+    assert.ok(rows.some((item) => itemMatchesMenuItemKind(item, 'non_alcoholic_drink')), question);
+    assert.ok(rows.every((item) => !menuItemHasAlcohol(item)), question);
+  }
 });
 
-test('the dish a guest named outranks a weaker match that happens to be closer', () => {
+test('semantic admission excludes a weaker nearby food before proximity sorting', () => {
   const response = runAskRumbly('Where can I get chicken nuggets', data, { latitude: 28.4177, longitude: -81.5812 });
   assert.equal(response.result.kind, 'answer');
-  const first = data.menuItems.find((item) => item.item_id === (response.result.itemIds ?? [])[0]);
-  // "chicken nuggets" accepts a bare `nugget`, which let Pretzel Nuggets at the
-  // nearest venue lead the list. The fallback still qualifies -- it just never
-  // outranks the thing that was asked for.
-  assert.match(first?.item ?? '', /chicken/i);
+  const keys = new Set(response.result.itemKeys ?? []);
+  const items = data.menuItems.filter((item) => keys.has(`${item.restaurant_id}:${item.item_id}`));
+  assert.ok(items.length > 0);
+  assert.ok(items.every((item) => /chicken/i.test(`${item.item} ${item.category}`)));
+  assert.ok(!keys.has('block-and-hans:412387005'), 'Pretzel Nuggets are not chicken nuggets');
 });
 
 test('a cocktail named after a food never leads a plain food request', () => {
@@ -1661,7 +2207,6 @@ test('a list only claims to be closest-first when it actually is', () => {
     .map((id) => distances[id])
     .filter((value) => value != null);
   const ascending = ordered.every((value, index) => index === 0 || value >= ordered[index - 1]);
-  if (/places nearby/.test(presentation.eyebrow)) {
-    assert.match(presentation.eyebrow, ascending ? /closest first/ : /best match first/);
-  }
+  assert.equal(ascending, true);
+  assert.match(presentation.eyebrow, /closest (?:first|match)/i);
 });

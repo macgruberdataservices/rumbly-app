@@ -16,21 +16,29 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { ActivityMarks } from '../components/ActivityMarks';
 import { AllergyAcknowledgementSheet } from '../components/AllergyAcknowledgementSheet';
 import { IllustrationSlot } from '../components/illustrations/IllustrationSlot';
+import { MenuItemRatingSummary } from '../components/MenuItemRatingSummary';
 import { NearMeButton } from '../components/NearMeButton';
 import { RestaurantCard } from '../components/RestaurantCard';
+import { useActivity } from '../hooks/useActivity';
 import { useDataProvider } from '../hooks/useDataProvider';
+import { useEntitlement } from '../hooks/useEntitlement';
 import { useAppSettings } from '../hooks/useAppSettings';
 import { useNearMe } from '../hooks/useNearMe';
+import { isNewMenuItem } from '../data/newItem';
 import { getAllMenuItems } from '../data/db';
 import { loadSearchIndex } from '../search/searchIndexLoader';
 import type { MenuItem, Restaurant, SearchIndexEntry } from '../data/types';
-import { dedupeByItemIdentity } from '../data/itemIdentity';
+import { dedupeByItemIdentity, getItemIdentityKeyFor } from '../data/itemIdentity';
 import { distanceToRestaurant, formatProximityDistance } from '../location/proximity';
 import { suggestEntities, type EntitySuggestion } from '../../modules/ask-rumbly/scripts/ask-rumbly/entity_suggestions';
 import { buildAskRumblyData } from '../askRumbly/appData';
-import { runAskRumbly, type AskRumblyResponse } from '../askRumbly/appExecutor';
+import { continueAskRumbly, runAskRumbly, runAskRumblyPlan, type AskRumblyResponse } from '../askRumbly/appExecutor';
+import type { QueryPlan } from '../askRumbly/queryPlan';
+import { preferredMenuItemVersion } from '../askRumbly/menuItemKind';
+import { itemProvesFoodTerm } from '../../modules/ask-rumbly/scripts/ask-rumbly/result_proof';
 import {
   buildAskRumblyPresentation,
   type AskRumblySuggestion,
@@ -183,13 +191,32 @@ function MenuResultCard({
   showFirstSeen?: boolean;
   onPress: () => void;
 }) {
+  // The same personal marks Find and the restaurant menus show, read through
+  // the shared identity contract so Ask Rumbly cannot end up with its own
+  // private notion of which item a guest has already loved or rated.
+  const { lovedItemKeys, needItItemKeys, gotItItemCounts, itemRatingAverages } = useActivity();
+  const needItEnabled = useEntitlement('need_it');
+  const gotItEnabled = useEntitlement('got_it');
+  const ratingAveragesEnabled = useEntitlement('rating_averages');
+  const identityKey = getItemIdentityKeyFor(item);
+  const isNeeded = needItEnabled && needItItemKeys.has(identityKey);
+  const hasGotIt = gotItEnabled && (gotItItemCounts.get(identityKey) ?? 0) > 0;
+  const isLoved = lovedItemKeys.has(identityKey);
+  const ratingAverage = ratingAveragesEnabled ? itemRatingAverages.get(identityKey) : undefined;
+  // Distinct from the "Added <date>" line below: that one reports when Rumbly
+  // first saw the row and only appears on a what's-new answer, while this is
+  // the app-wide NEW badge with its own baseline and rolling window.
+  const isNew = isNewMenuItem(item.first_seen);
+
   const restaurantMeta = [
     restaurant.restaurant,
     // Guests call the World Showcase pavilions "countries", and "which country
     // has beer" is answered by showing it here rather than in prose. Absent
     // until the pipeline publishes the field.
     restaurant.world_showcase_pavilion,
-    distanceMiles == null ? null : `${formatProximityDistance(distanceMiles)} away`,
+    // formatProximityDistance already ends in "away" -- appending it here read
+    // as "1.9 mi away away" on every card carrying a distance.
+    distanceMiles == null ? null : formatProximityDistance(distanceMiles),
   ].filter(Boolean).join(' · ');
   const firstSeenLabel = showFirstSeen && item.first_seen
     ? `Added ${new Date(`${item.first_seen.slice(0, 10)}T00:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}`
@@ -200,15 +227,33 @@ function MenuResultCard({
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={`${item.item} at ${restaurantMeta}${alsoHere ? `, ${alsoHere}` : ''}`}
+      accessibilityLabel={[
+        item.item,
+        isNew && 'New',
+        `at ${restaurantMeta}`,
+        alsoHere,
+        isNeeded && 'Need It',
+        hasGotIt && 'Got It',
+        isLoved && 'Love It',
+        ratingAverage ? `Your average rating is ${ratingAverage.average.toFixed(1)} out of 5` : null,
+      ].filter(Boolean).join(', ')}
       onPress={onPress}
       style={({ pressed }) => [styles.menuResultCard, pressed && styles.pressed]}
     >
       <View style={styles.menuResultHeader}>
         <Text style={[text.restaurantName, styles.menuResultName]}>{item.item}</Text>
+        {isNew ? (
+          <View style={styles.menuNewBadge}>
+            <Text style={styles.menuNewBadgeText}>NEW</Text>
+          </View>
+        ) : null}
         {item.price_display ? <Text style={styles.price}>{item.price_display}</Text> : null}
       </View>
-      <Text style={[text.bodyMuted, styles.menuRestaurant]}>{restaurantMeta}</Text>
+      <View style={styles.menuMarksRow}>
+        <Text style={[text.bodyMuted, styles.menuRestaurant]} numberOfLines={1}>{restaurantMeta}</Text>
+        <MenuItemRatingSummary ratingAverage={ratingAverage} />
+        <ActivityMarks isNeeded={isNeeded} hasGotIt={hasGotIt} isLoved={isLoved} />
+      </View>
       {!!item.category && <Text style={[text.bodyMuted, styles.menuCategory]}>{item.category}</Text>}
       {firstSeenLabel ? <Text style={styles.menuFirstSeen}>{firstSeenLabel}</Text> : null}
       {alsoHere ? <Text style={styles.menuAlsoHere}>{alsoHere}</Text> : null}
@@ -247,7 +292,17 @@ export function AskRumblyScreen({ navigation }: Props) {
   const [feedbackReasonPickerVisible, setFeedbackReasonPickerVisible] = useState(false);
   const [negativeFeedbackCount, setNegativeFeedbackCount] = useState(0);
   const inputRef = useRef<TextInput>(null);
-  const pendingLocationRetryRef = useRef<string | null>(null);
+  const requestInFlightRef = useRef(false);
+  const pendingLocationRetryRef = useRef<
+    | { kind: 'query'; query: string }
+    | {
+        kind: 'plan';
+        plan: QueryPlan;
+        adaptation?: AskRumblyResponse['adaptation'];
+        continuation?: AskRumblyResponse['continuation'];
+      }
+    | null
+  >(null);
 
   // Keep the expensive full-menu read off the launch/tab-mount path. The
   // restaurant list powers autocomplete immediately; the SQLite rows and
@@ -292,10 +347,14 @@ export function AskRumblyScreen({ navigation }: Props) {
     // the detailed menu evidence.
     if (response.plan.subject.foodTerms.length > 1) return [];
     if (result.itemKeys?.length) {
-      const itemsByKey = new Map(menuItems.map((item) => [`${item.restaurant_id}:${item.item_id}`, item]));
+      const versionsByKey = new Map<string, MenuItem[]>();
+      for (const item of menuItems) {
+        const key = `${item.restaurant_id}:${item.item_id}`;
+        versionsByKey.set(key, [...(versionsByKey.get(key) ?? []), item]);
+      }
       return dedupeByItemIdentity(
         result.itemKeys
-          .map((key) => itemsByKey.get(key))
+          .map((key) => preferredMenuItemVersion(response.plan, versionsByKey.get(key) ?? [], itemProvesFoodTerm))
           .filter((item): item is MenuItem => Boolean(item)),
       );
     }
@@ -316,7 +375,9 @@ export function AskRumblyScreen({ navigation }: Props) {
 
   const runQuestion = useCallback(async (questionText: string) => {
     const trimmed = questionText.trim();
-    if (!trimmed || isAsking || isLoading || restaurants.length === 0) return;
+    if (!trimmed || requestInFlightRef.current || isAsking || isLoading || restaurants.length === 0) return;
+    requestInFlightRef.current = true;
+    pendingLocationRetryRef.current = null;
     Keyboard.dismiss();
     setIsAsking(true);
     setRequestError(null);
@@ -361,6 +422,7 @@ export function AskRumblyScreen({ navigation }: Props) {
     } finally {
       setMenuLoading(false);
       setIsAsking(false);
+      requestInFlightRef.current = false;
     }
   }, [allergyAcknowledgedThisSession, askData, hoursData, isAsking, isLoading, menuItems.length, origin, restaurants, searchIndex.length]);
 
@@ -373,6 +435,7 @@ export function AskRumblyScreen({ navigation }: Props) {
   }, []);
 
   const clearQuery = useCallback(() => {
+    pendingLocationRetryRef.current = null;
     setQuery('');
     setSubmittedQuery(null);
     setResponse(null);
@@ -390,6 +453,7 @@ export function AskRumblyScreen({ navigation }: Props) {
   // and leaving the guest to press send taught nothing; seeing the answer is
   // the point.
   const chooseStarter = useCallback((value: string) => {
+    pendingLocationRetryRef.current = null;
     setQuery(value);
     setSubmittedQuery(null);
     setResponse(null);
@@ -458,22 +522,99 @@ export function AskRumblyScreen({ navigation }: Props) {
   }, [disableLocation, getLocationPermissionStatus, locationActive, runLocationEnable]);
 
   useEffect(() => {
-    const pendingQuestion = pendingLocationRetryRef.current;
-    if (!locationActive || !origin || !pendingQuestion) return;
+    const pending = pendingLocationRetryRef.current;
+    if (!locationActive || !origin || !pending) return;
     pendingLocationRetryRef.current = null;
-    setQuery(pendingQuestion);
-    void runQuestion(pendingQuestion);
-  }, [locationActive, origin, runQuestion]);
+    if (pending.kind === 'query') {
+      setQuery(pending.query);
+      void runQuestion(pending.query);
+      return;
+    }
+    if (requestInFlightRef.current) return;
+    requestInFlightRef.current = true;
+    setIsAsking(true);
+    setRequestError(null);
+    setDevelopmentDataExpanded(false);
+    setShowAllResults(false);
+    setResponseRating(null);
+    setFeedbackDelivery(null);
+    setFeedbackReasonPickerVisible(false);
+    void new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+      .then(() => {
+        const executed = runAskRumblyPlan(pending.plan, askData, origin);
+        const next: AskRumblyResponse = {
+          ...executed,
+          ...(pending.adaptation ? { adaptation: { ...pending.adaptation, usedCurrentLocation: true } } : {}),
+          ...(pending.continuation ? { continuation: pending.continuation } : {}),
+        };
+        if ('safety' in next.result && next.result.safety?.kind === 'allergy' && !allergyAcknowledgedThisSession) {
+          setPendingResponse(next);
+          setAcknowledgementVisible(true);
+        } else {
+          setResponse(next);
+        }
+      })
+      .catch((retryError) => {
+        setRequestError(retryError instanceof Error ? retryError.message : String(retryError));
+      })
+      .finally(() => {
+        setIsAsking(false);
+        requestInFlightRef.current = false;
+      });
+  }, [allergyAcknowledgedThisSession, askData, locationActive, origin, runQuestion]);
 
   const handleRecoverySuggestion = useCallback((suggestion: AskRumblySuggestion) => {
+    if (requestInFlightRef.current || isAsking) return;
+    if (suggestion.kind === 'clarification') {
+      if (!response || response.result.kind !== 'clarification') return;
+      const option = response.result.clarification?.options.find((candidate) => candidate.id === suggestion.optionId);
+      if (!option) return;
+      requestInFlightRef.current = true;
+      setIsAsking(true);
+      setRequestError(null);
+      setDevelopmentDataExpanded(false);
+      setShowAllResults(false);
+      setResponseRating(null);
+      setFeedbackDelivery(null);
+      setFeedbackReasonPickerVisible(false);
+      const priorAdaptation = response.adaptation;
+      void new Promise<void>((resolve) => requestAnimationFrame(() => resolve()))
+        .then(() => {
+          const executed = continueAskRumbly(response.plan, option, askData, origin ?? undefined);
+          const next: AskRumblyResponse = priorAdaptation
+            ? { ...executed, adaptation: priorAdaptation }
+            : executed;
+          if ('safety' in next.result && next.result.safety?.kind === 'allergy' && !allergyAcknowledgedThisSession) {
+            setPendingResponse(next);
+            setAcknowledgementVisible(true);
+          } else {
+            setResponse(next);
+          }
+        })
+        .catch((clarificationError) => {
+          setRequestError(clarificationError instanceof Error ? clarificationError.message : String(clarificationError));
+        })
+        .finally(() => {
+          setIsAsking(false);
+          requestInFlightRef.current = false;
+        });
+      return;
+    }
     if (suggestion.kind === 'enable_location') {
-      pendingLocationRetryRef.current = submittedQuery;
+      pendingLocationRetryRef.current = response
+        ? {
+            kind: 'plan',
+            plan: response.plan,
+            ...(response.adaptation ? { adaptation: response.adaptation } : {}),
+            ...(response.continuation ? { continuation: response.continuation } : {}),
+          }
+        : submittedQuery ? { kind: 'query', query: submittedQuery } : null;
       void handleLocationPress();
       return;
     }
     setQuery(suggestion.query);
     void runQuestion(suggestion.query);
-  }, [handleLocationPress, runQuestion, submittedQuery]);
+  }, [allergyAcknowledgedThisSession, askData, handleLocationPress, isAsking, origin, response, runQuestion, submittedQuery]);
 
   const openRestaurant = useCallback(
     (restaurantId: string, item?: MenuItem) => {
@@ -774,14 +915,19 @@ export function AskRumblyScreen({ navigation }: Props) {
 
               {presentation?.suggestions.length ? (
                 <View style={styles.recoverySection}>
-                  <Text style={styles.recoveryLabel}>Try this</Text>
+                  <Text style={styles.recoveryLabel}>
+                    {presentation.suggestions.some((suggestion) => suggestion.kind === 'clarification') ? 'Did you mean?' : 'Try this'}
+                  </Text>
                   <View style={styles.recoveryRow}>
                     {presentation.suggestions.map((suggestion) => (
                       <Pressable
-                        key={suggestion.kind === 'query' ? suggestion.query : suggestion.kind}
+                        key={suggestion.kind === 'query'
+                          ? suggestion.query
+                          : suggestion.kind === 'clarification' ? suggestion.optionId : suggestion.kind}
                         accessibilityRole="button"
+                        disabled={isAsking}
                         onPress={() => handleRecoverySuggestion(suggestion)}
-                        style={({ pressed }) => [styles.recoveryButton, pressed && styles.pressed]}
+                        style={({ pressed }) => [styles.recoveryButton, pressed && !isAsking && styles.pressed]}
                       >
                         <Text style={styles.recoveryText}>{suggestion.label}</Text>
                       </Pressable>
@@ -1302,8 +1448,32 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: DAYLIGHT.ocean,
   },
-  menuRestaurant: { marginTop: SPACING.xs },
+  // The venue name yields its width to the marks and rating, which are fixed
+  // and small; the name truncates instead of pushing them off the card.
+  menuMarksRow: {
+    marginTop: SPACING.xs,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: SPACING.sm,
+  },
+  menuRestaurant: { flexShrink: 1 },
   menuCategory: { marginTop: SPACING.xs },
+  // Matches the badge on the Find results row so one item reads the same in
+  // both places.
+  menuNewBadge: {
+    flexShrink: 0,
+    marginTop: 2,
+    borderRadius: RADII.sm,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    backgroundColor: DAYLIGHT.sun,
+  },
+  menuNewBadgeText: {
+    fontFamily: FONT_FAMILY.workSansExtraBold,
+    fontSize: 9,
+    lineHeight: 11,
+    color: COLORS.ink,
+  },
   menuAlsoHere: {
     marginTop: SPACING.sm,
     alignSelf: 'flex-start',
