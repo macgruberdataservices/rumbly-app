@@ -97,8 +97,11 @@ test('divergent menu-item meanings ask a typed clarification before returning ca
     totalPossibilities: 0,
     hasCurrentLocation: false,
   });
-  assert.match(presentation.title, /what kind of old fashioned/i);
-  assert.match(presentation.message, /different kinds of menu items/i);
+  // The question quotes the guest's phrase rather than declining it into a
+  // sentence, so it stays grammatical for terms that are not countable nouns.
+  assert.match(presentation.title, /old fashioned/i);
+  assert.match(presentation.title, /\?$/);
+  assert.ok(presentation.message.length > 0);
   assert.ok(presentation.suggestions.every((suggestion) => suggestion.kind === 'clarification'));
 
   for (const question of [
@@ -271,8 +274,19 @@ test('generic beverage wording refines or clarifies one item instead of creating
     assert.equal(response.plan.constraints.menuItemKind, kind, question);
   }
 
-  assert.deepEqual(parse('old fashioned drink and fries').plan.subject.foodTerms, ['old fashioned drink', 'fries']);
-  assert.deepEqual(parse('old fashioned beverage or burger').plan.subject.foodTerms, ['old fashioned beverage', 'burger']);
+  // A coordinated request must not trigger the refinement machinery: naming
+  // two foods and then refining one of them is ambiguous. The bare classifier
+  // still comes off the term, because no Disney row is called "old fashioned
+  // drink" and keeping it there guaranteed a miss.
+  for (const [question, expected] of [
+    ['old fashioned drink and fries', ['old fashioned', 'fries']],
+    ['old fashioned beverage or burger', ['old fashioned', 'burger']],
+  ]) {
+    const { plan } = parse(question);
+    assert.deepEqual(plan.subject.foodTerms, expected, question);
+    assert.equal(plan.constraints.menuItemKind, undefined, question);
+    assert.equal(plan.constraints.beverageRole, undefined, question);
+  }
   assert.equal(runAskRumbly('what is the weather for an old fashioned drink', data).result.kind, 'unsupported');
 });
 
@@ -2233,4 +2247,62 @@ test('a term that names its own kind is never asked about', () => {
   assert.deepEqual(pluralOnly, [], `these only match the plural: ${pluralOnly.join(', ')}`);
   const response = runAskRumbly('Where can I find a sandwich in Epcot?', data);
   assert.equal(response.result.kind, 'answer');
+});
+
+test('"what is open" filters by hours instead of listing everything', () => {
+  // Only the explicit adverbs counted, so this was parsed with no time
+  // constraint and answered with every restaurant in the resort.
+  for (const question of ["What's open near me", "What's open in Magic Kingdom", 'anything open right now', 'is Casey\'s Corner still open']) {
+    assert.equal(parseQueryPlan(question, vocabulary).constraints.time, 'now', question);
+  }
+  // An hours question is not a filter. Treating it as one would answer a
+  // different question, and could hide the very restaurant being asked about.
+  for (const question of ["What time does Casey's Corner open?", 'What time does Casey\'s Corner open tomorrow?']) {
+    assert.notEqual(parseQueryPlan(question, vocabulary).constraints.time, 'now', question);
+  }
+  const scoped = runAskRumbly("What's open in Magic Kingdom", data, { latitude: 28.4177, longitude: -81.5812 });
+  assert.equal(scoped.result.kind, 'answer');
+  const everything = data.restaurants.filter((restaurant) => restaurant.park?.startsWith('Magic Kingdom')).length;
+  assert.ok((scoped.result.restaurantIds ?? []).length < everything, 'fewer than every venue in the park');
+});
+
+test('a seasonal theme is answered across every kind of item, not narrowed to one', () => {
+  const response = runAskRumbly('Halloween food', data);
+  assert.equal(response.result.kind, 'answer');
+  const ids = new Set(response.result.itemIds ?? []);
+  const items = data.menuItems.filter((item) => ids.has(item.item_id));
+  // Disney files Halloween as a category heading spanning desserts, savory
+  // dishes, and drinks. Asking "what kind of halloween did you mean" threw
+  // away the request; the breadth *is* the answer.
+  assert.ok(items.length > 10);
+  assert.ok(items.some((item) => /halloween/i.test(`${item.item} ${item.category}`)));
+  // Prose that Disney files as a menu row is not an orderable item.
+  assert.ok(items.every((item) => !/^starting (?:at|on)\b/i.test(item.item)), 'no event-night notices');
+});
+
+test('clarification questions stay grammatical for any phrase a guest types', () => {
+  for (const question of ['Halloween food', 'I need an old fashioned']) {
+    const response = runAskRumbly(question, data);
+    if (response.result.kind !== 'clarification') continue;
+    const presentation = buildAskRumblyPresentation(response.plan, response.result, {
+      linkedKind: null,
+      totalPossibilities: 0,
+      hasCurrentLocation: false,
+    });
+    // The old template declined the term into a sentence -- "What kind of
+    // halloween did you mean?" -- which only works for countable nouns.
+    assert.doesNotMatch(presentation.title, /what kind of/i, question);
+    assert.match(presentation.title, /\?$/, question);
+    assert.ok(!presentation.title.includes('—'), question);
+  }
+});
+
+test('a trailing classifier is not searched as part of the item name', () => {
+  // "Tempting Tigress" is a real cocktail at two venues; Disney does not put
+  // the word "drink" in the name, so the whole phrase matched nothing.
+  const response = runAskRumbly('Tempting tigress drink', data);
+  assert.deepEqual(response.plan.subject.foodTerms, ['tempting tigress']);
+  assert.equal(response.result.kind, 'answer');
+  // "Soft drink" is itself the item, so the classifier has to survive there.
+  assert.deepEqual(parseQueryPlan('soft drink', vocabulary).subject.foodTerms, ['soft drink']);
 });

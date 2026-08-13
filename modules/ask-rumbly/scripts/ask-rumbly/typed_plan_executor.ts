@@ -16,6 +16,7 @@ import { itemIsRecent } from '../../../../src/askRumbly/recency.ts';
 import {
   effectiveMenuItemKindForPlan,
   expectedMenuItemKindForTerm,
+  isSeasonalThemeTerm,
   itemMatchesBeverageRole,
   itemMatchesMenuItemKind,
   MENU_ITEM_KIND_LABELS,
@@ -87,7 +88,10 @@ function menuKindClarification(plan: QueryPlan, items: MenuItem[]): UnprovenPlan
     || plan.constraints.menuItemKind != null
     || plan.constraints.alcohol != null
     || plan.constraints.beverageRole === 'zero_proof_cocktail'
-    || expectedMenuItemKindForTerm(plan.subject.foodTerms[0]) != null) return null;
+    || expectedMenuItemKindForTerm(plan.subject.foodTerms[0]) != null
+    // A seasonal theme legitimately spans every kind, so narrowing to one is
+    // the opposite of what was asked.
+    || isSeasonalThemeTerm(plan.subject.foodTerms[0])) return null;
 
   const term = plan.subject.foodTerms[0];
   const versionsByKey = new Map<string, MenuItem[]>();
@@ -247,6 +251,11 @@ function orderableItem(item: MenuItem): boolean {
   const name = normalizeForSearch(item.item.trim());
   const category = normalizeForSearch(`${item.category} ${item.category_group} ${(item.norm_categories ?? []).join(' ')}`);
   if (/^(?:guests? must|allergen guide|allergy guide|please (?:ask|speak)|speak to (?:a )?cast member|ask (?:a )?cast member)\b/i.test(item.item.trim())) return false;
+  // Disney also files whole sentences as menu rows: an event-night notice at
+  // Be Our Guest, a "check our website" note at Wine Bar George. Matched by
+  // shape rather than length, because several real dishes have longer names
+  // than either of them.
+  if (/^(?:starting (?:at|on)\b|our (?:wine|beer|cocktail|drink|bar) list\b)|\bplease visit\b|\bwill serve a special\b/i.test(item.item.trim())) return false;
   if (/^(?:add|additional|extra|side of|choice of)\s/i.test(item.item.trim()) || /add-?on/i.test(item.item)) return false;
   if (/\b(?:toppings?|add ons?|condiments?|extras?|enhancements?)\b/.test(category)) return false;
   if (/^(?:sprinkles?|whipped cream|syrups?|hot fudge|caramel(?: sauce| topping)?|flavored syrup|flavor shots?|cold foams?|candy pieces?|non[ -]dairy|split scoop|sour cream)$/.test(name)) return false;

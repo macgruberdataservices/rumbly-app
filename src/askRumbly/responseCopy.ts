@@ -254,3 +254,96 @@ export function restaurantInfoTitle(sourceText: string): string {
     "Here's what I found for that spot.",
   ]);
 }
+
+// --- Clarification voice.
+//
+// Every clarification Rumbly asks comes from here, so the app has one place
+// where "asking the guest a question" has a consistent tone instead of a
+// different register per code path.
+//
+// The hard constraint is grammatical, not stylistic. The old prompt built a
+// sentence around the guest's own words -- `What kind of ${term} did you
+// mean?` -- which assumes the term is a countable noun. It is not always one:
+// a guest searching "Halloween food" got "What kind of halloween did you
+// mean?". Quoting the term instead of declining it keeps the sentence correct
+// whether the guest typed a noun, an adjective, an event, or a dish name.
+
+const MENU_KIND_PROMPTS = [
+  'I found “{term}” on a few different kinds of menu item. Which one?',
+  '“{term}” turns up a few different ways. Which did you mean?',
+  'A few different things answer to “{term}”. Which one did you have in mind?',
+  '“{term}” could go a few directions here. Point me at one?',
+] as const;
+
+const MENU_KIND_MESSAGES = [
+  'Pick one and I will search just that.',
+  'Choose one and I will narrow it down.',
+  'Tell me which and I will take it from there.',
+] as const;
+
+const ORDERING_PROMPTS = [
+  'Cheapest, or closest?',
+  'Should price or walking distance decide this one?',
+  'What matters more right now, the price or the walk?',
+] as const;
+
+const ORDERING_MESSAGES = [
+  'Either works. I just need to know which one wins.',
+  'Pick the one that matters more and I will sort by it.',
+] as const;
+
+const LOCATION_PROMPTS = [
+  'Where should I search from?',
+  'Where are you starting from?',
+  'Whereabouts?',
+] as const;
+
+const LOCATION_MESSAGES = [
+  'Use your location, or name a park, resort, or area.',
+  'Turn on Near Me, or tell me the park, resort, or area.',
+] as const;
+
+const GENERAL_PROMPTS = [
+  'I need one more detail.',
+  'Almost there. One more detail?',
+  'Nearly there. Give me one more thing to go on?',
+] as const;
+
+const GENERAL_MESSAGES = [
+  'Try adding a food, restaurant, park, resort, price, or dining feature.',
+  'A food, restaurant, park, resort, price, or dining feature will do it.',
+] as const;
+
+export type ClarificationCopyKind =
+  | 'menu_item_kind'
+  | 'ordering'
+  | 'location'
+  | 'general';
+
+/**
+ * The question Rumbly asks. `term` is quoted rather than inflected, so any
+ * phrase a guest typed stays grammatical inside the sentence.
+ */
+export function clarificationPrompt(
+  kind: ClarificationCopyKind,
+  sourceText: string,
+  term?: string,
+): string {
+  if (kind === 'menu_item_kind') {
+    // Without a term there is nothing to quote, so fall back rather than ask
+    // about an empty string.
+    if (!term) return pick(sourceText, 'clarify-general', GENERAL_PROMPTS);
+    return pick(sourceText, 'clarify-menu-kind', MENU_KIND_PROMPTS).replace('{term}', term);
+  }
+  if (kind === 'ordering') return pick(sourceText, 'clarify-ordering', ORDERING_PROMPTS);
+  if (kind === 'location') return pick(sourceText, 'clarify-location', LOCATION_PROMPTS);
+  return pick(sourceText, 'clarify-general', GENERAL_PROMPTS);
+}
+
+/** The line under the question, explaining what a choice will do. */
+export function clarificationMessage(kind: ClarificationCopyKind, sourceText: string): string {
+  if (kind === 'menu_item_kind') return pick(sourceText, 'clarify-menu-kind-msg', MENU_KIND_MESSAGES);
+  if (kind === 'ordering') return pick(sourceText, 'clarify-ordering-msg', ORDERING_MESSAGES);
+  if (kind === 'location') return pick(sourceText, 'clarify-location-msg', LOCATION_MESSAGES);
+  return pick(sourceText, 'clarify-general-msg', GENERAL_MESSAGES);
+}

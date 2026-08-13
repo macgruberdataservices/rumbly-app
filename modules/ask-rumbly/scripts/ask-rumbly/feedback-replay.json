@@ -1,34 +1,279 @@
 {
   "note": "Exported from ask_rumbly_negative_feedback. Real guest questions that were marked not-helpful. Do not edit by hand -- re-export instead.",
-  "exported": "2026-08-12",
+  "exported": "2026-08-13",
   "rows": [
-    { "day": "2026-08-10", "question": "Where’s the best corn dog", "then": "unsupported", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "I’m hungry for a snack", "then": "clarification", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "Best place for coke", "then": "unsupported", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "Best place for a pretzel", "then": "unsupported", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "What time does Casey's Corner open tomorrow?", "then": "answer", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "How close is Terra treats?", "then": "answer", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "Who has the best pop tarts?", "then": "no-match", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "Where can I get coffee in Magic Kingdom", "then": "no-match", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "What place has chicken and beer", "then": "clarification", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "Who has the best chili", "then": "answer", "reason": null, "runtime": null },
-    { "day": "2026-08-10", "question": "Who has the best pita pocket", "then": "no-match", "reason": null, "runtime": null },
-    { "day": "2026-08-11", "question": "What the best pizza", "then": "unsupported", "reason": "missing_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Where’s pizza rizzo", "then": "clarification", "reason": "wording", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "I want some ice cream", "then": "answer", "reason": "other", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Where’s the pizza", "then": "clarification", "reason": "misunderstood", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Where can I get poocorn", "then": "no-match", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Where is the cheapest ice cream", "then": "answer", "reason": "missing_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Where can I get churros in Magic Kingdom", "then": "no-match", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Churros in Magic Kingdom", "then": "no-match", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Pizza in Magic kingdom", "then": "answer", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "How close am I to space mountain", "then": "answer", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Any snacks nearby", "then": "answer", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-11", "question": "Beer in Mexico", "then": "clarification", "reason": "misunderstood", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-12", "question": "Where can I get chicken nuggets", "then": "answer", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-12", "question": "How much are churros in Epcot", "then": "answer", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-12", "question": "Where can I get pasta and wine at Hollywood studios?", "then": "answer", "reason": "wrong_result", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-12", "question": "What snacks are new at EPCOT?", "then": "clarification", "reason": "misunderstood", "runtime": "semantic-2026-08-11.1" },
-    { "day": "2026-08-12", "question": "Where can I get a dole whip with alcohol", "then": "answer", "reason": "missing_result", "runtime": "semantic-2026-08-11.1" }
+    {
+      "day": "2026-08-10",
+      "question": "Where’s the best corn dog",
+      "then": "unsupported",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "I’m hungry for a snack",
+      "then": "clarification",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "Best place for coke",
+      "then": "unsupported",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "Best place for a pretzel",
+      "then": "unsupported",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "What time does Casey's Corner open tomorrow?",
+      "then": "answer",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "How close is Terra treats?",
+      "then": "answer",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "Who has the best pop tarts?",
+      "then": "no-match",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "Where can I get coffee in Magic Kingdom",
+      "then": "no-match",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "What place has chicken and beer",
+      "then": "clarification",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "Who has the best chili",
+      "then": "answer",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-10",
+      "question": "Who has the best pita pocket",
+      "then": "no-match",
+      "reason": null,
+      "runtime": null
+    },
+    {
+      "day": "2026-08-11",
+      "question": "What the best pizza",
+      "then": "unsupported",
+      "reason": "missing_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Where’s pizza rizzo",
+      "then": "clarification",
+      "reason": "wording",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "I want some ice cream",
+      "then": "answer",
+      "reason": "other",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Where’s the pizza",
+      "then": "clarification",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Where can I get poocorn",
+      "then": "no-match",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Where is the cheapest ice cream",
+      "then": "answer",
+      "reason": "missing_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Where can I get churros in Magic Kingdom",
+      "then": "no-match",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Churros in Magic Kingdom",
+      "then": "no-match",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Pizza in Magic kingdom",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "How close am I to space mountain",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Any snacks nearby",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-11",
+      "question": "Beer in Mexico",
+      "then": "clarification",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-12",
+      "question": "Where can I get chicken nuggets",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-12",
+      "question": "How much are churros in Epcot",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-12",
+      "question": "Where can I get pasta and wine at Hollywood studios?",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-12",
+      "question": "What snacks are new at EPCOT?",
+      "then": "clarification",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-12",
+      "question": "Where can I get a dole whip with alcohol",
+      "then": "answer",
+      "reason": "missing_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "I need an old fashioned",
+      "then": "answer",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Does Pecos Bill Tall Tale Inn and Cafe have ice cream",
+      "then": "no-match",
+      "reason": "wording",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "What’s open near me",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "What’s open in Magic Kingdom",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-11.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Where can I get some pozza",
+      "then": "no-match",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Where can pizza and beer",
+      "then": "answer",
+      "reason": "other",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "I need an espresso",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Tempting tigress drink",
+      "then": "no-match",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Any place have a veggie burger for a gluten allergy ?",
+      "then": "no-match",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Gluten free Halloween food",
+      "then": "no-match",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Nut free Halloween food",
+      "then": "no-match",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    }
   ]
 }

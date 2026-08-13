@@ -140,6 +140,22 @@ export function menuItemKindEvidence(item: MenuItem): string[] {
  * “Cold brew” is coffee even though some cocktails contain it; “old
  * fashioned” intentionally has no entry because it is genuinely polysemous.
  */
+/**
+ * A seasonal or event theme rather than a kind of food.
+ *
+ * Disney publishes these as category headings -- "Halloween Offerings",
+ * "Mickey's Not-So-Scary Halloween Party Exclusives" -- across desserts,
+ * savory dishes, and drinks alike. That breadth is the request: a guest
+ * asking for Halloween food wants the Skull Meatloaf *and* the Not-So-Poison
+ * Apple Doughnuts. Asking which kind they meant would throw away the answer,
+ * which is exactly what "What kind of halloween did you mean?" was doing.
+ */
+export function isSeasonalThemeTerm(term: string): boolean {
+  const normalized = normalizeForSearch(term).trim();
+  return /^(?:halloween|christmas|holidays?|hanukkah|thanksgiving|easter|valentines?(?: day)?|lunar new year|new years?(?: eve)?|fourth of july|independence day|st\.? patrick'?s(?: day)?|mardi gras|oktoberfest|festival|food and wine|flower and garden|festival of the arts)$/
+    .test(normalized);
+}
+
 export function expectedMenuItemKindForTerm(term: string): MenuItemKind | null {
   const normalized = normalizeForSearch(term).trim();
   const exact = (pattern: string) => new RegExp(`^(?:${pattern})$`).test(normalized);

@@ -99,6 +99,25 @@ const RECENCY_INTENT = new RegExp(String.raw`\b(?:${RECENCY_PHRASES})\b`, 'i');
 // would claim recency from "New England Clam Chowder".
 const RECENCY_PATTERN = new RegExp(String.raw`\b(?:${RECENCY_PHRASES}|\bnew\b)`, 'gi');
 
+/**
+ * Whether the guest is asking what is open *right now*.
+ *
+ * Only the explicit adverbs used to count, so "What's open near me" was parsed
+ * with no time constraint at all and answered with all 418 restaurants
+ * regardless of their hours. To a guest standing in a park, the bare adjective
+ * already means now -- nobody asks what is open in the abstract.
+ *
+ * "What time does X open" is deliberately excluded. That is a question about
+ * the hours themselves, and treating it as a filter would answer a different
+ * question and could hide the very restaurant being asked about.
+ */
+function asksOpenNow(text: string): boolean {
+  if (/\bwhat\s+time\b/i.test(text)) return false;
+  if (/\b(?:right now|currently|open now|rn)\b/i.test(text)) return true;
+  if (/\bstill\s+open\b/i.test(text)) return true;
+  return /\b(?:what(?:'s|s| is)?|anything|anywhere|any|which|who)\s+(?:places?\s+|restaurants?\s+|spots?\s+)?(?:is\s+|are\s+)?open\b/i.test(text);
+}
+
 function normalizeForMatching(value: string): string {
   return value
     .normalize('NFD')
@@ -378,7 +397,27 @@ function normalizeFoodTerm(term: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .toLowerCase());
-  return canonicalGuestTerm(normalized);
+  return canonicalGuestTerm(withoutTrailingClassifier(normalized));
+}
+
+/**
+ * Drop a trailing word that says what kind of thing the name is.
+ *
+ * "Tempting Tigress drink" names a specific cocktail and then classifies it.
+ * Disney does not put the classifier in the item name, so searching the whole
+ * phrase found nothing even though the drink exists at two venues.
+ *
+ * Only applied when two or more words remain, which is what keeps "soft
+ * drink" -- where the classifier *is* the item -- intact.
+ */
+function withoutTrailingClassifier(term: string): string {
+  // "Cocktail", "dessert", and "entrée" are deliberately absent: those are
+  // role words that explicitMenuItemKind reads off the end of the phrase to
+  // set a typed kind, and removing them here would silently disarm it.
+  // "Drink" and "beverage" carry no such meaning once the guest has named the
+  // thing they want.
+  const stripped = term.replace(/\s+(?:drinks?|beverages?)$/i, '');
+  return stripped !== term && stripped.split(/\s+/).length >= 2 ? stripped : term;
 }
 
 // Adjectives that decorate a request without narrowing what would satisfy it.
@@ -471,14 +510,19 @@ function recognizeFoods(
     const start = extendFoodSpanLeft(query, group, blocked);
     return { start, end: group.end, text: query.slice(start, group.end) };
   });
-  const terms = spans.map((span) => span.text
+  // This path builds terms from span text rather than through
+  // normalizeFoodTerm, so any tidying that must apply to both belongs here
+  // too. "Drink" is itself in the lexicon, so "Tempting Tigress drink"
+  // anchored on the classifier and extended left over the actual name,
+  // searching for a row Disney spells without the word "drink".
+  const terms = spans.map((span) => withoutTrailingClassifier(span.text
     .split(/\s+/)
     // Decorative adjectives are consumed but dropped from the searched term.
     .filter((word, position, all) => position >= all.findIndex((candidate) => !GENERIC_FOOD_MODIFIER.test(candidate)))
     .join(' ')
     .replace(/[?.!,]+$/g, '')
     .toLowerCase()
-    .trim());
+    .trim()));
 
   const mode: 'all' | 'any' = groups.some((group) => group.union) ? 'any' : 'all';
   const resolved = terms.map((term) => canonicalGuestTerm(term)).filter((term) => term.length > 0);
@@ -1102,7 +1146,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       distanceOperation,
       distanceAnchor,
       distanceRadiusMiles: distanceAnchorRadius(analysisText, distanceAnchor, linkedEntities),
-      time: /\btomorrow\b/i.test(grammarText) ? 'tomorrow' : /\b(?:right now|currently|open now|rn)\b/i.test(grammarText) ? 'now' : /\b(?:today|this morning)\b/i.test(grammarText) ? 'today' : undefined,
+      time: /\btomorrow\b/i.test(grammarText) ? 'tomorrow' : asksOpenNow(grammarText) ? 'now' : /\b(?:today|this morning)\b/i.test(grammarText) ? 'today' : undefined,
     },
     linkedEntities,
     diagnostics: {

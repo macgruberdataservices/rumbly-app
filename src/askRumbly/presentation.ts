@@ -2,6 +2,9 @@ import type { PlanExecutionResult } from './execution';
 import type { QueryPlan } from './queryPlan';
 import { MENU_ITEM_KIND_LABELS } from './menuItemKind';
 import {
+  clarificationMessage,
+  clarificationPrompt,
+  type ClarificationCopyKind,
   cheapestResultTitle,
   nearestResultTitle,
   restaurantInfoTitle,
@@ -366,6 +369,20 @@ function unsupportedSuggestions(plan: QueryPlan, hasCurrentLocation: boolean): A
   return defaultSuggestions(plan.sourceText);
 }
 
+/**
+ * The term spelled the way the guest spelled it.
+ *
+ * Food terms are normalised to lowercase for matching, which is right for
+ * matching and wrong for quoting back: a guest who typed "Halloween" should
+ * not be shown “halloween”. Falls back to the normalised form when the term
+ * came from a synonym rather than the guest's own words.
+ */
+function asGuestTyped(term: string | undefined, sourceText: string): string | undefined {
+  if (!term) return term;
+  const match = sourceText.match(new RegExp(term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i'));
+  return match?.[0] ?? term;
+}
+
 /** Whether the returned venues are genuinely in nearest-first order. */
 function orderedByDistance(
   restaurantIds: string[] | undefined,
@@ -632,27 +649,31 @@ export function buildAskRumblyPresentation(
       || ((plan.action === 'distance' || plan.constraints.distanceOperation != null)
         && !plan.constraints.distanceAnchor
         && !context.hasCurrentLocation);
+    // The executor decides *that* a question is needed and what the options
+    // are; the wording is decided here, at the guest-language boundary, so all
+    // of Rumbly's questions share one voice instead of one register per code
+    // path. The two allergy cases keep their exact wording -- they are careful
+    // on purpose and are not the place for personality.
+    const copyKind: ClarificationCopyKind | null = structured?.kind === 'menu_item_kind'
+      ? 'menu_item_kind'
+      : structured?.kind === 'ordering'
+        ? 'ordering'
+        : unknownAllergyLabel || allergySafety
+          ? null
+          : needsLocation ? 'location' : 'general';
     return {
       tone: 'clarification',
       eyebrow: 'One quick detail',
-      title: structured?.prompt ?? (unknownAllergyLabel
-        ? "Sorry, I don't recognize that Disney allergy label."
-        : allergySafety
-        ? "I can search Disney's labels, but I can't decide what's safe."
-        : needsLocation
-          ? 'Where should I search from?'
-          : 'I need one more detail.'),
-      message: structured?.kind === 'menu_item_kind'
-        ? 'I found that name on different kinds of menu items.'
-        : structured?.kind === 'ordering'
-          ? 'Choose which one should decide how the matches are ordered.'
+      title: copyKind
+        ? clarificationPrompt(copyKind, plan.sourceText, asGuestTyped(usefulFoodTerms(plan)[0], plan.sourceText))
         : unknownAllergyLabel
-        ? 'Try gluten/wheat, milk, egg, fish, shellfish, peanut, tree nut, sesame, or soy.'
-        : allergySafety
-        ? 'Continue to see only Disney-labeled items, then confirm with a Cast Member.'
-        : needsLocation
-          ? 'Use your location, or name a park, resort, or area.'
-          : 'Try adding a food, restaurant, park, resort, price, or dining feature.',
+          ? "Sorry, I don't recognize that Disney allergy label."
+          : "I can search Disney's labels, but I can't decide what's safe.",
+      message: copyKind
+        ? clarificationMessage(copyKind, plan.sourceText)
+        : unknownAllergyLabel
+          ? 'Try gluten/wheat, milk, egg, fish, shellfish, peanut, tree nut, sesame, or soy.'
+          : 'Continue to see only Disney-labeled items, then confirm with a Cast Member.',
       suggestions: structured
         ? structured.options.map((option) => ({
             kind: 'clarification' as const,
