@@ -433,6 +433,21 @@ function nativeList(plan: QueryPlan, data: LoadedData, origin: Coordinates | nul
     : result;
 }
 
+/**
+ * Whether Disney lists this venue as serving the requested service period.
+ *
+ * "Lunch And Dinner" is one published value covering both, and "All Day"
+ * covers the middle of the day but is not a breakfast claim -- a venue open
+ * all day is not thereby a place that serves breakfast, so that stays out.
+ */
+function servesMealPeriod(restaurant: Restaurant, period: string): boolean {
+  const published = (restaurant.meal_periods ?? []).map((value) => normalizeForSearch(value));
+  if (period === 'breakfast') return published.some((value) => /\b(?:breakfast|brunch)\b/.test(value));
+  if (period === 'lunch') return published.some((value) => /\b(?:lunch|all day)\b/.test(value));
+  if (period === 'dinner') return published.some((value) => /\b(?:dinner|all day)\b/.test(value));
+  return published.some((value) => value.includes(period));
+}
+
 function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordinates | null, trace: ExecutionTrace): UnprovenPlanExecution {
   const dayOffset = plan.constraints.time === 'tomorrow' ? 1 : 0;
   let rows = data.restaurants.map((restaurant) => ({
@@ -442,6 +457,13 @@ function nativeRestaurantList(plan: QueryPlan, data: LoadedData, origin: Coordin
       ? getStatusForDayOffset(data.hoursData, restaurant.restaurant_id, dayOffset)
       : getTodayStatus(data.hoursData, restaurant.restaurant_id),
   }));
+  // Disney's own service periods, so "where can I get breakfast in Magic
+  // Kingdom" answers with the four venues that actually serve it rather than
+  // all thirty-five in the park.
+  if (plan.constraints.mealPeriods.length > 0) {
+    rows = rows.filter(({ restaurant }) =>
+      plan.constraints.mealPeriods.some((period) => servesMealPeriod(restaurant, period)));
+  }
   const wantsHours = plan.action === 'hours' || plan.claimType === 'restaurant_hours';
   if (plan.constraints.time === 'now') {
     rows = rows.filter(({ hours }) => hours.kind === 'open');
@@ -864,11 +886,22 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     };
   }
 
+  // Breakfast, lunch, and dinner are service periods: they say *when* you eat,
+  // not what, and Disney publishes them on the restaurant record. Asked on
+  // their own they are a question about venues, so counting them as an item
+  // constraint sent "breakfast in Magic Kingdom" down the item path and
+  // answered it with a hard cider, a milk, and two fountain drinks.
+  //
+  // "Snack" stays item-level. It is the one period that is also a kind of
+  // food -- you eat *a* snack -- and Disney's own item categorisation is what
+  // backs it.
+  const servicePeriodOnly = plan.constraints.mealPeriods.length > 0
+    && !plan.constraints.mealPeriods.includes('snack');
   const itemConstrained = plan.constraints.maxPrice != null
     || plan.constraints.priceOperation === 'cheapest'
     || plan.constraints.allergenKeys.length > 0
     || plan.constraints.dietaryKeys.length > 0
-    || plan.constraints.mealPeriods.length > 0
+    || (plan.constraints.mealPeriods.length > 0 && !servicePeriodOnly)
     // "What's new" is a question about rows, not venues. Without this the
     // answer is every restaurant in the park rather than the new items.
     || plan.constraints.recency != null;
@@ -879,17 +912,54 @@ function executeQueryPlanUnproven(plan: QueryPlan, source: LoadedData, userOrigi
     || (genericFood && Boolean(namedDistanceAnchor) && !itemConstrained)
     || (genericFood && locations.length > 0 && !itemConstrained)
     || (genericFood && Boolean(plan.constraints.cuisine))
+    // A service period with no food named is a venue question wherever it is
+    // asked, not only where a location was also given. Without this, "where
+    // can we get breakfast in the parks" matched neither branch and fell
+    // through to the legacy adapter, which cannot represent an item search
+    // with no item and returned a raw error to the guest.
+    || (genericFood && servicePeriodOnly && !itemConstrained)
     || (plan.constraints.requiredFeatures.length > 0 && !itemConstrained);
   if (genericFood && restaurantListing) {
     return nativeRestaurantList(plan, data, origin, trace);
   }
-  if (genericFood && itemConstrained) return nativeList(plan, data, origin, trace);
+  if (genericFood && itemConstrained) {
+    const listed = nativeList(plan, data, origin, trace);
+    // A guest who named one restaurant and a filter has already told us where
+    // they are standing. When Disney has no label to satisfy the filter --
+    // Sci-Fi Dine-In serves vegetarian dishes but publishes no Plant-Based
+    // rows -- that venue's menu is still the honest answer, not a dead end.
+    // Only on a miss: Pizzafari's five kids' items beat a menu link, and they
+    // are what `listed` returns.
+    // The guest must have named the venue themselves. A location scope that
+    // happens to contain one restaurant is not the same thing: "what snacks
+    // are new in Liberty Square" is a question about items, and answering it
+    // with a menu link for the one venue in that land is not an answer.
+    // Recency is excluded for the same reason -- nothing new is a real
+    // finding, and a menu link does not report it.
+    const guestNamedVenue = plan.subject.restaurantIds.length === 1 && restaurants.length === 1;
+    if (listed.kind === 'no-match'
+      && guestNamedVenue
+      && plan.constraints.recency == null
+      && (plan.constraints.dietaryKeys.length > 0 || plan.constraints.mealPeriods.length > 0)) {
+      const restaurant = restaurants[0];
+      return {
+        kind: 'answer',
+        text: `I could not confirm that from Disney's published labels, but I can open ${restaurant.restaurant}'s full menu in Rumbly.`,
+        restaurantIds: [restaurant.restaurant_id],
+        actions: [{ kind: 'openRestaurant', label: `View ${restaurant.restaurant} menu`, restaurantId: restaurant.restaurant_id }],
+        trace,
+        safety: acknowledgement(plan),
+      };
+    }
+    return listed;
+  }
 
   const clarification = menuKindClarification(plan, menuItems);
   if (clarification) return clarification;
 
   const verifiedFoodAnswer = nativeVerifiedFoodAnswer(plan, data, origin, trace);
   if (verifiedFoodAnswer) return verifiedFoodAnswer;
+
 
   // A resolved kind is a hard semantic constraint. If it has no witness in
   // the current scope, stop here instead of falling through to the legacy

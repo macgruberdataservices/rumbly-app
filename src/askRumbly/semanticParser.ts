@@ -926,8 +926,19 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
   // A named restaurant with nothing else being asked about is a request for
   // that restaurant's menu. Without this the executor is handed an item search
   // with no item and returns a raw adapter error to the guest.
+  //
+  // "Nothing else" has to mean it. A guest who names a restaurant *and* an
+  // item-level filter -- "what does Pizzafari have for kids" -- asked a
+  // narrower question than "show me the menu", and routing to the menu threw
+  // the filter away and returned the restaurant with no items at all.
+  const asksAboutItems = dietary.length > 0
+    || allergens.keys.length > 0
+    || meals.length > 0
+    || alcohol != null
+    || asksWhatsNew;
   if (claimType === 'menu_presence'
     && foodTerms.length === 0
+    && !asksAboutItems
     && (action === 'find' || action === 'check_menu')
     && linkedEntities.some((entity) => entity.type === 'restaurant')) {
     action = 'open_menu';

@@ -126,7 +126,21 @@ export function itemProvesFoodTerm(item: MenuItem, term: string): boolean {
   }
   if (/^(?:coke|coca cola)$/.test(normalizedTerm)) {
     const itemName = normalizeForSearch(item.item);
-    return !item.is_alcoholic && /\b(?:coke|coca cola)\b/.test(itemName);
+    if (item.is_alcoholic) return false;
+    if (/\b(?:coke|coca cola)\b/.test(itemName)) return true;
+    // Disney names the brand in the item's own description -- "Assorted
+    // Coca-Cola® Offerings", "Coke®, Diet Coke®, Sprite®" -- so where a
+    // description exists it says so outright and no inference is needed.
+    if (/\b(?:coke|coca cola)\b/.test(normalizeForSearch(item.description ?? ''))) return true;
+    // Where it does not, the row is still the same fountain. Every genuinely
+    // described fountain row on property names Coca-Cola (29 of 29) and no row
+    // anywhere mentions Pepsi, which is what makes an undescribed "Assorted
+    // Fountain Beverages" safe to treat as the same drink. Requiring the
+    // literal word cost a real answer: "soda" already accepted the fountain,
+    // so the same drink was findable under one name and not the other, and
+    // "a hamburger and a Coke" skipped Yak & Yeti -- whose fountain row has no
+    // description -- for a resort a mile further away.
+    return /\bfountain (?:beverages?|drinks?|sodas?)\b/.test(normalizeForSearch(`${item.item} ${item.category}`));
   }
   if (normalizedTerm === 'french fries') {
     const itemEvidence = normalizeForSearch(`${item.item} ${item.category} ${item.category_group}`);

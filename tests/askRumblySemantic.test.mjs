@@ -2366,3 +2366,70 @@ test('a named clock time is declined, not turned into a food or into "now"', () 
   assert.equal(parseQueryPlan("What's open near me", vocabulary).constraints.time, 'now');
   assert.equal(parseQueryPlan("What time does Casey's Corner open tomorrow?", vocabulary).constraints.time, 'tomorrow');
 });
+
+test('a service period with no food named is a question about venues', () => {
+  // Counting breakfast as an item constraint sent this down the item path and
+  // answered "breakfast in Magic Kingdom" with a hard cider, a milk, and two
+  // fountain drinks. You eat *at* breakfast; you eat *a* snack, which is why
+  // snack stays item-level.
+  const response = runAskRumbly('Where can I get breakfast in Magic Kingdom', data);
+  assert.equal(response.result.kind, 'answer');
+  assert.equal((response.result.itemIds ?? []).length, 0, 'venues, not menu rows');
+  const ids = response.result.restaurantIds ?? [];
+  assert.ok(ids.length > 0);
+  const named = data.restaurants.filter((restaurant) => ids.includes(restaurant.restaurant_id));
+  assert.ok(named.every((restaurant) =>
+    (restaurant.meal_periods ?? []).some((period) => /breakfast|brunch/i.test(period))),
+    'every venue returned actually serves breakfast');
+  assert.ok(named.length < data.restaurants.filter((r) => r.park?.startsWith('Magic Kingdom')).length);
+
+  // Without a location it is still a venue question, and used to fall through
+  // to the legacy adapter and return a raw error.
+  assert.equal(runAskRumbly('where can we get breakfast in the parks', data).result.kind, 'answer');
+  // Snacks remain an item search.
+  const snacks = runAskRumbly('any snacks nearby', data, { latitude: 28.4177, longitude: -81.5812 });
+  assert.ok((snacks.result.itemIds ?? []).length > 0, 'snack is a food, not a sitting');
+});
+
+test('a Coke is the fountain Disney actually pours', () => {
+  // Disney names the brand in the item description ("Assorted Coca-Cola®
+  // Offerings", "Coke®, Diet Coke®, Sprite®"), and where it publishes no
+  // description the row is still the same fountain: no row on property
+  // mentions Pepsi. Requiring the literal word made one drink findable as
+  // "soda" but not as "Coke", which cost real compound answers.
+  const fountain = data.menuItems.find((item) =>
+    item.show_in_menu && /^assorted fountain beverages$/i.test(item.item.trim()));
+  assert.ok(fountain, 'the fountain row exists');
+  assert.ok(itemProvesFoodTerm(fountain, 'coke'));
+  // Still never an alcoholic row.
+  const jackAndCoke = data.menuItems.find((item) => item.is_alcoholic && /\bcoke\b/i.test(item.item));
+  if (jackAndCoke) assert.ok(!itemProvesFoodTerm(jackAndCoke, 'coke'), jackAndCoke.item);
+
+  const yakAndYeti = 'yak-and-yeti-local-food-cafes';
+  const here = data.restaurants.find((restaurant) => restaurant.restaurant_id === yakAndYeti);
+  assert.ok(here);
+  const compound = runAskRumbly('I want a hamburger and a Coke', data, { latitude: here.lat, longitude: here.lng });
+  assert.equal(compound.result.kind, 'answer');
+  assert.equal((compound.result.restaurantIds ?? [])[0], yakAndYeti, 'the venue underfoot wins');
+});
+
+test('naming a restaurant plus a filter searches its menu, and never dead-ends', () => {
+  // Routing straight to "open the menu" threw the filter away and returned
+  // the restaurant with no items at all.
+  const kids = runAskRumbly('What does pizzafari have for kids', data);
+  assert.equal(kids.result.kind, 'answer');
+  const returned = data.menuItems.filter((item) =>
+    (kids.result.itemKeys ?? []).includes(`${item.restaurant_id}:${item.item_id}`));
+  assert.ok(returned.length > 0, 'the kids items are the answer');
+  assert.ok(returned.every((item) => item.is_kids));
+
+  // But where Disney publishes no label to satisfy the filter, the venue's
+  // menu is still a better answer than a dead end.
+  const unlabelled = runAskRumbly('does sci fi dine in have vegetarian', data);
+  assert.equal(unlabelled.result.kind, 'answer');
+  assert.ok(unlabelled.result.actions?.some((action) => action.kind === 'openRestaurant'));
+
+  // A location scope that happens to hold one venue is not the guest naming
+  // it, and "nothing is new" is a real finding rather than a menu link.
+  assert.equal(runAskRumbly('What snacks are new in Liberty Square?', data).result.kind, 'no-match');
+});
