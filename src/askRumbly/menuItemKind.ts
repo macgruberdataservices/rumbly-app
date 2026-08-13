@@ -159,7 +159,10 @@ export function isSeasonalThemeTerm(term: string): boolean {
 function exactMenuItemKind(normalized: string): MenuItemKind | null {
   const exact = (pattern: string) => new RegExp(`^(?:${pattern})$`).test(normalized);
   if (exact('martinis?|margaritas?|mojitos?|cocktails?|sangria|beers?|ciders?|wines?|espresso martini')) return 'cocktail';
-  if (exact('mocktails?|coffee|espresso|cold brew|lattes?|cappuccinos?|tea|lemonade|juice|smoothies?|soda|water')) return 'non_alcoholic_drink';
+  // "Coke" belongs beside "soda" here for the same reason it does in the proof
+  // layer: they are one drink, and listing only one of them meant a guest
+  // asking for a Coke got asked what kind of thing they meant.
+  if (exact('mocktails?|coffee|espresso|cold brew|lattes?|cappuccinos?|tea|lemonade|juice|smoothies?|soda|water|cokes?|coca[- ]?cola')) return 'non_alcoholic_drink';
   if (exact('milkshakes?|shakes?')) return 'dessert';
   if (exact('desserts?|sundaes?|ice cream|gelato|sorbet|dole whip|cakes?|cupcakes?|cookies?|brownies?|doughnuts?|donuts?|beignets?|cinnamon rolls?|fudge|churros?')) return 'dessert';
   if (exact('entr(?:e|é)es?|sandwich(?:es)?|burgers?|hot dogs?|pizza|flatbreads?|pretzels?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|pasta|tacos?|burritos?')) return 'savory';

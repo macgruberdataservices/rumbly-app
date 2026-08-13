@@ -2433,3 +2433,28 @@ test('naming a restaurant plus a filter searches its menu, and never dead-ends',
   // it, and "nothing is new" is a real finding rather than a menu link.
   assert.equal(runAskRumbly('What snacks are new in Liberty Square?', data).result.kind, 'no-match');
 });
+
+test('the brand is recognised as Disney actually spells it', () => {
+  // normalizeForSearch keeps the hyphen, so a pattern written "coca cola"
+  // never matched "Coca-Cola" -- the brand's own spelling, and the one Disney
+  // uses in "Assorted Coca-Cola® Offerings".
+  const hyphenated = data.menuItems.find((item) =>
+    item.show_in_menu && !item.is_alcoholic && /coca-cola/i.test(`${item.item} ${item.description ?? ''}`));
+  assert.ok(hyphenated, 'the data spells it with a hyphen');
+  assert.ok(itemProvesFoodTerm(hyphenated, 'coke'), hyphenated.item);
+  assert.ok(itemProvesFoodTerm(hyphenated, 'coca-cola'), 'and a guest may type it that way too');
+
+  // Disney names the brand outside "fountain" rows: Yak & Yeti Restaurant
+  // lists "Soft Drinks" and describes what they are.
+  const softDrinks = data.menuItems.find((item) =>
+    item.restaurant_id === 'yak-and-yeti' && /^soft drinks$/i.test(item.item.trim()));
+  assert.ok(softDrinks, 'the Soft Drinks row exists');
+  assert.match(softDrinks.description ?? '', /coke/i);
+  assert.ok(itemProvesFoodTerm(softDrinks, 'coke'));
+
+  // A soda that is not the fountain stays out.
+  for (const name of ['Ice Cream Soda', 'Sparkling Grapefruit Soda']) {
+    const row = data.menuItems.find((item) => item.show_in_menu && item.item.trim() === name);
+    if (row) assert.ok(!itemProvesFoodTerm(row, 'coke'), name);
+  }
+});
