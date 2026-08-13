@@ -1,13 +1,19 @@
+import { useMemo } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import type { ChangeEvent } from '../../data/types';
 import { changeRowLine, formatDateLabel, groupEvents, isRowTappable, type GroupMode } from '../../data/changes';
+import { useDataProvider } from '../../hooks/useDataProvider';
 import { DAYLIGHT, RADII, SPACING } from '../../theme/tokens';
 import { text } from '../../theme/typography';
 
 // Shared by ChangesHomeScreen (Level 0, Openings & Closures) and
 // ChangesCategoryScreen (Level 2) -- day/week-grouped rows, ported from
 // Disney Dining Dev's renderGroupedEvents(). onPressEvent only fires for
-// tappable rows (isRowTappable: has a restaurant_id and isn't a closure).
+// tappable rows (isRowTappable: has a restaurant_id, isn't a closure, and
+// names a restaurant this install actually carries -- see that function
+// for why the last one can't be assumed). Resolving that here rather than
+// via a prop keeps both call sites correct by construction; there is no
+// caller that should be offering taps into restaurants Rumbly can't open.
 export function ChangeEventGroups({
   events,
   groupMode,
@@ -19,6 +25,11 @@ export function ChangeEventGroups({
   hideRestaurant?: boolean;
   onPressEvent: (restaurantId: string) => void;
 }) {
+  const { restaurants } = useDataProvider();
+  const knownRestaurantIds = useMemo(
+    () => new Set(restaurants.map((r) => r.restaurant_id)),
+    [restaurants]
+  );
   const groups = groupEvents(events, groupMode);
 
   if (!groups.length) {
@@ -38,7 +49,7 @@ export function ChangeEventGroups({
           </Text>
           {group.events.map((e, i) => {
             const { name, sub } = changeRowLine(e, { hideRestaurant });
-            const tappable = isRowTappable(e);
+            const tappable = isRowTappable(e, knownRestaurantIds);
             return (
               // No stable per-event id in the changes feed schema --
               // index within a deterministically-derived group is an

@@ -314,8 +314,29 @@ export function categoryBreakdown(events: ChangeEvent[]): CategoryGroup[] {
   return out;
 }
 
-export function isRowTappable(e: ChangeEvent): boolean {
-  return !!e.restaurant_id && e.category !== 'restaurant_closed';
+// A tappable row navigates to RestaurantDetail by restaurant_id, so the id
+// has to resolve to a restaurant this install actually carries -- and often
+// it doesn't. The changes feed is generated from the full upstream dataset,
+// so it announces openings for venues Rumbly deliberately filters out
+// (show_in_app:false), venues since withdrawn from restaurant_data.json
+// entirely, and -- found 2026-08-13 -- venues published under a different
+// slug than the one their own change event recorded (Energy Bytes graduated
+// from hand-coded to a real facility as `energy-bytes`, while its
+// restaurant_added event names `energy-bytes-2`). All three sent
+// RestaurantDetail to its restaurant-not-found state, which reads as a
+// blank page: that screen is registered with headerShown:false and
+// gestureEnabled:false, so there wasn't even a way back. Live audit the
+// same day: 3 of 1,095 change events carrying a restaurant_id, all of them
+// restaurant_added, i.e. every one of them in Openings & Closures.
+export function isRowTappable(
+  e: ChangeEvent,
+  knownRestaurantIds: ReadonlySet<string>
+): boolean {
+  return (
+    !!e.restaurant_id
+    && e.category !== 'restaurant_closed'
+    && knownRestaurantIds.has(e.restaurant_id)
+  );
 }
 
 // Search scoped to the changes feed itself -- deliberately NOT the ranking

@@ -11,6 +11,7 @@ import {
   formatRangeLabel,
   groupModeForRange,
   haystackMatchesTokens,
+  isRowTappable,
   monthsInRange,
   rangeSpanDays,
   todayStr,
@@ -151,4 +152,29 @@ test('haystack and token helpers back the screen-side cached filter', () => {
   assert.equal(haystackMatchesTokens(haystack, changeQueryTokens('frozen pizza')), false);
   assert.deepEqual(changeQueryTokens('  Dole   Whip '), ['dole', 'whip']);
   assert.deepEqual(changeQueryTokens('   '), []);
+});
+
+test('a change row is only tappable when its restaurant_id resolves', () => {
+  // The changes feed is generated from the full upstream dataset, so it
+  // names venues this install doesn't carry. Tapping one used to land on
+  // RestaurantDetail's not-found state, which -- headerShown:false,
+  // gestureEnabled:false -- read as a blank page with no way back.
+  // Real case, 2026-08-13: Energy Bytes graduated to a real facility as
+  // `energy-bytes`, while its own restaurant_added event says
+  // `energy-bytes-2`.
+  const known = new Set(['energy-bytes', 'aloha-isle']);
+  const added = (restaurant_id) => event({ category: 'restaurant_added', restaurant_id });
+
+  assert.equal(isRowTappable(added('energy-bytes-2'), known), false);
+  assert.equal(isRowTappable(added('energy-bytes'), known), true);
+  // Withdrawn or filtered-out venues fail the same way, not just renamed ones.
+  assert.equal(isRowTappable(added('good-morning-breakfast-with-goofy-and-his-pals'), known), false);
+  // Closures stay untappable even when the venue is still carried, and a
+  // missing id is still untappable regardless of the known set.
+  assert.equal(
+    isRowTappable(event({ category: 'restaurant_closed', restaurant_id: 'aloha-isle' }), known),
+    false
+  );
+  assert.equal(isRowTappable(event({ restaurant_id: null }), known), false);
+  assert.equal(isRowTappable(event({ restaurant_id: 'aloha-isle' }), known), true);
 });

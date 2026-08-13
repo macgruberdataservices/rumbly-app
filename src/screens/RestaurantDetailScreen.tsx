@@ -477,10 +477,28 @@ export function RestaurantDetailScreen({ route, navigation }: Props) {
   });
   const expandedOpacity = collapseProgress.interpolate({ inputRange: [0, 1], outputRange: [1, 0] });
 
+  // This screen is registered with headerShown:false and
+  // gestureEnabled:false, so a bare message here was a hard dead end --
+  // no back button, no swipe, only the tab bar. Reported 2026-08-13 as
+  // "See Changes links to a blank page": the changes feed names venues
+  // this install doesn't carry (see isRowTappable in data/changes.ts).
+  // Those rows no longer offer the tap at all; this stays as the backstop
+  // for every other way a stale restaurant_id can reach this route.
   if (!restaurant) {
     return (
-      <View style={styles.centered}>
-        <Text style={text.body}>Restaurant not found offline.</Text>
+      <View style={styles.container}>
+        <CollapsedHeader
+          restaurantName="Not available"
+          hoursStatus={hoursStatus}
+          titleOpacity={1}
+          onBack={() => navigation.goBack()}
+        />
+        <View style={styles.centered}>
+          <Text style={text.body}>This restaurant isn’t in Rumbly’s data.</Text>
+          <Text style={[text.bodyMuted, styles.notFoundDetail]}>
+            It may be too new to have synced, or not one Rumbly covers.
+          </Text>
+        </View>
       </View>
     );
   }
@@ -622,6 +640,11 @@ const styles = StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  notFoundDetail: {
+    paddingHorizontal: SPACING.xl,
+    paddingTop: SPACING.sm,
+    textAlign: 'center',
   },
   headerClip: {
     overflow: 'hidden',
