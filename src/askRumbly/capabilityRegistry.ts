@@ -103,6 +103,14 @@ export function assessPlanCapability(plan: QueryPlan): CapabilityDecision {
       reason: 'Rumbly has no live restaurant wait-time source.',
     };
   }
+  if (plan.constraints.time === 'specific') {
+    return {
+      claimType: plan.claimType,
+      disposition: 'unsupported',
+      evidence: [],
+      reason: 'Rumbly has a daily open and close time, not a schedule it can filter by a specific hour.',
+    };
+  }
   if (plan.constraints.dietaryKeys.includes('kosher')) {
     return {
       claimType: plan.claimType,

@@ -170,7 +170,15 @@ export interface QueryPlan {
     distanceOperation?: 'nearest' | 'nearby';
     distanceAnchor?: DistanceAnchorConstraint;
     distanceRadiusMiles?: number;
-    time?: 'now' | 'today' | 'tomorrow';
+    /**
+     * `specific` means the guest named a clock time ("open after 7pm").
+     * Recognised rather than ignored: left unparsed it was captured as a food
+     * term called "open after 7pm", and treating it as "now" would answer a
+     * different question than the one asked. Rumbly declines it instead --
+     * the hours data is a daily open/close pair, not a schedule it can filter
+     * by arbitrary times.
+     */
+    time?: 'now' | 'today' | 'tomorrow' | 'specific';
   };
   linkedEntities: LinkedEntity[];
   diagnostics: {

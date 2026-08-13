@@ -52,10 +52,15 @@ function restaurantAliases(name: string, reservedNames: ReadonlySet<string>): st
   // The reverse too, for a guest who closes up a name Disney spaces.
   if (camelSplit !== plain) add(plain.replace(/([a-z]) ([A-Z])/g, '$1$2'));
 
-  // Both spellings then shorten the same way, so "YeSake Kiosk" reaches
+  // Guests drop the leading article: "crystal palace", not "The Crystal
+  // Palace". 34 venues are named this way and none of them could be reached
+  // without it, so this is a whole class of venues rather than one name.
+  const articleFree = plain.replace(/^the\s+/i, '');
+
+  // Every spelling then shortens the same way, so "YeSake Kiosk" reaches
   // "Ye Sake" and not just "Ye Sake Kiosk". Dropping the descriptor is what
   // guests actually do -- nobody says the word "Kiosk" out loud.
-  for (const full of new Set([plain, camelSplit])) {
+  for (const full of new Set([plain, camelSplit, articleFree, articleFree.replace(/([a-z])([A-Z])/g, '$1 $2')])) {
     if (full !== plain) add(full);
     let shortened = full;
     let previous = '';

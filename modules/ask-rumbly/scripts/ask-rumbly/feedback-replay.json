@@ -274,6 +274,62 @@
       "then": "no-match",
       "reason": "wrong_result",
       "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "What’s open after 7pm in Disney springs",
+      "then": "clarification",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Where can I get breakfast in Magic Kingdom",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "I want a hamburger and a Coke",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "I want chocolate ice cream",
+      "then": "clarification",
+      "reason": "other",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Good desserts",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "Popcorn near UK",
+      "then": "clarification",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "How far is crystal palace",
+      "then": "clarification",
+      "reason": "misunderstood",
+      "runtime": "semantic-2026-08-13.1"
+    },
+    {
+      "day": "2026-08-13",
+      "question": "What does pizzafari have for kids",
+      "then": "answer",
+      "reason": "wrong_result",
+      "runtime": "semantic-2026-08-13.1"
     }
   ]
 }

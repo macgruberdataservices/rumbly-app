@@ -111,8 +111,16 @@ const RECENCY_PATTERN = new RegExp(String.raw`\b(?:${RECENCY_PHRASES}|\bnew\b)`,
  * the hours themselves, and treating it as a filter would answer a different
  * question and could hide the very restaurant being asked about.
  */
+// A clock time the guest named: "after 7pm", "before 10:30", "until 9".
+// Recognising it is what keeps it out of the food capture, where it became a
+// search for a dish called "open after 7pm".
+const CLOCK_TIME_PATTERN = /\b(?:after|before|past|until|til|till|by|around)\s+\d{1,2}(?::\d{2})?\s*(?:am|pm)?\b|\b\d{1,2}(?::\d{2})?\s*(?:am|pm)\b/gi;
+
 function asksOpenNow(text: string): boolean {
   if (/\bwhat\s+time\b/i.test(text)) return false;
+  // "What's open after 7pm" is not a question about now, and answering it as
+  // though it were would quietly substitute a different question.
+  if (new RegExp(CLOCK_TIME_PATTERN.source, 'i').test(text)) return false;
   if (/\b(?:right now|currently|open now|rn)\b/i.test(text)) return true;
   if (/\bstill\s+open\b/i.test(text)) return true;
   return /\b(?:what(?:'s|s| is)?|anything|anywhere|any|which|who)\s+(?:places?\s+|restaurants?\s+|spots?\s+)?(?:is\s+|are\s+)?open\b/i.test(text);
@@ -825,6 +833,9 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     .filter((span) => !insideEntity(span));
   const dietary = DIETARY_PATTERNS.flatMap((entry) =>
     collectPatternSpans(analysisText, entry.pattern).some((span) => !insideEntity(span)) ? [entry.key] : []);
+  // Claimed before food capture runs, so the clock time is consumed as the
+  // constraint it is rather than left over to be read as a dish name.
+  const clockTimeSpans = collectPatternSpans(analysisText, CLOCK_TIME_PATTERN).filter((span) => !insideEntity(span));
   const alcoholMatches = ALCOHOL_PATTERNS.map((entry) => ({
     key: entry.key,
     spans: collectPatternSpans(analysisText, entry.pattern).filter((span) => !insideEntity(span)),
@@ -880,7 +891,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
     // also be recognised as the food being requested.
     [...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans,
       ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...excludedFoods.spans, ...resortScopeSpans,
-      ...recencySpans, ...alcoholSpans],
+      ...recencySpans, ...alcoholSpans, ...clockTimeSpans],
     vocabulary
   );
   let foodTerms = foods.terms.filter((term) => normalizeForMatching(term) !== normalizeForMatching(cuisine.value ?? ''));
@@ -999,7 +1010,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       }];
     }
   }
-  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...recencySpans, ...alcoholSpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
+  const consumedSpans: SourceSpan[] = [...linkedEntities, ...allergens.spans, ...features.spans, ...dietarySpans, ...mealSpans, ...characterDetailSpans, ...cuisine.spans, ...discourseSpans, ...hungerSpans, ...menuRoutingSpans, ...resortScopeSpans, ...recencySpans, ...alcoholSpans, ...clockTimeSpans, ...foods.spans, ...excludedFoods.spans, ...operationSpans];
   const unconsumed = meaningfulUnconsumed(analysisText, consumedSpans);
   const reasons: string[] = [];
   const priceOperation = /\b(?:cheapest|lowest priced|least expensive)\b/i.test(grammarText)
@@ -1146,7 +1157,7 @@ export function parseQueryPlan(query: string, vocabulary: ParserVocabulary): Que
       distanceOperation,
       distanceAnchor,
       distanceRadiusMiles: distanceAnchorRadius(analysisText, distanceAnchor, linkedEntities),
-      time: /\btomorrow\b/i.test(grammarText) ? 'tomorrow' : asksOpenNow(grammarText) ? 'now' : /\b(?:today|this morning)\b/i.test(grammarText) ? 'today' : undefined,
+      time: clockTimeSpans.length > 0 ? 'specific' : /\btomorrow\b/i.test(grammarText) ? 'tomorrow' : asksOpenNow(grammarText) ? 'now' : /\b(?:today|this morning)\b/i.test(grammarText) ? 'today' : undefined,
     },
     linkedEntities,
     diagnostics: {

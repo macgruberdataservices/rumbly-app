@@ -156,16 +156,48 @@ export function isSeasonalThemeTerm(term: string): boolean {
     .test(normalized);
 }
 
-export function expectedMenuItemKindForTerm(term: string): MenuItemKind | null {
-  const normalized = normalizeForSearch(term).trim();
+function exactMenuItemKind(normalized: string): MenuItemKind | null {
   const exact = (pattern: string) => new RegExp(`^(?:${pattern})$`).test(normalized);
   if (exact('martinis?|margaritas?|mojitos?|cocktails?|sangria|beers?|ciders?|wines?|espresso martini')) return 'cocktail';
   if (exact('mocktails?|coffee|espresso|cold brew|lattes?|cappuccinos?|tea|lemonade|juice|smoothies?|soda|water')) return 'non_alcoholic_drink';
   if (exact('milkshakes?|shakes?')) return 'dessert';
   if (exact('desserts?|sundaes?|ice cream|gelato|sorbet|dole whip|cakes?|cupcakes?|cookies?|brownies?|doughnuts?|donuts?|beignets?|cinnamon rolls?|fudge|churros?')) return 'dessert';
   if (exact('entr(?:e|é)es?|sandwich(?:es)?|burgers?|hot dogs?|pizza|flatbreads?|pretzels?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|pasta|tacos?|burritos?')) return 'savory';
-  if (/\b(?:milkshake|shake)\b\s*$/.test(normalized)) return 'dessert';
   return null;
+}
+
+export function expectedMenuItemKindForTerm(term: string): MenuItemKind | null {
+  const normalized = normalizeForSearch(term).trim();
+  const direct = exactMenuItemKind(normalized);
+  if (direct) return direct;
+
+  // English noun phrases are head-final: "chocolate ice cream" is a kind of
+  // ice cream. Matching only whole strings made every modifier a new unknown,
+  // so a guest asking for something *more* specific than the list got asked
+  // what they meant -- and the answer was to add another entry. Reading the
+  // head instead resolves the whole family at once.
+  const words = normalized.split(/\s+/);
+  let headKind: MenuItemKind | null = null;
+  for (let start = 1; start < words.length && headKind == null; start += 1) {
+    headKind = exactMenuItemKind(words.slice(start).join(' '));
+  }
+  // Disney names cocktails after soft drinks -- Kentucky Coffee, Long Island
+  // Iced Tea, Bourbon Lemonade, Hard Root Beer -- and never the reverse. So a
+  // head noun may promote a phrase to dessert, savory, or cocktail, but it may
+  // never conclude "non-alcoholic" on its own: that is exactly the direction
+  // the naming convention breaks. The whole-term match above still resolves a
+  // bare "coffee", where there is no modifier to be wrong about.
+  if (headKind == null || headKind === 'non_alcoholic_drink') return null;
+
+  // "Ice cream sandwich" is the trap: its head says savory and its modifier
+  // says dessert. When the two disagree the phrase is genuinely a compound
+  // and neither reading may be imposed, so it falls through unnarrowed rather
+  // than being filtered to the wrong half of the menu.
+  for (let end = words.length - 1; end > 0; end -= 1) {
+    const modifierKind = exactMenuItemKind(words.slice(0, end).join(' '));
+    if (modifierKind != null && modifierKind !== headKind) return null;
+  }
+  return headKind;
 }
 
 /**

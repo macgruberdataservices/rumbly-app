@@ -2306,3 +2306,63 @@ test('a trailing classifier is not searched as part of the item name', () => {
   // "Soft drink" is itself the item, so the classifier has to survive there.
   assert.deepEqual(parseQueryPlan('soft drink', vocabulary).subject.foodTerms, ['soft drink']);
 });
+
+test('a modified phrase takes its kind from its head noun, not an allowlist entry', () => {
+  // The resolver matched whole strings only, so every modifier a guest added
+  // made the phrase unknown again and the fix was always "add another entry".
+  // Reading the head resolves the family instead of the phrase.
+  for (const [term, expected] of [
+    ['chocolate ice cream', 'dessert'],
+    ['double chocolate brownie', 'dessert'],
+    ['veggie burger', 'savory'],
+    ['pepperoni pizza', 'savory'],
+    ['strawberry margarita', 'cocktail'],
+  ]) {
+    assert.equal(expectedMenuItemKindForTerm(term), expected, term);
+  }
+
+  // Head and modifier disagreeing means the phrase is a compound, and neither
+  // reading may be imposed: an ice cream sandwich is not a savory dish.
+  assert.equal(expectedMenuItemKindForTerm('ice cream sandwich'), null);
+
+  // Disney names cocktails after soft drinks and never the reverse, so a head
+  // noun may never conclude "non-alcoholic" on its own. These are all real
+  // alcoholic rows whose head reads like a soft drink.
+  for (const term of ['kentucky coffee', 'long island iced tea', 'bourbon lemonade', 'electric lemonade']) {
+    assert.notEqual(expectedMenuItemKindForTerm(term), 'non_alcoholic_drink', term);
+    assert.notEqual(runAskRumbly(term, data).result.kind, 'no-match', term);
+  }
+  // A bare term has no modifier to be wrong about, so it still resolves.
+  assert.equal(expectedMenuItemKindForTerm('coffee'), 'non_alcoholic_drink');
+
+  const concrete = runAskRumbly('I want chocolate ice cream', data);
+  assert.equal(concrete.result.kind, 'answer', 'a specific request is not a question');
+});
+
+test('venues named "The ..." are reachable without the article', () => {
+  // 34 venues are named this way and none of them could be reached without
+  // the article, which is not how anyone says them out loud.
+  for (const [question, expected] of [
+    ['How far is crystal palace', 'The Crystal Palace'],
+    ['is lunching pad open', 'The Lunching Pad'],
+    ['menu for plaza restaurant', 'The Plaza Restaurant'],
+  ]) {
+    const plan = parseQueryPlan(question, vocabulary);
+    const linked = plan.linkedEntities.filter((entity) => entity.type === 'restaurant').map((entity) => entity.label);
+    assert.ok(linked.includes(expected), `${question} -> ${linked.join(', ') || 'nothing'}`);
+  }
+});
+
+test('a named clock time is declined, not turned into a food or into "now"', () => {
+  for (const question of ["What's open after 7pm in Disney springs", 'dinner before 6pm', 'anything open until 10pm']) {
+    const plan = parseQueryPlan(question, vocabulary);
+    // Left unrecognised this was captured as a dish called "open after 7pm";
+    // read as "now" it would have answered a different question entirely.
+    assert.equal(plan.constraints.time, 'specific', question);
+    assert.deepEqual(plan.subject.foodTerms.filter((term) => /\d/.test(term)), [], question);
+    assert.equal(runAskRumbly(question, data).result.kind, 'unsupported', question);
+  }
+  // The supported time words still work.
+  assert.equal(parseQueryPlan("What's open near me", vocabulary).constraints.time, 'now');
+  assert.equal(parseQueryPlan("What time does Casey's Corner open tomorrow?", vocabulary).constraints.time, 'tomorrow');
+});
