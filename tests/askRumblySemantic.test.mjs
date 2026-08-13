@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
 
 import { assessPlanCapability } from '../src/askRumbly/capabilityRegistry.ts';
 import { continueAskRumbly, runAskRumbly, runAskRumblyPlan } from '../src/askRumbly/appExecutor.ts';
 import { buildAskRumblyPresentation } from '../src/askRumbly/presentation.ts';
 import { applyQueryPlanRefinement } from '../src/askRumbly/queryRefinement.ts';
-import { itemMatchesMenuItemKind, menuItemHasAlcohol, menuItemKind, preferredMenuItemVersion } from '../src/askRumbly/menuItemKind.ts';
+import { expectedMenuItemKindForTerm, itemMatchesMenuItemKind, menuItemHasAlcohol, menuItemKind, preferredMenuItemVersion } from '../src/askRumbly/menuItemKind.ts';
 import { resultListTitle, subjectiveResultTitle } from '../src/askRumbly/responseCopy.ts';
 import { parseQueryPlan } from '../src/askRumbly/semanticParser.ts';
 import { CLAIM_FEATURES, CLAIM_RULES } from '../src/askRumbly/claimRules.ts';
@@ -2209,4 +2210,27 @@ test('a list only claims to be closest-first when it actually is', () => {
   const ascending = ordered.every((value, index) => index === 0 || value >= ordered[index - 1]);
   assert.equal(ascending, true);
   assert.match(presentation.eyebrow, /closest (?:first|match)/i);
+});
+
+test('a term that names its own kind is never asked about', () => {
+  // `sandwiches?` means "sandwiche" plus an optional s, so the singular
+  // "sandwich" -- the form guests type and the form Disney uses in "Turkey
+  // Sandwich" -- matched nothing. The kind guard silently failed open and
+  // asked a guest whether their sandwich was a dessert.
+  for (const [term, expected] of [
+    ['sandwich', 'savory'],
+    ['sandwiches', 'savory'],
+    ['burger', 'savory'],
+    ['churro', 'dessert'],
+    ['margarita', 'cocktail'],
+  ]) {
+    assert.equal(expectedMenuItemKindForTerm(term), expected, term);
+  }
+  // Any singular that needs "es" to pluralise has to survive the same way, so
+  // the whole module is scanned rather than the one word that was reported.
+  const moduleSource = readFileSync(new URL('../src/askRumbly/menuItemKind.ts', import.meta.url), 'utf8');
+  const pluralOnly = moduleSource.match(/[a-z]+(?:ch|sh|ss|x|z)es\?/g) ?? [];
+  assert.deepEqual(pluralOnly, [], `these only match the plural: ${pluralOnly.join(', ')}`);
+  const response = runAskRumbly('Where can I find a sandwich in Epcot?', data);
+  assert.equal(response.result.kind, 'answer');
 });

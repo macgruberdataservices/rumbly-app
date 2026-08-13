@@ -14,11 +14,11 @@ const ALCOHOLIC_ROLE = /\b(?:spirits?[ -]cocktails?|cocktails?|martinis?|margari
 const NON_ALCOHOLIC_ROLE = /\b(?:spirit[ -]free|zero[ -]proof|non[ -]alcoholic|without alcohol|mocktails?|coffee|espresso|cold brew|tea|lemonade|juice|smoothies?|refreshments?|soft drinks?|soda|milk|beverages?)\b/;
 const COCKTAIL_NAME = /\b(?:martinis?|margaritas?|mojitos?|sangria|cocktails?)\b/;
 const DESSERT_ROLE = /\b(?:desserts?|sundaes?|ice cream|gelato|sorbet|dole whip|cakes?|cupcakes?|shortcakes?|cheesecakes?|cookies?|brownies?|doughnuts?|donuts?|beignets?|churros?|cinnamon rolls?|pastr(?:y|ies)|pies?|fudge|sweet treats?)\b/;
-const SAVORY_ROLE = /\b(?:entr(?:e|é)es?|appetizers?|starters?|sandwiches?|burgers?|hot dogs?|pizza|flatbreads?|sides?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|seafood|pasta|rice|noodles|tacos?|burritos?|snacks?)\b/;
+const SAVORY_ROLE = /\b(?:entr(?:e|é)es?|appetizers?|starters?|sandwich(?:es)?|burgers?|hot dogs?|pizza|flatbreads?|sides?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|seafood|pasta|rice|noodles|tacos?|burritos?|snacks?)\b/;
 const DESSERT_NAME = /\b(?:desserts?|sundaes?|ice cream|gelato|sorbet|dole whip|milkshakes?|cupcakes?|shortcakes?|cheesecakes?|cookies?|brownies?|doughnuts?|donuts?|beignets?|churros?|cinnamon rolls?|pastr(?:y|ies)|fudge|sweet treats?)\b/;
-const SAVORY_NAME = /\b(?:sandwiches?|burgers?|hot dogs?|pizza|flatbreads?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|seafood|pasta|rice|noodles|tacos?|burritos?|pretzels?)\b/;
+const SAVORY_NAME = /\b(?:sandwich(?:es)?|burgers?|hot dogs?|pizza|flatbreads?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|seafood|pasta|rice|noodles|tacos?|burritos?|pretzels?)\b/;
 const NON_ALCOHOLIC_BEVERAGE_HEAD = /\b(?:coffee|espresso|cold brew|lattes?|cappuccinos?|tea|lemonade|juice|smoothies?|soda|milk|refresco|spritzers?)\b\s*$/;
-const SAVORY_CATEGORY = /\b(?:entr(?:e|é)es?|appetizers?|starters?|sandwiches?|burgers?|hot dogs?|pizza|flatbreads?|sides?|ribs?|roast|meatloaf|salads?|soups?|seafood|pasta|tacos?|burritos?)\b/;
+const SAVORY_CATEGORY = /\b(?:entr(?:e|é)es?|appetizers?|starters?|sandwich(?:es)?|burgers?|hot dogs?|pizza|flatbreads?|sides?|ribs?|roast|meatloaf|salads?|soups?|seafood|pasta|tacos?|burritos?)\b/;
 
 function fields(item: MenuItem) {
   const name = normalizeForSearch(item.item);
@@ -147,7 +147,7 @@ export function expectedMenuItemKindForTerm(term: string): MenuItemKind | null {
   if (exact('mocktails?|coffee|espresso|cold brew|lattes?|cappuccinos?|tea|lemonade|juice|smoothies?|soda|water')) return 'non_alcoholic_drink';
   if (exact('milkshakes?|shakes?')) return 'dessert';
   if (exact('desserts?|sundaes?|ice cream|gelato|sorbet|dole whip|cakes?|cupcakes?|cookies?|brownies?|doughnuts?|donuts?|beignets?|cinnamon rolls?|fudge|churros?')) return 'dessert';
-  if (exact('entr(?:e|é)es?|sandwiches?|burgers?|hot dogs?|pizza|flatbreads?|pretzels?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|pasta|tacos?|burritos?')) return 'savory';
+  if (exact('entr(?:e|é)es?|sandwich(?:es)?|burgers?|hot dogs?|pizza|flatbreads?|pretzels?|ribs?|roast|meatloaf|salads?|soups?|chicken|beef|pork|pasta|tacos?|burritos?')) return 'savory';
   if (/\b(?:milkshake|shake)\b\s*$/.test(normalized)) return 'dessert';
   return null;
 }
@@ -210,7 +210,7 @@ export function preferredMenuItemVersion(
     let score = 0;
     if (effectiveKind === 'cocktail' && /\b(?:cocktails?|spirits?[ -]cocktails?|martinis?|margaritas?)\b/.test(published)) score += 3;
     if (effectiveKind === 'dessert' && /\b(?:desserts?|sweets?|sweet treats?|ice cream)\b/.test(published)) score += 3;
-    if (effectiveKind === 'savory' && /\b(?:entr(?:e|é)es?|appetizers?|sides?|sandwiches?|pizza)\b/.test(published)) score += 3;
+    if (effectiveKind === 'savory' && /\b(?:entr(?:e|é)es?|appetizers?|sides?|sandwich(?:es)?|pizza)\b/.test(published)) score += 3;
     if (effectiveKind === 'non_alcoholic_drink' && /\b(?:non[ -]alcoholic|zero[ -]proof|spirit[ -]free|beverages?)\b/.test(published)) score += 3;
     if (effectiveKind && itemMatchesMenuItemKind(item, effectiveKind)) score += 1;
     if (plan.constraints.alcohol === 'required' && item.is_alcoholic) score += 1;
